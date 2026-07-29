@@ -1,0 +1,1935 @@
+(function (root) {
+  "use strict";
+
+  const core = root.SpeechBubbleComicCore;
+  if (!core) throw new Error("SpeechBubbleComicCore must be loaded before comic-editor.js");
+
+  const DB_NAME = "speech-bubble-editor-comic-images";
+  const DB_STORE = "images";
+  const IMAGE_DRAG_TYPE = "application/x-speech-bubble-comic-image";
+  const MAX_IMAGE_BYTES = 96 * 1024 * 1024;
+  const MAX_IMAGES = 100;
+  const tonePatternCache = new Map();
+  const COMIC_SWATCHES = [
+    "#111111", "#ffffff", "#9ca3af", "#ef4444", "#f97316", "#facc15", "#84cc16",
+    "#22c55e", "#34d399", "#2dd4bf", "#38bdf8", "#60a5fa", "#3b82f6", "#6366f1",
+    "#8b5cf6", "#a855f7", "#d946ef", "#ec4899", "#8b7355", "#f5e6c8", "#fecaca",
+    "#fde68a", "#fef3c7", "#a3b63f", "#4b806b",
+  ];
+
+  function colorSwatchesMarkup(scope, key) {
+    return `<div class="comic-color-swatches" data-comic-color-scope="${scope}" data-comic-color-key="${key}">${COMIC_SWATCHES.map(
+      (color) => `<button type="button" data-comic-color="${color}" title="${color}" style="--comic-swatch:${color}"></button>`,
+    ).join("")}</div>`;
+  }
+
+  function uuid() {
+    if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function openImageDb() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(DB_STORE)) {
+          request.result.createObjectStore(DB_STORE, { keyPath: "key" });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function storeImageBlob(documentId, metadata, blob) {
+    if (!documentId || !metadata?.id || !blob) return;
+    const db = await openImageDb();
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction(DB_STORE, "readwrite");
+      transaction.objectStore(DB_STORE).put({
+        key: `${documentId}:${metadata.id}`,
+        documentId,
+        imageId: metadata.id,
+        metadata,
+        blob,
+        updatedAt: Date.now(),
+      });
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+    });
+    db.close();
+  }
+
+  async function loadImageBlob(documentId, imageId) {
+    if (!documentId || !imageId) return null;
+    const db = await openImageDb();
+    let record = null;
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction(DB_STORE, "readonly");
+      const request = transaction.objectStore(DB_STORE).get(`${documentId}:${imageId}`);
+      request.onsuccess = () => {
+        record = request.result || null;
+      };
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+    });
+    db.close();
+    return record?.blob instanceof Blob ? record.blob : null;
+  }
+
+  async function deleteImageBlob(documentId, imageId) {
+    if (!documentId || !imageId) return;
+    const db = await openImageDb();
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction(DB_STORE, "readwrite");
+      transaction.objectStore(DB_STORE).delete(`${documentId}:${imageId}`);
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+    });
+    db.close();
+  }
+
+  function imageFromBlob(blob) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      const url = URL.createObjectURL(blob);
+      image.decoding = "async";
+      image.onload = () => resolve({ image, url });
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("画像を読み込めませんでした。"));
+      };
+      image.src = url;
+    });
+  }
+
+  async function sha256(blob) {
+    if (!globalThis.crypto?.subtle) return "";
+    const digest = await globalThis.crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+    return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+  }
+
+  function supportedImage(file) {
+    return (
+      file instanceof Blob &&
+      (String(file.type || "").match(/^image\/(?:png|jpeg|webp)$/i) ||
+        /\.(?:png|jpe?g|webp)$/i.test(String(file.name || "")))
+    );
+  }
+
+  function createTrayDragGhost(name) {
+    document.querySelectorAll(".comic-image-drag-ghost").forEach((node) => node.remove());
+    const ghost = document.createElement("div");
+    ghost.className = "comic-image-drag-ghost";
+    ghost.textContent = `画像を配置: ${String(name || "ページ画像")}`;
+    document.body.append(ghost);
+    return ghost;
+  }
+
+  function create(options) {
+    let comic = core.defaultState(720, 2160, uuid);
+    let used = false;
+    let selectedPanelId = null;
+    let selectedHeadingId = null;
+    let selectedTarget = null;
+    let drag = null;
+    let pendingAssignPanelId = null;
+    let hydratedDocumentId = "";
+    const runtimeImages = new Map();
+    const objectUrls = new Set();
+    const elements = {};
+
+    function canvasState() {
+      return options.getCanvasState();
+    }
+
+    function sourceImage() {
+      return options.getSourceImage?.() || null;
+    }
+
+    function documentId() {
+      return String(options.getDocumentId?.() || "");
+    }
+
+    function pageRect() {
+      const state = canvasState();
+      comic.page.width = state.width;
+      comic.page.height = state.height;
+      const maximum = Math.max(0, Math.min(state.width, state.height) / 3);
+      const left = core.clamp(comic.page.margin_left ?? comic.page.margin, 0, maximum);
+      const right = core.clamp(comic.page.margin_right ?? comic.page.margin, 0, maximum);
+      const topMargin = core.clamp(comic.page.margin_top ?? comic.page.margin, 0, maximum);
+      const bottom = core.clamp(comic.page.margin_bottom ?? comic.page.margin, 0, maximum);
+      const visibleHeadings = comic.headings.filter((heading) => heading.visible !== false);
+      const headingBottom = visibleHeadings.length
+        ? Math.max(...visibleHeadings.map((heading) => heading.y + heading.height))
+        : topMargin;
+      const top = Math.max(topMargin, headingBottom + comic.page.heading_gap);
+      return {
+        x: left,
+        y: top,
+        w: Math.max(1, state.width - left - right),
+        h: Math.max(1, state.height - top - bottom),
+      };
+    }
+
+    function layout() {
+      return core.computeLayout(comic.tree, pageRect(), comic.page.gutter);
+    }
+
+    function selectedPanel() {
+      const found = core.findNode(comic.tree, selectedPanelId);
+      return found?.kind === "panel" ? found : null;
+    }
+
+    function selectedHeading() {
+      return comic.headings.find((heading) => heading.id === selectedHeadingId) || null;
+    }
+
+    function headingAt(point) {
+      return [...comic.headings].reverse().find(
+        (heading) =>
+          heading.visible !== false &&
+          point.x >= heading.x &&
+          point.x <= heading.x + heading.width &&
+          point.y >= heading.y &&
+          point.y <= heading.y + heading.height,
+      ) || null;
+    }
+
+    function ensureSourceMetadata() {
+      const source = sourceImage();
+      if (!source?.naturalWidth || !source?.naturalHeight) return;
+      const metadata = comic.images.find((item) => item.id === "source");
+      if (!metadata) return;
+      metadata.width = source.naturalWidth;
+      metadata.height = source.naturalHeight;
+      metadata.name = String(options.getSourceName?.() || metadata.name);
+      runtimeImages.set("source", source);
+    }
+
+    function releaseRuntimeImage(imageId) {
+      const record = runtimeImages.get(imageId);
+      const url = record?.dataset?.comicObjectUrl;
+      if (url) {
+        URL.revokeObjectURL(url);
+        objectUrls.delete(url);
+      }
+      runtimeImages.delete(imageId);
+    }
+
+    function releaseStoredRuntimeImages() {
+      for (const imageId of [...runtimeImages.keys()]) {
+        if (imageId !== "source") releaseRuntimeImage(imageId);
+      }
+    }
+
+    async function attachBlob(metadata, blob) {
+      const loaded = await imageFromBlob(blob);
+      loaded.image.dataset.comicObjectUrl = loaded.url;
+      objectUrls.add(loaded.url);
+      releaseRuntimeImage(metadata.id);
+      runtimeImages.set(metadata.id, loaded.image);
+      metadata.width = loaded.image.naturalWidth;
+      metadata.height = loaded.image.naturalHeight;
+      options.requestRender({ canvas: true });
+    }
+
+    async function hydrateImages() {
+      const targetDocument = documentId();
+      hydratedDocumentId = targetDocument;
+      ensureSourceMetadata();
+      await Promise.all(
+        comic.images
+          .filter((metadata) => metadata.source !== "document" && !runtimeImages.has(metadata.id))
+          .map(async (metadata) => {
+            try {
+              const blob = await loadImageBlob(targetDocument, metadata.id);
+              if (blob && hydratedDocumentId === targetDocument) await attachBlob(metadata, blob);
+            } catch (error) {
+              console.warn("Speech Bubble comic image restore failed", metadata.id, error);
+            }
+          }),
+      );
+      renderTray();
+      options.requestRender({ canvas: true });
+    }
+
+    function installUi() {
+      const header = document.querySelector("body > header");
+      const spacer = header?.querySelector(".spacer");
+      if (header && spacer) {
+        const toggle = document.createElement("div");
+        toggle.className = "comic-mode-toggle segmented";
+        toggle.setAttribute("role", "group");
+        toggle.setAttribute("aria-label", "編集モード");
+        toggle.innerHTML =
+          '<button type="button" data-comic-mode="single" class="active">一枚画像</button>' +
+          '<button type="button" data-comic-mode="comic">4コマ漫画</button>';
+        spacer.before(toggle);
+        elements.modeToggle = toggle;
+      }
+
+      const canvasPanel = document.querySelector(".canvas-panel");
+      const footer = canvasPanel?.querySelector(".footer");
+      if (canvasPanel && footer) {
+        const tray = document.createElement("section");
+        tray.className = "comic-image-tray collapsed";
+        tray.hidden = true;
+        tray.innerHTML = `
+          <div class="comic-tray-heading">
+            <button type="button" data-comic-action="tray-toggle" aria-expanded="false">ページ画像</button>
+            <span data-comic-image-count>0枚</span>
+            <span class="spacer"></span>
+            <button type="button" data-comic-action="add-images">＋ 画像を追加</button>
+          </div>
+          <div class="comic-tray-list"></div>
+          <input data-comic-image-input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+        `;
+        canvasPanel.insertBefore(tray, footer);
+        elements.tray = tray;
+        elements.trayList = tray.querySelector(".comic-tray-list");
+        elements.imageInput = tray.querySelector("[data-comic-image-input]");
+        if ("ResizeObserver" in window) new ResizeObserver(syncTrayViewport).observe(tray);
+      }
+
+      const right = document.querySelector("aside.right");
+      const empty = document.getElementById("empty");
+      if (right && empty) {
+        const properties = document.createElement("div");
+        properties.id = "comicProperties";
+        properties.className = "comic-properties";
+        properties.hidden = true;
+        properties.innerHTML = `
+          <div class="comic-properties-title">
+            <strong data-comic-selection-name>漫画ページ</strong>
+            <span data-comic-selection-kind>ページ</span>
+          </div>
+          <section data-comic-properties="page">
+            <strong>縦4コマ</strong>
+            <div class="comic-template-grid">
+              <button type="button" data-comic-template="vertical_four">標準4コマ</button>
+            </div>
+            <div class="comic-two-column">
+              <label>キャンバス幅<input data-comic-canvas="width" type="number" min="320" max="8192" step="1"></label>
+              <label>キャンバス高さ<input data-comic-canvas="height" type="number" min="480" max="16384" step="1"></label>
+            </div>
+            <div class="comic-page-checks comic-page-checks-primary">
+              <label class="comic-check"><input data-comic-page="canvas_ratio_locked" type="checkbox">縦横比を固定</label>
+            </div>
+            <button class="comic-canvas-reset" type="button" data-comic-action="canvas-reset">標準へ戻す（720 × 2160）</button>
+            <div class="comic-frame-style segmented" role="group" aria-label="フレーム配色">
+              <button type="button" data-comic-frame-style="white">白地・黒線</button>
+              <button type="button" data-comic-frame-style="black">黒地・白線</button>
+            </div>
+            <div class="comic-two-column">
+              <label>枠線幅<input data-comic-page="border_width" type="number" min="0" max="20" step="0.5"></label>
+              <label>コマ間隔<input data-comic-page="gutter" type="number" min="0" max="64" step="1"></label>
+            </div>
+            <label>ページ背景<input data-comic-page="background" type="color"></label>
+            ${colorSwatchesMarkup("page", "background")}
+            <label>枠線色<input data-comic-page="border_color" type="color"></label>
+            ${colorSwatchesMarkup("page", "border_color")}
+            <button type="button" data-comic-action="add-heading">＋ 見出しBoxを追加</button>
+            <div class="comic-margin-row">
+              <label class="comic-check"><input data-comic-page="margin_linked" type="checkbox">連動</label>
+              <label>上<input data-comic-page="margin_top" type="number" min="0" max="480" step="1"></label>
+              <label>右<input data-comic-page="margin_right" type="number" min="0" max="480" step="1"></label>
+              <label>下<input data-comic-page="margin_bottom" type="number" min="0" max="480" step="1"></label>
+              <label>左<input data-comic-page="margin_left" type="number" min="0" max="480" step="1"></label>
+            </div>
+            <p class="hint">各コマは独立した枠です。漫画ページレイヤーをロックすると、見出しとコマ境界も固定されます。</p>
+          </section>
+          <section data-comic-properties="panel" hidden>
+            <button type="button" data-comic-action="select-page">ページ設定</button>
+            <label>コマ背景<input data-comic-panel="background" type="color"></label>
+            ${colorSwatchesMarkup("panel", "background")}
+            <button type="button" data-comic-action="choose-panel-image">＋ コマ画像を選択</button>
+          </section>
+          <section data-comic-properties="heading" hidden>
+            <label>Fill<input data-comic-heading="background" type="color"></label>
+            ${colorSwatchesMarkup("heading", "background")}
+            <label>Outline<input data-comic-heading="border_color" type="color"></label>
+            ${colorSwatchesMarkup("heading", "border_color")}
+            <label>Outline Width<input data-comic-heading="border_width" type="number" min="0" max="20" step="1"></label>
+            <div class="comic-two-column">
+              <label>幅<input data-comic-heading="width" type="number" min="40" step="1"></label>
+              <label>高さ<input data-comic-heading="height" type="number" min="24" step="1"></label>
+            </div>
+            <div class="comic-two-column">
+              <label>位置 X<input data-comic-heading="x" type="number" step="1"></label>
+              <label>位置 Y<input data-comic-heading="y" type="number" step="1"></label>
+            </div>
+            <div class="comic-heading-visibility-row">
+              <label class="comic-check"><input data-comic-heading="visible" type="checkbox">見出しを表示</label>
+              <span class="comic-property-hint">キャンバス上で移動・リサイズ</span>
+            </div>
+            <button type="button" data-comic-action="reset-heading">位置・サイズを標準へ戻す</button>
+            <p class="hint">見出しBoxには文字を含めません。文字は通常のTextレイヤーを配置してください。</p>
+          </section>
+          <section data-comic-properties="image" hidden>
+            <div class="comic-image-property-summary">
+              <div data-comic-selected-thumbnail class="comic-image-preview"></div>
+              <span data-comic-image-name>画像なし</span>
+            </div>
+            <div class="comic-two-column">
+              <button type="button" data-comic-action="remove-panel-image">画像を外す</button>
+            </div>
+            <label>画像倍率
+              <input data-comic-property="image_scale" type="range" min="0.05" max="5" step="0.01">
+              <output data-comic-output="image_scale"></output>
+            </label>
+            <div class="comic-two-column">
+              <label>位置 X<input data-comic-property="image_offset_x" type="number" step="1"></label>
+              <label>位置 Y<input data-comic-property="image_offset_y" type="number" step="1"></label>
+            </div>
+            <button type="button" data-comic-action="fit-reset">画像位置を中央へ戻す</button>
+            <p class="hint">Canvas上でドラッグして移動、Ctrl＋ホイールで拡大・縮小できます。</p>
+          </section>
+        `;
+        empty.parentNode.insertBefore(properties, empty);
+        elements.properties = properties;
+      }
+
+      const contextMenu = document.createElement("div");
+      contextMenu.className = "comic-context-menu";
+      contextMenu.hidden = true;
+      contextMenu.innerHTML = `
+        <button type="button" data-comic-context="reset-image">画像位置を中央へ戻す</button>
+        <button type="button" data-comic-context="remove-image">画像を外す</button>
+      `;
+      document.body.append(contextMenu);
+      elements.contextMenu = contextMenu;
+
+      elements.modeToggle?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-comic-mode]");
+        if (!button) return;
+        setEditMode(button.dataset.comicMode);
+      });
+      elements.tray?.addEventListener("click", (event) => {
+        const action = event.target.closest("[data-comic-action]")?.dataset.comicAction;
+        const card = event.target.closest("[data-comic-image-id]");
+        if (action === "tray-toggle") {
+          const collapsed = elements.tray.classList.toggle("collapsed");
+          event.target.setAttribute("aria-expanded", String(!collapsed));
+          syncTrayViewport();
+        } else if (action === "add-images") {
+          elements.imageInput.click();
+        } else if (action === "remove-image" && card) {
+          removeTrayImage(card.dataset.comicImageId);
+        } else if (card) {
+          elements.trayList
+            ?.querySelectorAll(".comic-image-card.selected")
+            .forEach((item) => item.classList.remove("selected"));
+          card.classList.add("selected");
+        }
+      });
+      elements.imageInput?.addEventListener("change", async () => {
+        const importedIds = await importFiles([...elements.imageInput.files]);
+        if (pendingAssignPanelId && importedIds[0]) assignImage(pendingAssignPanelId, importedIds[0]);
+        pendingAssignPanelId = null;
+        elements.imageInput.value = "";
+      });
+      elements.properties?.addEventListener("input", handlePropertyInput);
+      elements.properties?.addEventListener("change", handlePropertyChange);
+      function updatePageControl(input) {
+        if (!input.dataset.comicEditing) {
+          options.pushUndo();
+          input.dataset.comicEditing = "1";
+        }
+        const key = input.dataset.comicPage;
+        if (input.type === "checkbox") comic.page[key] = input.checked;
+        else if (input.type === "color") comic.page[key] = input.value;
+        else {
+          const maximum = key === "gutter" ? 64 : key.startsWith("margin_") ? 480 : 20;
+          comic.page[key] = Math.round(core.clamp(input.value, 0, maximum));
+          if (key.startsWith("margin_") && comic.page.margin_linked) {
+            for (const marginKey of ["margin_top", "margin_right", "margin_bottom", "margin_left"]) {
+              comic.page[marginKey] = comic.page[key];
+            }
+            comic.page.margin = comic.page[key];
+          }
+        }
+        updateUi();
+        options.requestRender({ canvas: true, layers: true });
+      }
+      elements.properties?.addEventListener("input", (event) => {
+        const input = event.target.closest("[data-comic-page]");
+        if (input) updatePageControl(input);
+      });
+      elements.properties?.addEventListener("change", (event) => {
+        const input = event.target.closest("[data-comic-page]");
+        if (!input) return;
+        if (!input.dataset.comicEditing) updatePageControl(input);
+        delete input.dataset.comicEditing;
+        changed();
+      });
+      elements.properties?.addEventListener("input", (event) => {
+        const input = event.target.closest("[data-comic-canvas]");
+        if (!input) return;
+        if (!input.dataset.comicEditing) {
+          options.pushUndo();
+          input.dataset.comicEditing = "1";
+        }
+        const state = canvasState();
+        const key = input.dataset.comicCanvas;
+        const currentWidth = Math.max(1, state.width);
+        const currentHeight = Math.max(1, state.height);
+        let width = key === "width" ? Math.round(core.clamp(input.value, 320, 8192)) : currentWidth;
+        let height = key === "height" ? Math.round(core.clamp(input.value, 480, 16384)) : currentHeight;
+        if (comic.page.canvas_ratio_locked) {
+          const ratio = currentWidth / currentHeight;
+          if (key === "width") height = Math.max(480, Math.round(width / ratio));
+          else width = Math.max(320, Math.round(height * ratio));
+        }
+        options.resizeCanvas?.(width, height);
+        comic.page.width = width;
+        comic.page.height = height;
+        updateUi();
+        options.requestRender({ canvas: true, layers: true });
+      });
+      elements.properties?.addEventListener("change", (event) => {
+        const input = event.target.closest("[data-comic-canvas]");
+        if (!input) return;
+        delete input.dataset.comicEditing;
+        changed();
+      });
+      elements.properties?.addEventListener("input", (event) => {
+        const input = event.target.closest("[data-comic-heading]");
+        const heading = selectedHeading();
+        if (!input || !heading) return;
+        if (!input.dataset.comicEditing) {
+          options.pushUndo();
+          input.dataset.comicEditing = "1";
+        }
+        const key = input.dataset.comicHeading;
+        if (input.type === "checkbox") heading[key] = input.checked;
+        else if (input.type === "color") heading[key] = input.value;
+        else {
+          const minimum = input.min === "" ? -Infinity : Number(input.min);
+          const maximum = input.max === "" ? Infinity : Number(input.max);
+          heading[key] = Math.max(minimum, Math.min(maximum, Math.round(Number(input.value) || 0)));
+        }
+        options.requestRender({ canvas: true });
+      });
+      elements.properties?.addEventListener("change", (event) => {
+        const input = event.target.closest("[data-comic-heading]");
+        if (!input) return;
+        delete input.dataset.comicEditing;
+        changed();
+      });
+      elements.properties?.addEventListener("input", (event) => {
+        const input = event.target.closest("[data-comic-panel]");
+        const panel = selectedPanel();
+        if (!input || !panel) return;
+        if (!input.dataset.comicEditing) {
+          options.pushUndo();
+          input.dataset.comicEditing = "1";
+        }
+        panel[input.dataset.comicPanel] = input.value;
+        updateUi();
+        options.requestRender({ canvas: true });
+      });
+      elements.properties?.addEventListener("change", (event) => {
+        const input = event.target.closest("[data-comic-panel]");
+        if (!input) return;
+        delete input.dataset.comicEditing;
+        changed();
+      });
+      elements.properties?.addEventListener("click", (event) => {
+        const template = event.target.closest("[data-comic-template]")?.dataset.comicTemplate;
+        const frameStyle = event.target.closest("[data-comic-frame-style]")?.dataset.comicFrameStyle;
+        const panelBackground = event.target.closest("[data-comic-panel-background]")?.dataset.comicPanelBackground;
+        const colorButton = event.target.closest("[data-comic-color]");
+        const colorHost = colorButton?.closest("[data-comic-color-scope]");
+        const action = event.target.closest("[data-comic-action]")?.dataset.comicAction;
+        const panel = selectedPanel();
+        if (colorButton && colorHost) {
+          const key = colorHost.dataset.comicColorKey;
+          const color = colorButton.dataset.comicColor;
+          const scope = colorHost.dataset.comicColorScope;
+          const target = scope === "heading" ? selectedHeading() : scope === "panel" ? panel : comic.page;
+          if (!target || !key) return;
+          options.pushUndo();
+          target[key] = color;
+          updateUi();
+          changed();
+        } else if (template) {
+          applyTemplate(template);
+        } else if (frameStyle) {
+          options.pushUndo();
+          comic.page.frame_style = frameStyle;
+          comic.page.background = frameStyle === "black" ? "#000000" : "#ffffff";
+          comic.page.border_color = frameStyle === "black" ? "#ffffff" : "#111111";
+          updateUi();
+          changed();
+        } else if (panelBackground && panel) {
+          options.pushUndo();
+          panel.background = panelBackground;
+          updateUi();
+          changed();
+        } else if (action === "canvas-reset") {
+          options.pushUndo();
+          const size = [720, 2160];
+          options.resizeCanvas?.(...size);
+          comic.page.width = size[0];
+          comic.page.height = size[1];
+          updateUi();
+          changed();
+        } else if (action === "add-heading") {
+          if (comic.headings.length >= 1) return;
+          options.pushUndo();
+          const margin = comic.page.margin_left ?? 24;
+          comic.headings.push(core.headingNode(uuid, {
+            x: margin,
+            y: comic.page.margin_top ?? 24,
+            width: Math.max(80, canvasState().width - margin - (comic.page.margin_right ?? 24)),
+            height: 72,
+            background: "#ffffff",
+            border_color: "#111111",
+            border_width: 2,
+          }));
+          selectedHeadingId = comic.headings.at(-1).id;
+          selectedTarget = "heading";
+          updateUi();
+          changed();
+        } else if (action === "reset-heading") {
+          const heading = selectedHeading();
+          if (!heading) return;
+          options.pushUndo();
+          const standard = core.createHeadings("vertical_four", canvasState().width, uuid)[0];
+          heading.x = standard.x;
+          heading.y = standard.y;
+          heading.width = standard.width;
+          heading.height = standard.height;
+          updateUi();
+          changed();
+        } else if (action === "select-page") {
+          selectedTarget = "page";
+          updateUi();
+          options.requestRender({ canvas: true, layers: true });
+        } else if (action === "choose-panel-image" && panel) {
+          pendingAssignPanelId = panel.id;
+          elements.imageInput.click();
+        } else if (action === "fit-reset" && panel) {
+          options.pushUndo();
+          panel.image_scale = 1;
+          panel.image_offset_x = 0;
+          panel.image_offset_y = 0;
+          updateUi();
+          changed();
+        } else if (action === "remove-panel-image" && panel?.image_id) {
+          options.pushUndo();
+          panel.image_id = null;
+          selectedTarget = "panel";
+          updateUi();
+          renderTray();
+          changed();
+        }
+      });
+      contextMenu.addEventListener("click", (event) => {
+        const action = event.target.closest("[data-comic-context]")?.dataset.comicContext;
+        contextMenu.hidden = true;
+        const panel = selectedPanel();
+        if (!panel || !action) return;
+        if (action === "reset-image" && panel.image_id) {
+          options.pushUndo();
+          panel.image_scale = 1;
+          panel.image_offset_x = 0;
+          panel.image_offset_y = 0;
+          updateUi();
+          changed();
+        } else if (action === "remove-image" && panel.image_id) {
+          options.pushUndo();
+          panel.image_id = null;
+          selectedTarget = "panel";
+          updateUi();
+          changed();
+        }
+      });
+      document.addEventListener("pointerdown", (event) => {
+        if (!event.target.closest(".comic-context-menu")) contextMenu.hidden = true;
+      });
+    }
+
+    function setEditMode(requested) {
+      const enableComic = requested !== "single";
+      if (comic.enabled === enableComic) {
+        options.switchWorkspace?.(enableComic ? "comic" : "single");
+        updateUi();
+        options.syncProperties?.();
+        options.syncActionState?.();
+        requestAnimationFrame(() => options.fitView?.(false));
+        return;
+      }
+      options.pushUndo();
+      options.switchWorkspace?.(enableComic ? "comic" : "single");
+      if (enableComic && !used) {
+        options.resizeCanvas?.(720, 2160);
+        comic = core.defaultState(720, 2160, uuid);
+      }
+      comic.enabled = enableComic;
+      drag = null;
+      if (enableComic) {
+        used = true;
+        if (!core.PUBLIC_TEMPLATE_IDS.has(comic.template_id)) {
+          comic.template_id = "vertical_four";
+          comic.tree = core.createTemplate("vertical_four", uuid);
+          comic.headings = core.createHeadings("vertical_four", canvasState().width, uuid);
+          comic.page.gutter = 18;
+        }
+        ensureSourceMetadata();
+        selectedTarget = "page";
+        selectedPanelId ||= layout().panels[0]?.id || null;
+        options.clearLayerSelection?.();
+      } else {
+        selectedTarget = null;
+      }
+      updateUi();
+      options.syncProperties?.();
+      options.syncActionState?.();
+      requestAnimationFrame(() => options.fitView?.(false));
+      changed();
+    }
+
+    function updateUi() {
+      ensureSourceMetadata();
+      elements.modeToggle?.querySelectorAll("[data-comic-mode]").forEach((button) => {
+        const active = button.dataset.comicMode === "single" ? !comic.enabled : comic.enabled;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+      if (elements.tray) elements.tray.hidden = !comic.enabled;
+      document.querySelector(".canvas-panel")?.classList.toggle("comic-active", comic.enabled);
+      renderTray();
+      syncTrayViewport();
+      syncProperties();
+    }
+
+    function syncProperties() {
+      const panel = selectedPanel();
+      const heading = selectedHeading();
+      const active = comic.enabled && Boolean(selectedTarget) && !options.hasLayerSelection?.();
+      if (elements.properties) elements.properties.hidden = !active;
+      const normalProperties = document.getElementById("properties");
+      const empty = document.getElementById("empty");
+      if (active) {
+        if (normalProperties) normalProperties.hidden = true;
+        if (empty) empty.hidden = true;
+      } else {
+        if (normalProperties) normalProperties.hidden = false;
+      }
+      if (!active) return false;
+      const panelIndex = panel ? layout().panels.findIndex((item) => item.id === panel.id) + 1 : 0;
+      const target = selectedTarget === "image" && !panel?.image_id ? "panel" : selectedTarget;
+      elements.properties.querySelector("[data-comic-selection-name]").textContent =
+        target === "page"
+          ? "漫画ページ"
+          : target === "heading"
+            ? "見出し"
+            : target === "image"
+              ? `コマ ${panelIndex}の画像`
+              : `コマ ${panelIndex}`;
+      elements.properties.querySelector("[data-comic-selection-kind]").textContent =
+        target === "page" ? "ページ" : target === "heading" ? "見出し" : target === "image" ? "画像" : "コマ";
+      elements.properties.querySelectorAll("[data-comic-properties]").forEach((section) => {
+        section.hidden = section.dataset.comicProperties !== target;
+      });
+      for (const input of elements.properties.querySelectorAll("[data-comic-page]")) {
+        const key = input.dataset.comicPage;
+        if (input.type === "checkbox") input.checked = Boolean(comic.page[key]);
+        else input.value = comic.page[key];
+      }
+      for (const input of elements.properties.querySelectorAll("[data-comic-canvas]")) {
+        if (document.activeElement !== input) input.value = Math.round(canvasState()[input.dataset.comicCanvas] || 0);
+      }
+      elements.properties.querySelectorAll("[data-comic-frame-style]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.comicFrameStyle === comic.page.frame_style);
+      });
+      elements.properties.querySelectorAll("[data-comic-template]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.comicTemplate === comic.template_id);
+      });
+      elements.properties.querySelectorAll("[data-comic-panel-background]").forEach((button) => {
+        button.classList.toggle("active", Boolean(panel) && button.dataset.comicPanelBackground === panel.background);
+      });
+      for (const input of elements.properties.querySelectorAll("[data-comic-property]")) {
+        const key = input.dataset.comicProperty;
+        const value = panel?.[key];
+        if (input.type === "checkbox") input.checked = Boolean(value);
+        else input.value = key === "image_offset_x" || key === "image_offset_y" ? Math.round(Number(value) || 0) : value ?? "";
+      }
+      for (const input of elements.properties.querySelectorAll("[data-comic-heading]")) {
+        const key = input.dataset.comicHeading;
+        if (input.type === "checkbox") input.checked = Boolean(heading?.[key]);
+        else input.value = input.type === "number" && Number.isFinite(Number(heading?.[key]))
+          ? String(Math.round(Number(heading[key])))
+          : heading?.[key] ?? "";
+      }
+      for (const input of elements.properties.querySelectorAll("[data-comic-panel]")) {
+        const key = input.dataset.comicPanel;
+        input.value = panel?.[key] ?? "";
+      }
+      for (const host of elements.properties.querySelectorAll("[data-comic-color-scope]")) {
+        const scope = host.dataset.comicColorScope;
+        const targetValue = scope === "heading" ? heading : scope === "panel" ? panel : comic.page;
+        const selectedColor = String(targetValue?.[host.dataset.comicColorKey] || "").toLowerCase();
+        host.querySelectorAll("[data-comic-color]").forEach((button) => {
+          button.classList.toggle("active", button.dataset.comicColor.toLowerCase() === selectedColor);
+        });
+      }
+      for (const output of elements.properties.querySelectorAll("[data-comic-output]")) {
+        const input = elements.properties.querySelector(`[data-comic-property="${output.dataset.comicOutput}"]`);
+        output.value = input?.dataset.comicProperty === "image_scale" ? `${Math.round(Number(input.value) * 100)}%` : input?.value || "";
+        output.textContent = output.value;
+      }
+      elements.properties.querySelectorAll('[data-comic-action="remove-panel-image"]').forEach((button) => {
+        button.disabled = !panel?.image_id;
+      });
+      const metadata = comic.images.find((item) => item.id === panel?.image_id);
+      const thumbnail = elements.properties.querySelector("[data-comic-selected-thumbnail]");
+      const imageName = elements.properties.querySelector("[data-comic-image-name]");
+      if (thumbnail) {
+        thumbnail.replaceChildren();
+        const runtime = panel?.image_id === "source" ? sourceImage() : runtimeImages.get(panel?.image_id);
+        if (runtime?.src) {
+          const preview = document.createElement("img");
+          preview.src = runtime.src;
+          preview.alt = "";
+          thumbnail.append(preview);
+        }
+      }
+      if (imageName) imageName.textContent = metadata?.name || "画像なし";
+      return true;
+    }
+
+    function selectComicTarget(target, panelId = null) {
+      selectedTarget = target;
+      if (panelId) selectedPanelId = panelId;
+      if (target !== "heading") selectedHeadingId = null;
+      options.clearLayerSelection?.();
+      updateUi();
+      options.requestRender({ canvas: true, layers: true });
+    }
+
+    function comicLayerRow({ target, panelId = null, name, kind, visible = true, locked = null, nested = false }) {
+      const row = document.createElement("div");
+      row.className = `layer comic-layer${nested ? " comic-layer-nested" : ""}${
+        selectedTarget === target && (!panelId || panelId === selectedPanelId) ? " selected" : ""
+      }`;
+      row.dataset.comicLayer = target;
+      if (panelId) row.dataset.comicPanelId = panelId;
+      row.onclick = () => selectComicTarget(target, panelId);
+      if (target === "page" || target === "panel" || target === "image") {
+        row.title =
+          target === "page"
+            ? "素材をドロップするとページ上レイヤーになります"
+            : target === "panel"
+              ? "素材をドロップするとこのコマ内の画像より上になります"
+              : "上半分へドロップ: 画像より上／下半分: 画像より下";
+        row.addEventListener("dragover", (event) => {
+          if (!event.dataTransfer.types.includes("text/plain")) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+        });
+        row.addEventListener("drop", (event) => {
+          const layerId = event.dataTransfer.getData("text/plain");
+          if (!layerId) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const stack =
+            target === "image" && event.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2
+              ? "below_image"
+              : "above_image";
+          options.assignLayerComicTarget?.(layerId, target === "page" ? "" : panelId, stack);
+        });
+      }
+      const eye = document.createElement("button");
+      eye.className = "eye";
+      eye.textContent = visible ? "◉" : "○";
+      eye.title = "表示／非表示";
+      eye.onclick = (event) => {
+        event.stopPropagation();
+        options.pushUndo();
+        if (target === "page") comic.page.visible = !visible;
+        else {
+          const panel = core.findNode(comic.tree, panelId);
+          if (target === "image") panel.image_visible = !visible;
+          else panel.visible = !visible;
+        }
+        updateUi();
+        changed();
+      };
+      const kindElement = document.createElement("span");
+      kindElement.className = `kind ${kind}`;
+      kindElement.textContent = target === "page" ? "▦" : target === "image" ? "▧" : "□";
+      const nameElement = document.createElement("span");
+      nameElement.className = "name";
+      nameElement.textContent = name;
+      row.append(eye, kindElement, nameElement);
+      if (locked !== null) {
+        const lock = document.createElement("button");
+        lock.className = "lock";
+        lock.textContent = locked ? "🔒" : "🔓";
+        lock.title =
+          target === "image"
+            ? locked
+              ? "画像位置のロックを解除"
+              : "画像位置をロック"
+            : locked
+              ? "コマ割りのロックを解除"
+              : "コマ割りをロック";
+        lock.onclick = (event) => {
+          event.stopPropagation();
+          options.pushUndo();
+          if (target === "image") {
+            const panel = core.findNode(comic.tree, panelId);
+            if (panel) panel.image_locked = !panel.image_locked;
+          } else {
+            comic.page.structure_locked = !comic.page.structure_locked;
+          }
+          updateUi();
+          changed();
+        };
+        row.append(lock);
+      }
+      return row;
+    }
+
+    function renderLayers(host) {
+      if (!comic.enabled || !host) return false;
+      host.append(
+        comicLayerRow({
+          target: "page",
+          name: "漫画ページ",
+          kind: "frame",
+          visible: comic.page.visible !== false,
+          locked: comic.page.structure_locked !== false,
+        }),
+      );
+      comic.headings.forEach((heading, index) => {
+        const row = comicLayerRow({
+          target: "heading",
+          name: `見出しBox ${index + 1}`,
+          kind: "frame",
+          visible: heading.visible !== false,
+          nested: true,
+        });
+        row.dataset.comicHeadingId = heading.id;
+        row.classList.toggle("selected", selectedTarget === "heading" && selectedHeadingId === heading.id);
+        row.onclick = () => {
+          selectedHeadingId = heading.id;
+          selectComicTarget("heading");
+        };
+        const eye = row.querySelector(".eye");
+        eye.onclick = (event) => {
+          event.stopPropagation();
+          options.pushUndo();
+          heading.visible = !heading.visible;
+          updateUi();
+          changed();
+        };
+        host.append(row);
+      });
+      layout().panels.forEach((item, index) => {
+        const panel = item.node;
+        host.append(
+          comicLayerRow({
+            target: "panel",
+            panelId: panel.id,
+            name: `コマ ${index + 1}`,
+            kind: "frame",
+            visible: panel.visible !== false,
+            nested: true,
+          }),
+        );
+        if (panel.image_id) {
+          const metadata = comic.images.find((image) => image.id === panel.image_id);
+          host.append(
+            comicLayerRow({
+              target: "image",
+              panelId: panel.id,
+              name: metadata?.name || "コマ画像",
+              kind: "image",
+              visible: panel.image_visible !== false,
+              locked: panel.image_locked === true,
+              nested: true,
+            }),
+          );
+        }
+      });
+      return true;
+    }
+
+    function clearSelection() {
+      if (!selectedTarget) return false;
+      selectedTarget = null;
+      drag = null;
+      syncProperties();
+      options.requestRender({ canvas: true, layers: true });
+      return true;
+    }
+
+    function handlePropertyInput(event) {
+      const input = event.target.closest("[data-comic-property]");
+      const panel = selectedPanel();
+      if (!input || !panel) return;
+      if (!input.dataset.comicEditing) {
+        options.pushUndo();
+        input.dataset.comicEditing = "1";
+      }
+      applyProperty(panel, input);
+      syncProperties();
+      options.requestRender({ canvas: true });
+    }
+
+    function handlePropertyChange(event) {
+      const input = event.target.closest("[data-comic-property]");
+      const panel = selectedPanel();
+      if (!input || !panel) return;
+      if (!input.dataset.comicEditing) options.pushUndo();
+      delete input.dataset.comicEditing;
+      applyProperty(panel, input);
+      syncProperties();
+      changed();
+    }
+
+    function applyProperty(panel, input) {
+      const key = input.dataset.comicProperty;
+      if (key === "image_locked") panel.image_locked = input.checked;
+      else if (key === "tone_enabled") panel.tone = input.checked ? panel.tone || core.defaultTone() : null;
+      else if (key === "dot_size") {
+        panel.tone ||= core.defaultTone();
+        panel.tone.dot_size = core.clamp(input.value, 1, panel.tone.spacing * 0.95);
+      } else if (key === "density") {
+        panel.tone ||= core.defaultTone();
+        panel.tone.spacing = core.clamp(64 - (core.clamp(input.value, 0, 100) / 100) * 60, 4, 64);
+        panel.tone.dot_size = Math.min(panel.tone.dot_size, panel.tone.spacing * 0.95);
+      } else if (key === "tone_opacity") {
+        panel.tone ||= core.defaultTone();
+        panel.tone.opacity = core.clamp(input.value, 0, 1);
+      } else if (key === "tone_color") {
+        panel.tone ||= core.defaultTone();
+        panel.tone.color = input.value;
+      } else if (key === "fit" || key === "background") panel[key] = input.value;
+      else if (key === "image_scale") panel[key] = core.clamp(input.value, 0.05, 5);
+      else panel[key] = Number(input.value) || 0;
+    }
+
+    function hasPanelContent() {
+      return layout().panels.some((item) => item.node.image_id || item.node.tone);
+    }
+
+    function applyTemplate(templateId) {
+      if (!core.PUBLIC_TEMPLATE_IDS.has(templateId)) return;
+      if (hasPanelContent() && !confirm("現在のコマ割りとコマ内設定を置き換えますか？\nページ画像は残ります。")) return;
+      options.pushUndo();
+      comic.tree = core.createTemplate(templateId, uuid);
+      comic.template_id = templateId;
+      comic.enabled = true;
+      comic.page.gutter = 18;
+      comic.page.margin = 24;
+      comic.page.margin_top = comic.page.margin;
+      comic.page.margin_right = comic.page.margin;
+      comic.page.margin_bottom = comic.page.margin;
+      comic.page.margin_left = comic.page.margin;
+      comic.page.heading_gap = 14;
+      comic.headings = core.createHeadings(templateId, canvasState().width, uuid);
+      used = true;
+      selectedPanelId = layout().panels[0]?.id || null;
+      selectedTarget = selectedPanelId ? "panel" : "page";
+      const size = [720, 2160];
+      if (size) options.resizeCanvas?.(...size);
+      updateUi();
+      changed();
+    }
+
+    function splitSelected(axis) {
+      const panel = selectedPanel();
+      if (!panel) {
+        options.setStatus?.("分割するコマを選択してください。", "error");
+        return;
+      }
+      options.pushUndo();
+      const result = core.splitPanel(comic.tree, panel.id, axis, uuid);
+      if (!result.changed) return;
+      comic.tree = result.tree;
+      selectedPanelId = result.panelId;
+      selectedTarget = "panel";
+      used = true;
+      updateUi();
+      changed();
+    }
+
+    function mergeSelected() {
+      const panel = selectedPanel();
+      if (!panel) return;
+      const match = core.findParent(comic.tree, panel.id);
+      const parent = match?.parent;
+      if (!parent || parent.first.kind !== "panel" || parent.second.kind !== "panel") {
+        options.setStatus?.("同じ仕切りに属する兄弟コマだけ結合できます。", "error");
+        return;
+      }
+      const sibling = parent.first.id === panel.id ? parent.second : parent.first;
+      if (panel.image_id && sibling.image_id && !confirm("両方のコマに画像があります。選択中のコマ画像を残して結合しますか？")) return;
+      options.pushUndo();
+      const result = core.mergeSibling(comic.tree, panel.id, panel.id, uuid);
+      if (!result.changed) return;
+      comic.tree = result.tree;
+      selectedPanelId = result.panelId;
+      selectedTarget = "panel";
+      updateUi();
+      changed();
+    }
+
+    function assignImage(panelId, imageId) {
+      const panel = core.findNode(comic.tree, panelId);
+      if (!panel || panel.kind !== "panel" || !comic.images.some((item) => item.id === imageId)) return false;
+      options.pushUndo();
+      panel.image_id = imageId;
+      panel.image_scale = 1;
+      panel.image_offset_x = 0;
+      panel.image_offset_y = 0;
+      selectedPanelId = panel.id;
+      selectedTarget = "image";
+      used = true;
+      updateUi();
+      changed();
+      return true;
+    }
+
+    async function importFiles(files, importOptions = {}) {
+      if (!comic.enabled) setEditMode("comic");
+      const supported = files.filter(supportedImage);
+      if (!supported.length) {
+        options.setStatus?.("PNG / JPEG / WebP画像を選択してください。", "error");
+        return [];
+      }
+      const importedIds = [];
+      for (const file of supported) {
+        if (comic.images.length >= MAX_IMAGES) {
+          options.setStatus?.(`画像は1ドキュメント最大${MAX_IMAGES}枚です。`, "error");
+          break;
+        }
+        if (file.size > MAX_IMAGE_BYTES) {
+          options.setStatus?.(`${file.name || "画像"}は96 MiBを超えているため読み込めません。`, "error");
+          continue;
+        }
+        try {
+          const digest = await sha256(file);
+          const duplicate = digest && comic.images.find((item) => item.sha256 === digest);
+          if (duplicate) {
+            importedIds.push(duplicate.id);
+            continue;
+          }
+          const metadata = {
+            id: `image-${uuid()}`,
+            name: String(file.name || `image-${comic.images.length + 1}`).slice(0, 260),
+            mime: /^image\/(?:png|jpeg|webp)$/i.test(file.type) ? file.type : "image/png",
+            width: 1,
+            height: 1,
+            sha256: digest,
+            source: "stored",
+          };
+          await attachBlob(metadata, file);
+          comic.images.push(metadata);
+          await storeImageBlob(documentId(), metadata, file);
+          importedIds.push(metadata.id);
+        } catch (error) {
+          console.warn("Speech Bubble comic image import failed", error);
+          options.setStatus?.(`${file.name || "画像"}を読み込めませんでした。`, "error");
+        }
+      }
+      if (importedIds.length) {
+        const droppedPanel = importOptions.point ? core.panelAt(layout(), importOptions.point) : null;
+        if (droppedPanel && importedIds[0]) {
+          droppedPanel.node.image_id = importedIds[0];
+          droppedPanel.node.image_scale = 1;
+          droppedPanel.node.image_offset_x = 0;
+          droppedPanel.node.image_offset_y = 0;
+          selectedPanelId = droppedPanel.id;
+          selectedTarget = "image";
+        }
+        used = true;
+        elements.tray?.classList.remove("collapsed");
+        elements.tray?.querySelector('[data-comic-action="tray-toggle"]')?.setAttribute("aria-expanded", "true");
+        renderTray();
+        syncTrayViewport();
+        changed();
+        options.setStatus?.(`${importedIds.length}枚の画像をページ画像へ追加しました。`, "saved");
+      }
+      return importedIds;
+    }
+
+    async function removeTrayImage(imageId) {
+      if (imageId === "source") return;
+      const index = comic.images.findIndex((item) => item.id === imageId);
+      if (index < 0) return;
+      const usedPanels = layout().panels.filter((item) => item.node.image_id === imageId);
+      if (
+        usedPanels.length &&
+        !confirm(`この画像は${usedPanels.length}個のコマで使用中です。\nコマから外してページ画像から削除しますか？`)
+      ) return;
+      options.pushUndo();
+      for (const item of usedPanels) item.node.image_id = null;
+      comic.images.splice(index, 1);
+      releaseRuntimeImage(imageId);
+      await deleteImageBlob(documentId(), imageId).catch(() => {});
+      if (selectedTarget === "image" && usedPanels.some((item) => item.id === selectedPanelId)) selectedTarget = "panel";
+      renderTray();
+      updateUi();
+      changed();
+    }
+
+    function blobDataUrl(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("画像をプロジェクトへ保存できませんでした。"));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    async function exportProjectImages() {
+      const records = [];
+      for (const metadata of comic.images) {
+        if (metadata.source === "document") continue;
+        const blob = await loadImageBlob(documentId(), metadata.id);
+        if (!blob) continue;
+        records.push({
+          id: metadata.id,
+          name: metadata.name,
+          mime: metadata.mime || blob.type || "image/png",
+          data_url: await blobDataUrl(blob),
+        });
+      }
+      return records;
+    }
+
+    async function importProjectImages(records) {
+      for (const record of Array.isArray(records) ? records : []) {
+        if (!record?.id || !String(record.data_url || "").startsWith("data:image/")) continue;
+        const blob = await fetch(record.data_url).then((response) => response.blob());
+        let metadata = comic.images.find((item) => item.id === record.id);
+        if (!metadata) {
+          metadata = {
+            id: String(record.id),
+            name: String(record.name || "project-image"),
+            mime: String(record.mime || blob.type || "image/png"),
+            width: 1,
+            height: 1,
+            sha256: await sha256(blob),
+            source: "stored",
+          };
+          comic.images.push(metadata);
+        }
+        await attachBlob(metadata, blob);
+        await storeImageBlob(documentId(), metadata, blob);
+      }
+      renderTray();
+      options.requestRender({ canvas: true, layers: true });
+    }
+
+    function renderTray() {
+      if (!elements.trayList) return;
+      ensureSourceMetadata();
+      const trayImages = comic.images.filter((metadata) => metadata.id !== "source");
+      const usedIds = new Set(layout().panels.map((item) => item.node.image_id).filter(Boolean));
+      elements.tray.querySelector("[data-comic-image-count]").textContent = `${trayImages.length}枚`;
+      elements.trayList.replaceChildren(
+        ...trayImages.map((metadata) => {
+          const card = document.createElement("article");
+          card.className = `comic-image-card${usedIds.has(metadata.id) ? " used" : ""}`;
+          card.dataset.comicImageId = metadata.id;
+          card.draggable = true;
+          const preview = document.createElement("div");
+          preview.className = "comic-image-preview";
+          const runtime = runtimeImages.get(metadata.id);
+          if (runtime?.src) {
+            const image = document.createElement("img");
+            image.src = runtime.src;
+            image.alt = "";
+            image.draggable = false;
+            preview.append(image);
+          } else {
+            preview.textContent = "読込待ち";
+          }
+          const name = document.createElement("span");
+          name.textContent = metadata.name;
+          name.title = metadata.name;
+          card.append(preview, name);
+          if (metadata.id !== "source") {
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.dataset.comicAction = "remove-image";
+            remove.textContent = "×";
+            remove.title = usedIds.has(metadata.id) ? "使用中のコマから外して削除" : "ページ画像から削除";
+            card.append(remove);
+          }
+          card.addEventListener("dragstart", (event) => {
+            const ghost = createTrayDragGhost(metadata.name);
+            event.dataTransfer.setData(IMAGE_DRAG_TYPE, metadata.id);
+            event.dataTransfer.setData("text/plain", metadata.id);
+            event.dataTransfer.effectAllowed = "copy";
+            event.dataTransfer.setDragImage(ghost, 18, 18);
+            card.classList.add("dragging");
+            requestAnimationFrame(() => requestAnimationFrame(() => ghost.remove()));
+          });
+          card.addEventListener("dragend", () => {
+            card.classList.remove("dragging");
+            document.querySelectorAll(".comic-image-drag-ghost").forEach((node) => node.remove());
+          });
+          card.addEventListener("pointerdown", () => {
+            elements.trayList
+              ?.querySelectorAll(".comic-image-card.selected")
+              .forEach((item) => item.classList.remove("selected"));
+            card.classList.add("selected");
+          });
+          return card;
+        }),
+      );
+    }
+
+    function syncTrayViewport() {
+      const canvasPanel = document.querySelector(".canvas-panel");
+      if (!canvasPanel || !elements.tray) return;
+      const visible = comic.enabled && !elements.tray.hidden;
+      canvasPanel.classList.toggle("comic-tray-visible", visible);
+      requestAnimationFrame(() => {
+        if (!visible) {
+          canvasPanel.style.removeProperty("--comic-tray-height");
+          return;
+        }
+        canvasPanel.style.setProperty("--comic-tray-height", `${Math.ceil(elements.tray.offsetHeight)}px`);
+      });
+    }
+
+    function tonePattern(target, tone) {
+      const key = `${tone.dot_size}|${tone.spacing}|${tone.opacity}|${tone.color}`;
+      if (tonePatternCache.has(key)) return tonePatternCache.get(key);
+      const size = Math.max(4, Math.ceil(tone.spacing));
+      const tile = document.createElement("canvas");
+      tile.width = size;
+      tile.height = size;
+      const context = tile.getContext("2d");
+      context.globalAlpha = tone.opacity;
+      context.fillStyle = tone.color;
+      context.beginPath();
+      context.arc(size / 2, size / 2, Math.min(size * 0.475, tone.dot_size / 2), 0, Math.PI * 2);
+      context.fill();
+      const pattern = target.createPattern(tile, "repeat");
+      tonePatternCache.set(key, pattern);
+      if (tonePatternCache.size > 64) tonePatternCache.delete(tonePatternCache.keys().next().value);
+      return pattern;
+    }
+
+    function drawUnderlay(target, optionsValue = {}) {
+      if (!comic.enabled) return false;
+      if (comic.page.visible === false) return true;
+      const overlay = optionsValue.overlay === true;
+      const phase = optionsValue.phase || "all";
+      const drawBase = phase === "all" || phase === "base";
+      const drawImages = phase === "all" || phase === "images";
+      const drawBorders = phase === "all" || phase === "borders";
+      const computed = layout();
+      target.save();
+      if (!overlay && drawBase) {
+        target.fillStyle = comic.page.background;
+        target.fillRect(0, 0, canvasState().width, canvasState().height);
+      }
+      if (!overlay && drawBase) {
+        for (const heading of comic.headings) {
+          if (heading.visible === false) continue;
+          target.fillStyle = heading.background;
+          target.fillRect(heading.x, heading.y, heading.width, heading.height);
+          if (heading.border_width > 0) {
+            const inset = heading.border_width / 2;
+            target.strokeStyle = heading.border_color || "#111111";
+            target.lineWidth = heading.border_width;
+            target.strokeRect(
+              heading.x + inset,
+              heading.y + inset,
+              Math.max(0, heading.width - heading.border_width),
+              Math.max(0, heading.height - heading.border_width),
+            );
+          }
+        }
+      }
+      for (const item of computed.panels) {
+        const panel = item.node;
+        const rect = item.rect;
+        if (panel.visible === false) continue;
+        target.save();
+        target.beginPath();
+        target.rect(rect.x, rect.y, rect.w, rect.h);
+        target.clip();
+        if (!overlay && drawBase) {
+          target.fillStyle = panel.background;
+          target.fillRect(rect.x, rect.y, rect.w, rect.h);
+        }
+        if (!overlay && drawImages) {
+          const image = panel.image_visible === false
+            ? null
+            : panel.image_id === "source"
+              ? sourceImage()
+              : runtimeImages.get(panel.image_id);
+          if (image?.naturalWidth && image?.naturalHeight) {
+            const fitted = core.imageFit(
+              rect,
+              image.naturalWidth,
+              image.naturalHeight,
+              panel.fit,
+              panel.image_scale,
+              panel.image_offset_x,
+              panel.image_offset_y,
+            );
+            target.drawImage(image, fitted.x, fitted.y, fitted.w, fitted.h);
+          }
+        }
+        if (panel.tone && drawImages) {
+          const pattern = tonePattern(target, panel.tone);
+          if (pattern) {
+            target.save();
+            target.translate(panel.tone.offset_x || 0, panel.tone.offset_y || 0);
+            target.fillStyle = pattern;
+            target.fillRect(
+              rect.x - (panel.tone.offset_x || 0),
+              rect.y - (panel.tone.offset_y || 0),
+              rect.w,
+              rect.h,
+            );
+            target.restore();
+          }
+        }
+        target.restore();
+      }
+      if (comic.page.border_width > 0 && !overlay && drawBorders) {
+        const inset = comic.page.border_width / 2;
+        target.strokeStyle = comic.page.border_color;
+        target.lineWidth = comic.page.border_width;
+        target.lineCap = "butt";
+        for (const item of computed.panels) {
+          if (item.node.visible === false) continue;
+          target.strokeRect(
+            item.rect.x + inset,
+            item.rect.y + inset,
+            Math.max(0, item.rect.w - comic.page.border_width),
+            Math.max(0, item.rect.h - comic.page.border_width),
+          );
+        }
+      }
+      target.restore();
+      return true;
+    }
+
+    function drawOverlay(target) {
+      if (!comic.enabled) return;
+      const computed = layout();
+      target.save();
+      target.lineWidth = 2 / Math.max(0.25, canvasState().zoom || 1);
+      if (selectedTarget === "page") {
+        const rect = pageRect();
+        target.strokeStyle = "#4fa3ff";
+        target.setLineDash([8, 5]);
+        target.strokeRect(rect.x, rect.y, rect.w, rect.h);
+        target.setLineDash([]);
+      }
+      if (comic.page.visible === false) {
+        target.restore();
+        return;
+      }
+      for (const heading of comic.headings) {
+        if (heading.visible === false) continue;
+        if (selectedTarget === "heading" && selectedHeadingId === heading.id) {
+          target.strokeStyle = "#4fa3ff";
+          target.setLineDash([8, 5]);
+          target.strokeRect(heading.x, heading.y, heading.width, heading.height);
+          target.setLineDash([]);
+          if (!comic.page.structure_locked) {
+            const handle = headingResizeHandleRect(heading);
+            target.fillStyle = "#ffffff";
+            target.strokeStyle = "#4fa3ff";
+            target.fillRect(handle.x, handle.y, handle.w, handle.h);
+            target.strokeRect(handle.x, handle.y, handle.w, handle.h);
+          }
+        }
+      }
+      for (const item of computed.panels) {
+        if (item.node.visible === false) continue;
+        if (item.id === selectedPanelId && selectedTarget !== "page") {
+          target.strokeStyle = "#4fa3ff";
+          target.setLineDash([8, 5]);
+          target.strokeRect(item.rect.x, item.rect.y, item.rect.w, item.rect.h);
+          target.setLineDash([]);
+        }
+        if (!item.node.image_id) {
+          const button = emptyImageButtonRect(item.rect);
+          target.fillStyle = "rgba(31,38,48,.82)";
+          target.strokeStyle = "#6f91b4";
+          target.lineWidth = 1 / Math.max(0.25, canvasState().zoom || 1);
+          target.fillRect(button.x, button.y, button.w, button.h);
+          target.strokeRect(button.x, button.y, button.w, button.h);
+          target.fillStyle = "#f3f7fb";
+          target.font = `${Math.max(11, 13 / Math.max(0.5, canvasState().zoom || 1))}px sans-serif`;
+          target.textAlign = "center";
+          target.textBaseline = "middle";
+          target.fillText("＋ 画像を入れる", button.x + button.w / 2, button.y + button.h / 2);
+        }
+      }
+      for (const divider of comic.page.structure_locked ? [] : computed.dividers) {
+        const centerX = divider.rect.x + divider.rect.w / 2;
+        const centerY = divider.rect.y + divider.rect.h / 2;
+        target.strokeStyle = "rgba(79,163,255,.8)";
+        target.beginPath();
+        if (divider.axis === "x") {
+          target.moveTo(centerX, divider.rect.y);
+          target.lineTo(centerX, divider.rect.y + divider.rect.h);
+        } else {
+          target.moveTo(divider.rect.x, centerY);
+          target.lineTo(divider.rect.x + divider.rect.w, centerY);
+        }
+        target.stroke();
+      }
+      target.restore();
+    }
+
+    function panelContentRect(panel) {
+      if (!panel) return null;
+      const inset = Math.max(0, Number(comic.page.border_width) || 0);
+      return {
+        x: panel.rect.x + inset,
+        y: panel.rect.y + inset,
+        w: Math.max(0, panel.rect.w - inset * 2),
+        h: Math.max(0, panel.rect.h - inset * 2),
+      };
+    }
+
+    function emphasisClipRect(item) {
+      if (!comic.enabled || item?.type !== "emphasis_lines") return null;
+      if (item.comic_scope === "panel") {
+        const panelId = item.comic_panel_id || selectedPanelId || layout().panels[0]?.id;
+        const panel = layout().panels.find((entry) => entry.id === panelId);
+        if (panel) {
+          item.comic_panel_id = panel.id;
+          return panelContentRect(panel);
+        }
+      }
+      return pageRect();
+    }
+
+    function assetClipRect(item) {
+      if (!comic.enabled || !item || item.type === "frame" || item.comic_scope !== "panel") return null;
+      const panelId = item.comic_panel_id || selectedPanelId || layout().panels[0]?.id;
+      const panel = layout().panels.find((entry) => entry.id === panelId);
+      if (!panel) return null;
+      item.comic_panel_id = panel.id;
+      return panelContentRect(panel);
+    }
+
+    function selectedPanelForEffects() {
+      return selectedPanelId || layout().panels[0]?.id || "";
+    }
+
+    function elementTargetOptions(item) {
+      const pageValue = item?.type === "emphasis_lines" ? "page" : "free";
+      const pageLabel = item?.type === "emphasis_lines" ? "4コマ全体" : "ページ上（枠外へ出せる）";
+      return [
+        { value: pageValue, label: pageLabel },
+        ...layout().panels.slice(0, 4).map((panel, index) => ({
+          value: `panel:${panel.id}`,
+          label: `コマ${index + 1}`,
+        })),
+      ];
+    }
+
+    function elementTargetValue(item) {
+      if (!item || item.comic_scope !== "panel") return item?.type === "emphasis_lines" ? "page" : "free";
+      const panels = layout().panels;
+      const panel = panels.find((entry) => entry.id === item.comic_panel_id) || panels[0];
+      return panel ? `panel:${panel.id}` : item?.type === "emphasis_lines" ? "page" : "free";
+    }
+
+    function assignElementTarget(item, value) {
+      if (!item) return null;
+      const panelId = String(value || "").startsWith("panel:") ? String(value).slice(6) : "";
+      const panel = panelId ? layout().panels.find((entry) => entry.id === panelId) : null;
+      if (panel) {
+        item.comic_scope = "panel";
+        item.comic_panel_id = panel.id;
+        item.comic_stack = "above_image";
+        selectedPanelId = panel.id;
+        return panelContentRect(panel);
+      }
+      item.comic_scope = item.type === "emphasis_lines" ? "page" : "free";
+      item.comic_panel_id = "";
+      item.comic_stack = "above_image";
+      return item.type === "emphasis_lines" ? pageRect() : null;
+    }
+
+    function effectTargetRect(item) {
+      if (!comic.enabled || item?.type !== "emphasis_lines") return null;
+      if (item.comic_scope === "panel") {
+        const panel = layout().panels.find((entry) => entry.id === item.comic_panel_id);
+        if (panel) return panelContentRect(panel);
+      }
+      return pageRect();
+    }
+
+    function emptyImageButtonRect(rect) {
+      const width = Math.min(156, Math.max(88, rect.w * 0.48));
+      const height = Math.min(38, Math.max(28, rect.h * 0.18));
+      return { x: rect.x + (rect.w - width) / 2, y: rect.y + (rect.h - height) / 2, w: width, h: height };
+    }
+
+    function pointInRect(point, rect) {
+      return point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
+    }
+
+    function headingResizeHandleRect(heading) {
+      const size = 12 / Math.max(0.25, canvasState().zoom || 1);
+      return {
+        x: heading.x + heading.width - size / 2,
+        y: heading.y + heading.height - size / 2,
+        w: size,
+        h: size,
+      };
+    }
+
+    function handlePointerDown(event, point) {
+      if (!comic.enabled || options.layerAt?.(point)) return false;
+      const activeHeading = selectedHeading();
+      const resizeHeading =
+        activeHeading &&
+        activeHeading.visible !== false &&
+        pointInRect(point, headingResizeHandleRect(activeHeading))
+          ? activeHeading
+          : null;
+      const heading = resizeHeading || headingAt(point);
+      if (heading && !comic.page.structure_locked) {
+        options.pushUndo();
+        selectedHeadingId = heading.id;
+        selectedTarget = "heading";
+        selectedPanelId = null;
+        drag = resizeHeading === heading
+          ? {
+              type: "heading-resize",
+              heading,
+              startX: point.x,
+              startY: point.y,
+              width: heading.width,
+              height: heading.height,
+              changed: false,
+            }
+          : {
+              type: "heading",
+              heading,
+              startX: point.x,
+              startY: point.y,
+              x: heading.x,
+              y: heading.y,
+              changed: false,
+            };
+        options.clearLayerSelection?.();
+        updateUi();
+        options.requestRender({ canvas: true, layers: true });
+        return true;
+      }
+      const computed = layout();
+      if (!comic.page.structure_locked) {
+        const divider = core.dividerAt(computed, point, 12 / Math.max(0.25, canvasState().zoom || 1));
+        if (divider) {
+          options.pushUndo();
+          drag = { type: "divider", divider, changed: false };
+          return true;
+        }
+      }
+      const hit = core.panelAt(computed, point);
+      if (!hit) {
+        selectedTarget = "page";
+        drag = null;
+        options.clearLayerSelection?.();
+        updateUi();
+        options.requestRender({ canvas: true, layers: true });
+        return true;
+      }
+      selectedPanelId = hit.id;
+      selectedHeadingId = null;
+      selectedTarget = hit.node.image_id ? "image" : "panel";
+      options.clearLayerSelection?.();
+      if (!hit.node.image_id && pointInRect(point, emptyImageButtonRect(hit.rect))) {
+        pendingAssignPanelId = hit.id;
+        elements.imageInput.click();
+        drag = null;
+      } else if (hit.node.image_id && !hit.node.image_locked) {
+        options.pushUndo();
+        drag = {
+          type: "image",
+          panel: hit.node,
+          startX: point.x,
+          startY: point.y,
+          offsetX: hit.node.image_offset_x,
+          offsetY: hit.node.image_offset_y,
+          changed: false,
+        };
+      } else {
+        drag = null;
+      }
+      updateUi();
+      options.requestRender({ canvas: true, layers: true });
+      return true;
+    }
+
+    function handlePointerMove(event, point) {
+      if (!drag) return false;
+      if (drag.type === "divider") {
+        const divider = drag.divider;
+        const usable = Math.max(
+          1,
+          (divider.axis === "x" ? divider.container.w : divider.container.h) - comic.page.gutter,
+        );
+        const relative =
+          divider.axis === "x"
+            ? point.x - divider.container.x - comic.page.gutter / 2
+            : point.y - divider.container.y - comic.page.gutter / 2;
+        let ratio = relative / usable;
+        if (event.shiftKey) {
+          const snaps = [0.25, 1 / 3, 0.5, 2 / 3, 0.75];
+          const nearest = snaps.reduce((best, value) =>
+            Math.abs(value - ratio) < Math.abs(best - ratio) ? value : best,
+          );
+          if (Math.abs(nearest - ratio) * usable <= 8 / Math.max(0.25, canvasState().zoom || 1)) ratio = nearest;
+        }
+        divider.node.ratio = core.clamp(ratio, divider.range.minimum, divider.range.maximum);
+        drag.changed = true;
+      } else if (drag.type === "image") {
+        drag.panel.image_offset_x = Math.round(drag.offsetX + point.x - drag.startX);
+        drag.panel.image_offset_y = Math.round(drag.offsetY + point.y - drag.startY);
+        drag.changed = true;
+      } else if (drag.type === "heading") {
+        drag.heading.x = Math.round(drag.x + point.x - drag.startX);
+        drag.heading.y = Math.round(drag.y + point.y - drag.startY);
+        drag.changed = true;
+      } else if (drag.type === "heading-resize") {
+        drag.heading.width = Math.max(40, Math.round(drag.width + point.x - drag.startX));
+        drag.heading.height = Math.max(24, Math.round(drag.height + point.y - drag.startY));
+        drag.changed = true;
+      }
+      syncProperties();
+      options.requestRender({ canvas: true });
+      return true;
+    }
+
+    function handlePointerEnd() {
+      if (!drag) return false;
+      const changedValue = drag.changed;
+      drag = null;
+      if (changedValue) changed();
+      return true;
+    }
+
+    function handleWheel(event, point = null) {
+      if (!comic.enabled || !(event.ctrlKey || event.metaKey) || selectedTarget !== "image") return false;
+      const panel = selectedPanel();
+      if (!panel?.image_id || panel.image_locked) return false;
+      if (point) {
+        const hit = core.panelAt(layout(), point);
+        if (!hit || hit.id !== selectedPanelId) return false;
+      }
+      options.pushUndo();
+      panel.image_scale = core.clamp(panel.image_scale * (event.deltaY < 0 ? 1.08 : 0.92), 0.05, 5);
+      syncProperties();
+      changed();
+      return true;
+    }
+
+    function handleImageDrop(transfer, point) {
+      if (!comic.enabled) return false;
+      const imageId = transfer?.getData?.(IMAGE_DRAG_TYPE) || transfer?.getData?.("text/plain");
+      if (!imageId) return false;
+      const panel = core.panelAt(layout(), point);
+      if (!panel) {
+        options.setStatus?.("画像はコマ内へドロップしてください。", "error");
+        return true;
+      }
+      assignImage(panel.id, imageId);
+      return true;
+    }
+
+    function handleContextMenu(event, point) {
+      if (!comic.enabled) return false;
+      const panel = core.panelAt(layout(), point);
+      if (!panel) return false;
+      selectedPanelId = panel.id;
+      selectedTarget = panel.node.image_id ? "image" : "panel";
+      options.clearLayerSelection?.();
+      updateUi();
+      const menu = elements.contextMenu;
+      menu.style.left = `${Math.min(event.clientX, window.innerWidth - 190)}px`;
+      menu.style.top = `${Math.min(event.clientY, window.innerHeight - 230)}px`;
+      menu.querySelector('[data-comic-context="remove-image"]').disabled = !panel.node.image_id;
+      menu.querySelector('[data-comic-context="reset-image"]').disabled = !panel.node.image_id;
+      menu.hidden = false;
+      options.requestRender({ canvas: true });
+      return true;
+    }
+
+    function confirmExport() {
+      if (!comic.enabled) return true;
+      const warnings = [];
+      const computed = layout();
+      const emptyCount = computed.panels.filter((item) => !item.node.image_id).length;
+      const missingCount = computed.panels.filter(
+        (item) => item.node.image_id && item.node.image_id !== "source" && !runtimeImages.has(item.node.image_id),
+      ).length;
+      if (emptyCount) warnings.push(`空のコマ: ${emptyCount}件`);
+      if (missingCount) warnings.push(`読み込めないコマ画像: ${missingCount}件`);
+      if (computed.panels.some((item) => item.node.tone?.spacing < 4)) warnings.push("網点間隔が非常に小さいコマがあります");
+      if (!warnings.length) return true;
+      return confirm(`書き出し前チェック\n\n${warnings.join("\n")}\n\nこのまま書き出しますか？`);
+    }
+
+    function handleKeyDown(event) {
+      const key = String(event.key || "").toLowerCase();
+      if (!event.ctrlKey && !event.metaKey && !event.altKey && key === "p") {
+        event.preventDefault();
+        setEditMode(comic.enabled ? "single" : "comic");
+        return true;
+      }
+      if (comic.enabled && selectedTarget && event.key === "Escape") {
+        event.preventDefault();
+        selectedTarget = null;
+        selectedPanelId = null;
+        selectedHeadingId = null;
+        updateUi();
+        options.requestRender({ canvas: true, layers: true });
+        return true;
+      }
+      if (
+        comic.enabled &&
+        selectedTarget === "image" &&
+        (event.key === "Delete" || event.key === "Backspace")
+      ) {
+        const panel = selectedPanel();
+        if (!panel?.image_id || panel.image_locked) return true;
+        event.preventDefault();
+        options.pushUndo();
+        panel.image_id = null;
+        selectedTarget = "panel";
+        updateUi();
+        changed();
+        return true;
+      }
+      if (comic.enabled && (event.key === "Delete" || event.key === "Backspace")) {
+        const selectedCard = elements.trayList?.querySelector(".comic-image-card.selected");
+        const imageId = selectedCard?.dataset.comicImageId;
+        if (imageId && imageId !== "source") {
+          event.preventDefault();
+          removeTrayImage(imageId);
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function changed() {
+      used = true;
+      options.requestRender({ canvas: true, layers: true, preview: true });
+    }
+
+    function serialize() {
+      if (!used) return null;
+      const clean = core.clone(comic);
+      if (comic.enabled) {
+        clean.page.width = canvasState().width;
+        clean.page.height = canvasState().height;
+      }
+      return clean;
+    }
+
+    function restore(raw, restoreOptions = {}) {
+      const previousImages = comic.images;
+      used = Boolean(raw);
+      comic = core.normalizeState(raw, {
+        width: canvasState().width,
+        height: canvasState().height,
+        makeId: uuid,
+      });
+      selectedPanelId = comic.enabled ? layout().panels[0]?.id || null : null;
+      selectedHeadingId = null;
+      selectedTarget = comic.enabled && restoreOptions.keepMode ? selectedTarget || "page" : comic.enabled ? "page" : null;
+      ensureSourceMetadata();
+      updateUi();
+      options.syncActionState?.();
+      if (restoreOptions.hydrate !== false) {
+        const changedDocument = hydratedDocumentId !== documentId();
+        if (changedDocument) releaseStoredRuntimeImages();
+        hydrateImages();
+      } else {
+        for (const metadata of previousImages) {
+          if (!comic.images.some((item) => item.id === metadata.id)) continue;
+          const runtime = runtimeImages.get(metadata.id);
+          if (runtime) runtimeImages.set(metadata.id, runtime);
+        }
+      }
+    }
+
+    function scale(scaleX, scaleY) {
+      comic.page.width = canvasState().width;
+      comic.page.height = canvasState().height;
+      for (const item of layout().panels) {
+        item.node.image_offset_x *= scaleX;
+        item.node.image_offset_y *= scaleY;
+      }
+      for (const heading of comic.headings) {
+        heading.x *= scaleX;
+        heading.y *= scaleY;
+        heading.width *= scaleX;
+        heading.height *= scaleY;
+      }
+    }
+
+    function dispose() {
+      for (const url of objectUrls) URL.revokeObjectURL(url);
+      objectUrls.clear();
+      runtimeImages.clear();
+    }
+
+    installUi();
+    updateUi();
+
+    return {
+      IMAGE_DRAG_TYPE,
+      isActive: () => comic.enabled,
+      isEditing: () => comic.enabled && Boolean(selectedTarget),
+      importFiles,
+      exportProjectImages,
+      importProjectImages,
+      drawUnderlay,
+      drawOverlay,
+      emphasisClipRect,
+      assetClipRect,
+      selectedPanelForEffects,
+      elementTargetOptions,
+      elementTargetValue,
+      assignElementTarget,
+      effectTargetRect,
+      handlePointerDown,
+      handlePointerMove,
+      handlePointerEnd,
+      handleWheel,
+      handleImageDrop,
+      handleContextMenu,
+      confirmExport,
+      handleKeyDown,
+      serialize,
+      restore,
+      scale,
+      syncProperties,
+      renderLayers,
+      clearSelection,
+      setEditMode,
+      dispose,
+    };
+  }
+
+  root.SpeechBubbleComicEditor = { create, IMAGE_DRAG_TYPE };
+})(globalThis);
