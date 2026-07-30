@@ -3,6 +3,8 @@ name: comprehensive-save-display-audit
 on:
   push:
     branches: [audit/comprehensive-save-display]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
