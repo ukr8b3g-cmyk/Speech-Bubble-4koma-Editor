@@ -1,3 +1,5 @@
+
+<img width="1909" height="1137" alt="{D55D7671-7449-4075-A3ED-9598A90F50F5}" src="https://github.com/user-attachments/assets/bc074c7c-9c2e-4a28-bf3c-a197da8b8a2b" />
 # Speech Bubble 4koma Editor
 
 一枚画像への吹き出し編集と、日本式の縦4コマ漫画制作に対応したWindows向け独立エディターです。一枚画像と4コマ漫画は別の編集状態として保持され、切り替えながら作業できます。
