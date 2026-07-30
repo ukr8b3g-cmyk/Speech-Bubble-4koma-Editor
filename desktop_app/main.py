@@ -69,7 +69,6 @@ class DesktopBridge:
         self.folder_dialog = 20
         self.save_dialog = 30
         self._palette_closing = False
-        self._display_change_handler = None
 
     @staticmethod
     def _first_path(value) -> str:
@@ -166,51 +165,12 @@ class DesktopBridge:
         self._run_async(lambda: self._apply_snapshot(self._palette_window, snapshot))
         return True
 
-    def begin_palette_drag(self) -> bool:
-        if sys.platform != "win32" or not self._palette_window:
-            return False
-        try:
-            from System import Action
-
-            native = getattr(self._palette_window, "native", None)
-            if native is None:
-                return False
-
-            def begin_drag():
-                handle = int(native.Handle.ToInt64())
-                ctypes.windll.user32.ReleaseCapture()
-                ctypes.windll.user32.SendMessageW(handle, 0x00A1, 2, 0)
-
-            if native.InvokeRequired:
-                native.BeginInvoke(Action(begin_drag))
-            else:
-                begin_drag()
-            return True
-        except Exception:
-            logging.exception("Could not begin native palette drag")
-            return False
-
-    def _notify_palette_attached(self) -> None:
-        if not self._window:
-            return
-
-        def notify():
-            try:
-                self._window.evaluate_js(
-                    "window.SpeechBubbleWorkspaceLayout?.reattachExternal?.()"
-                )
-            except Exception:
-                logging.exception("Could not restore the in-window palettes")
-
-        self._run_async(notify)
-
     def _configure_palette_native(self) -> None:
         if sys.platform != "win32" or not self._palette_window:
             return
         try:
             from System import Action
-            from Microsoft.Win32 import SystemEvents
-            from System.Windows.Forms import FormBorderStyle, Screen
+            from System.Windows.Forms import FormBorderStyle
 
             native = self._palette_window.native
 
@@ -222,48 +182,6 @@ class DesktopBridge:
                 if self._window and getattr(self._window, "native", None):
                     native.Owner = self._window.native
 
-                def on_resize_end(_sender, _event):
-                    try:
-                        if not self._palette_window or not self._window:
-                            return
-                        palette_bounds = native.Bounds
-                        owner_bounds = self._window.native.Bounds
-                        intersection = palette_bounds
-                        intersection.Intersect(owner_bounds)
-                        overlap = max(0, intersection.Width) * max(0, intersection.Height)
-                        palette_area = max(1, palette_bounds.Width * palette_bounds.Height)
-                        if overlap >= min(24000, palette_area * 0.18):
-                            self._run_async(self.close_palette)
-                    except Exception:
-                        logging.exception("Could not evaluate palette reattachment")
-
-                def ensure_visible():
-                    try:
-                        if not self._palette_window:
-                            return
-                        bounds = native.Bounds
-                        visible = False
-                        for screen in Screen.AllScreens:
-                            intersection = bounds
-                            intersection.Intersect(screen.WorkingArea)
-                            if max(0, intersection.Width) * max(0, intersection.Height) >= 4000:
-                                visible = True
-                                break
-                        if not visible:
-                            self._run_async(self.close_palette)
-                    except Exception:
-                        logging.exception("Could not restore a disconnected external palette")
-
-                def on_display_settings_changed(_sender, _event):
-                    if native.InvokeRequired:
-                        native.BeginInvoke(Action(ensure_visible))
-                    else:
-                        ensure_visible()
-
-                native.ResizeEnd += on_resize_end
-                self._display_change_handler = on_display_settings_changed
-                SystemEvents.DisplaySettingsChanged += on_display_settings_changed
-
             if native.InvokeRequired:
                 native.Invoke(Action(configure))
             else:
@@ -272,29 +190,18 @@ class DesktopBridge:
             logging.exception("Could not configure the native tool palette")
 
     def _palette_closed(self) -> None:
-        if self._display_change_handler is not None and sys.platform == "win32":
-            try:
-                from Microsoft.Win32 import SystemEvents
-
-                SystemEvents.DisplaySettingsChanged -= self._display_change_handler
-            except Exception:
-                logging.exception("Could not unregister the display change listener")
-            self._display_change_handler = None
         self._palette_window = None
         self._palette_closing = False
-        self._notify_palette_attached()
 
     def open_palette(self, geometry=None) -> bool:
         if not self._webview or not self.app_url:
             return False
         requested = self._safe_geometry(geometry)
-        width = max(580, min(960, int(requested.get("width") or 640)))
-        height = max(420, min(1120, int(requested.get("height") or 760)))
-        x = requested.get("x")
-        y = requested.get("y")
+        width = max(580, min(960, int(requested.get("width") or 680)))
+        height = max(420, min(1120, int(requested.get("height") or 720)))
         try:
-            x = int(x) if x is not None else None
-            y = int(y) if y is not None else None
+            x = int(requested["x"]) if requested.get("x") is not None else None
+            y = int(requested["y"]) if requested.get("y") is not None else None
         except (TypeError, ValueError):
             x = y = None
         if self._palette_window:
@@ -332,7 +239,6 @@ class DesktopBridge:
         if not palette or self._palette_closing:
             return False
         self._palette_closing = True
-        self._notify_palette_attached()
         try:
             palette.destroy()
             return True
@@ -340,7 +246,6 @@ class DesktopBridge:
             self._palette_closing = False
             logging.exception("Could not close the external palette window")
             return False
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=APP_NAME)

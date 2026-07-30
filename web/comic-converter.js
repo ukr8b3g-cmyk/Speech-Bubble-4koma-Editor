@@ -705,7 +705,10 @@
 
     async function applyResult() {
       if (!source) return;
+      const idleLabel =
+        currentMode() === "comic" ? tr("ページ画像へ追加", "Add to Page Images") : tr("一枚画像へ適用", "Apply to Single Image");
       applyButton.disabled = true;
+      applyButton.textContent = tr("追加処理中…", "Adding…");
       status.textContent = tr("元解像度で変換しています…", "Converting at full resolution…");
       status.dataset.level = "info";
       try {
@@ -733,6 +736,7 @@
         status.dataset.level = "error";
       } finally {
         applyButton.disabled = !source;
+        applyButton.textContent = idleLabel;
       }
     }
 

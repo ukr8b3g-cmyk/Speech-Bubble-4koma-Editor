@@ -110,9 +110,10 @@
   }
 
   function createHeadings(templateId, width, makeId = defaultId) {
-    const margin = templateId === "two_column" ? 30 : 24;
+    const margin = templateId === "two_column" ? 30 : 79;
+    const rightMargin = templateId === "two_column" ? margin : 78;
     const gap = templateId === "two_column" ? 24 : 0;
-    const usable = Math.max(80, width - margin * 2);
+    const usable = Math.max(80, width - margin - rightMargin);
     if (templateId === "two_column") {
       const columnWidth = (usable - gap) / 2;
       return [
@@ -120,7 +121,7 @@
         headingNode(makeId, { x: margin + columnWidth + gap, y: margin, width: columnWidth, height: 72 }),
       ];
     }
-    return [headingNode(makeId, { x: margin, y: margin, width: usable, height: 72 })];
+    return [headingNode(makeId, { x: margin, y: 58, width: usable, height: 91, border_width: 5 })];
   }
 
   function normalizeTone(value) {
@@ -182,26 +183,26 @@
     return visit(raw);
   }
 
-  function defaultState(width = 720, height = 2160, makeId = defaultId) {
+  function defaultState(width = 720, height = 2200, makeId = defaultId) {
     return {
       version: 1,
       enabled: false,
       template_id: "vertical_four",
       page: {
         width: Math.max(1, Math.round(finite(width, 720))),
-        height: Math.max(1, Math.round(finite(height, 2160))),
+        height: Math.max(1, Math.round(finite(height, 2200))),
         background: "#ffffff",
         border_color: "#111111",
-        border_width: 4,
-        gutter: 18,
-        margin: 24,
+        border_width: 5,
+        gutter: 40,
+        margin: 80,
         margin_linked: true,
-        margin_top: 24,
-        margin_right: 24,
-        margin_bottom: 24,
-        margin_left: 24,
-        canvas_ratio_locked: true,
-        heading_gap: 14,
+        margin_top: 80,
+        margin_right: 80,
+        margin_bottom: 80,
+        margin_left: 80,
+        canvas_ratio_locked: false,
+        heading_gap: 30,
         visible: true,
         structure_locked: true,
         frame_style: "white",
@@ -246,23 +247,23 @@
       template_id: templateId,
       page: {
         width: Math.max(1, Math.round(finite(page.width, options.width || 720))),
-        height: Math.max(1, Math.round(finite(page.height, options.height || 2160))),
+        height: Math.max(1, Math.round(finite(page.height, options.height || 2200))),
         background: /^#[0-9a-f]{6}$/i.test(String(page.background || ""))
           ? String(page.background)
           : "#ffffff",
         border_color: /^#[0-9a-f]{6}$/i.test(String(page.border_color || ""))
           ? String(page.border_color)
           : "#111111",
-        border_width: clamp(finite(page.border_width, 4), 0, 20),
-        gutter: clamp(finite(page.gutter, 18), 4, 64),
-        margin: clamp(finite(page.margin, 24), 0, 160),
+        border_width: clamp(finite(page.border_width, fallback.page.border_width), 0, 20),
+        gutter: clamp(finite(page.gutter, fallback.page.gutter), 4, 64),
+        margin: clamp(finite(page.margin, fallback.page.margin), 0, 160),
         margin_linked: page.margin_linked !== false,
-        margin_top: clamp(finite(page.margin_top, page.margin ?? 24), 0, 480),
-        margin_right: clamp(finite(page.margin_right, page.margin ?? 24), 0, 480),
-        margin_bottom: clamp(finite(page.margin_bottom, page.margin ?? 24), 0, 480),
-        margin_left: clamp(finite(page.margin_left, page.margin ?? 24), 0, 480),
+        margin_top: clamp(finite(page.margin_top, page.margin ?? fallback.page.margin_top), 0, 480),
+        margin_right: clamp(finite(page.margin_right, page.margin ?? fallback.page.margin_right), 0, 480),
+        margin_bottom: clamp(finite(page.margin_bottom, page.margin ?? fallback.page.margin_bottom), 0, 480),
+        margin_left: clamp(finite(page.margin_left, page.margin ?? fallback.page.margin_left), 0, 480),
         canvas_ratio_locked: page.canvas_ratio_locked !== false,
-        heading_gap: clamp(finite(page.heading_gap, 14), 0, 64),
+        heading_gap: clamp(finite(page.heading_gap, fallback.page.heading_gap), 0, 64),
         visible: page.visible !== false,
         structure_locked: page.structure_locked !== false,
         frame_style: page.frame_style === "black" ? "black" : "white",

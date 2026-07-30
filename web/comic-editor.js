@@ -131,7 +131,7 @@
   }
 
   function create(options) {
-    let comic = core.defaultState(720, 2160, uuid);
+    let comic = core.defaultState(720, 2200, uuid);
     let used = false;
     let selectedPanelId = null;
     let selectedHeadingId = null;
@@ -322,7 +322,7 @@
             <div class="comic-page-checks comic-page-checks-primary">
               <label class="comic-check"><input data-comic-page="canvas_ratio_locked" type="checkbox">縦横比を固定</label>
             </div>
-            <button class="comic-canvas-reset" type="button" data-comic-action="canvas-reset">標準へ戻す（720 × 2160）</button>
+            <button class="comic-canvas-reset" type="button" data-comic-action="canvas-reset">標準へ戻す（720 × 2200）</button>
             <div class="comic-frame-style segmented" role="group" aria-label="フレーム配色">
               <button type="button" data-comic-frame-style="white">白地・黒線</button>
               <button type="button" data-comic-frame-style="black">黒地・白線</button>
@@ -331,6 +331,12 @@
               <label>枠線幅<input data-comic-page="border_width" type="number" min="0" max="20" step="0.5"></label>
               <label>コマ間隔<input data-comic-page="gutter" type="number" min="0" max="64" step="1"></label>
             </div>
+            <label class="comic-heading-gap-control">見出し―1コマ目の間隔
+              <span class="comic-range-number">
+                <input data-comic-page="heading_gap" type="range" min="0" max="64" step="1">
+                <input data-comic-page="heading_gap" type="number" min="0" max="64" step="1">
+              </span>
+            </label>
             <label>ページ背景<input data-comic-page="background" type="color"></label>
             ${colorSwatchesMarkup("page", "background")}
             <label>枠線色<input data-comic-page="border_color" type="color"></label>
@@ -444,7 +450,7 @@
         if (input.type === "checkbox") comic.page[key] = input.checked;
         else if (input.type === "color") comic.page[key] = input.value;
         else {
-          const maximum = key === "gutter" ? 64 : key.startsWith("margin_") ? 480 : 20;
+          const maximum = key === "gutter" || key === "heading_gap" ? 64 : key.startsWith("margin_") ? 480 : 20;
           comic.page[key] = Math.round(core.clamp(input.value, 0, maximum));
           if (key.startsWith("margin_") && comic.page.margin_linked) {
             for (const marginKey of ["margin_top", "margin_right", "margin_bottom", "margin_left"]) {
@@ -573,25 +579,40 @@
           changed();
         } else if (action === "canvas-reset") {
           options.pushUndo();
-          const size = [720, 2160];
+          const size = [720, 2200];
           options.resizeCanvas?.(...size);
           comic.page.width = size[0];
           comic.page.height = size[1];
+          comic.page.background = "#ffffff";
+          comic.page.border_color = "#111111";
+          comic.page.border_width = 5;
+          comic.page.gutter = 40;
+          comic.page.margin = 80;
+          comic.page.margin_linked = true;
+          comic.page.margin_top = 80;
+          comic.page.margin_right = 80;
+          comic.page.margin_bottom = 80;
+          comic.page.margin_left = 80;
+          comic.page.canvas_ratio_locked = false;
+          comic.page.heading_gap = 30;
+          comic.page.frame_style = "white";
+          const standardHeading = core.createHeadings("vertical_four", size[0], uuid)[0];
+          if (comic.headings.length) {
+            Object.assign(comic.headings[0], {
+              x: standardHeading.x,
+              y: standardHeading.y,
+              width: standardHeading.width,
+              height: standardHeading.height,
+            });
+          } else {
+            comic.headings = [standardHeading];
+          }
           updateUi();
           changed();
         } else if (action === "add-heading") {
           if (comic.headings.length >= 1) return;
           options.pushUndo();
-          const margin = comic.page.margin_left ?? 24;
-          comic.headings.push(core.headingNode(uuid, {
-            x: margin,
-            y: comic.page.margin_top ?? 24,
-            width: Math.max(80, canvasState().width - margin - (comic.page.margin_right ?? 24)),
-            height: 72,
-            background: "#ffffff",
-            border_color: "#111111",
-            border_width: 2,
-          }));
+          comic.headings.push(core.createHeadings("vertical_four", canvasState().width, uuid)[0]);
           selectedHeadingId = comic.headings.at(-1).id;
           selectedTarget = "heading";
           updateUi();
@@ -668,8 +689,8 @@
       options.pushUndo();
       options.switchWorkspace?.(enableComic ? "comic" : "single");
       if (enableComic && !used) {
-        options.resizeCanvas?.(720, 2160);
-        comic = core.defaultState(720, 2160, uuid);
+        options.resizeCanvas?.(720, 2200);
+        comic = core.defaultState(720, 2200, uuid);
       }
       comic.enabled = enableComic;
       drag = null;
@@ -679,7 +700,7 @@
           comic.template_id = "vertical_four";
           comic.tree = core.createTemplate("vertical_four", uuid);
           comic.headings = core.createHeadings("vertical_four", canvasState().width, uuid);
-          comic.page.gutter = 18;
+          comic.page.gutter = 40;
         }
         ensureSourceMetadata();
         selectedPanelId ||= layout().panels[0]?.id || null;
@@ -1033,18 +1054,18 @@
       comic.tree = core.createTemplate(templateId, uuid);
       comic.template_id = templateId;
       comic.enabled = true;
-      comic.page.gutter = 18;
-      comic.page.margin = 24;
+      comic.page.gutter = 40;
+      comic.page.margin = 80;
       comic.page.margin_top = comic.page.margin;
       comic.page.margin_right = comic.page.margin;
       comic.page.margin_bottom = comic.page.margin;
       comic.page.margin_left = comic.page.margin;
-      comic.page.heading_gap = 14;
+      comic.page.heading_gap = 30;
       comic.headings = core.createHeadings(templateId, canvasState().width, uuid);
       used = true;
       selectedPanelId = layout().panels[0]?.id || null;
       selectedTarget = selectedPanelId ? "panel" : "page";
-      const size = [720, 2160];
+      const size = [720, 2200];
       if (size) options.resizeCanvas?.(...size);
       updateUi();
       changed();
@@ -1211,6 +1232,15 @@
         lastModified: Date.now(),
       });
       const ids = await importFiles([file]);
+      const addedId = ids[0] || "";
+      if (!addedId || !comic.images.some((metadata) => metadata.id === addedId)) {
+        throw new Error(tr("変換画像をページ画像へ追加できませんでした。", "The converted image could not be added to Page Images."));
+      }
+      selectedTrayImageId = addedId;
+      elements.tray?.classList.remove("collapsed");
+      renderTray();
+      syncTrayViewport();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
       const status = await storageStatus();
       if (status.page_images >= MAX_IMAGES || status.page_image_bytes > 1024 * 1024 * 1024) {
         options.setStatus?.(
@@ -1218,7 +1248,7 @@
           "info",
         );
       }
-      return ids[0] || "";
+      return addedId;
     }
 
     async function imageRecordsForDocument() {
@@ -1384,6 +1414,7 @@
             remove.dataset.comicAction = "remove-image";
             remove.textContent = "×";
             remove.title = usedIds.has(metadata.id) ? tr("使用中のコマから外して削除", "Remove from panels and delete") : tr("ページ画像から削除", "Delete from Page Images");
+            remove.addEventListener("pointerdown", (event) => event.stopPropagation());
             card.append(remove);
           }
           card.addEventListener("dragstart", (event) => {
@@ -1399,7 +1430,8 @@
             card.classList.remove("dragging");
             document.querySelectorAll(".comic-image-drag-ghost").forEach((node) => node.remove());
           });
-          card.addEventListener("pointerdown", () => {
+          card.addEventListener("pointerdown", (event) => {
+            if (event.target.closest('[data-comic-action="remove-image"]')) return;
             selectedTrayImageId = metadata.id;
             renderTray();
           });
@@ -1580,19 +1612,6 @@
           target.strokeRect(item.rect.x, item.rect.y, item.rect.w, item.rect.h);
           target.setLineDash([]);
         }
-        if (!item.node.image_id) {
-          const button = emptyImageButtonRect(item.rect);
-          target.fillStyle = "rgba(31,38,48,.82)";
-          target.strokeStyle = "#6f91b4";
-          target.lineWidth = 1 / Math.max(0.25, canvasState().zoom || 1);
-          target.fillRect(button.x, button.y, button.w, button.h);
-          target.strokeRect(button.x, button.y, button.w, button.h);
-          target.fillStyle = "#f3f7fb";
-          target.font = `${Math.max(11, 13 / Math.max(0.5, canvasState().zoom || 1))}px sans-serif`;
-          target.textAlign = "center";
-          target.textBaseline = "middle";
-          target.fillText(tr("＋ 画像を入れる", "+ Add Image"), button.x + button.w / 2, button.y + button.h / 2);
-        }
       }
       for (const divider of comic.page.structure_locked ? [] : computed.dividers) {
         const centerX = divider.rect.x + divider.rect.w / 2;
@@ -1668,6 +1687,21 @@
       return panel ? { scope: "panel", panelId: panel.id, panelIndex: Math.max(0, index), rect: panelContentRect(panel) } : null;
     }
 
+    function insertionTargetAt(point) {
+      if (!comic.enabled || !point) return { scope: "free" };
+      const computed = layout();
+      const panels = computed.panels;
+      const hit = core.panelAt(computed, point);
+      if (!hit) return { scope: "free" };
+      const index = panels.findIndex((entry) => entry.id === hit.id);
+      return {
+        scope: "panel",
+        panelId: hit.id,
+        panelIndex: Math.max(0, index),
+        rect: panelContentRect(hit),
+      };
+    }
+
     function defaultPanelInsertionTarget() {
       if (!comic.enabled) return null;
       const panel = layout().panels[0];
@@ -1719,18 +1753,12 @@
       return pageRect();
     }
 
-    function emptyImageButtonRect(rect) {
-      const width = Math.min(156, Math.max(88, rect.w * 0.48));
-      const height = Math.min(38, Math.max(28, rect.h * 0.18));
-      return { x: rect.x + (rect.w - width) / 2, y: rect.y + (rect.h - height) / 2, w: width, h: height };
-    }
-
     function pointInRect(point, rect) {
       return point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
     }
 
     function headingResizeHandleRect(heading) {
-      const size = 12 / Math.max(0.25, canvasState().zoom || 1);
+      const size = 20 / Math.max(0.25, canvasState().zoom || 1);
       return {
         x: heading.x + heading.width - size / 2,
         y: heading.y + heading.height - size / 2,
@@ -1803,11 +1831,7 @@
       selectedHeadingId = null;
       selectedTarget = hit.node.image_id ? "image" : "panel";
       options.clearLayerSelection?.();
-      if (!hit.node.image_id && pointInRect(point, emptyImageButtonRect(hit.rect))) {
-        pendingAssignPanelId = hit.id;
-        elements.imageInput.click();
-        drag = null;
-      } else if (hit.node.image_id && !hit.node.image_locked) {
+      if (hit.node.image_id && !hit.node.image_locked) {
         options.pushUndo();
         drag = {
           type: "image",
@@ -2061,6 +2085,7 @@
       selectedPanelForEffects,
       selectedInsertionTarget,
       panelInsertionTarget,
+      insertionTargetAt,
       defaultPanelInsertionTarget,
       elementTargetOptions,
       elementTargetValue,

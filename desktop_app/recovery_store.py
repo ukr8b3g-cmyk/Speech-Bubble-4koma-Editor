@@ -59,13 +59,9 @@ class RecoveryStore:
 
     def _asset_records(self, payload: dict) -> list[dict]:
         records = []
-        seen = set()
         for source in payload.get("images", []) if isinstance(payload.get("images"), list) else []:
             _entry, data, metadata = _decode_project_image(source)
             digest = metadata["sha256"]
-            if digest in seen:
-                continue
-            seen.add(digest)
             extension = Path(metadata["path"]).suffix.lower() or ".png"
             asset_path = self.assets / f"{digest}{extension}"
             if not asset_path.is_file():

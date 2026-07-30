@@ -46,6 +46,21 @@
   grid-template-columns: 1fr;
 }
 
+.comic-heading-gap-control {
+  margin: 5px 0;
+}
+
+.comic-range-number {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px;
+  align-items: center;
+  gap: 7px;
+}
+
+.comic-range-number input[type="range"] {
+  width: 100%;
+}
+
 .comic-margin-row {
   display: grid;
   grid-template-columns: auto repeat(4, minmax(0, 1fr));
@@ -61,14 +76,17 @@
 
 .comic-color-swatches {
   display: grid;
-  grid-template-columns: repeat(9, 18px);
+  grid-template-columns: repeat(auto-fill, 16px);
   gap: 3px;
 }
 
 .comic-color-swatches button {
-  width: 18px;
-  height: 18px;
-  min-width: 0;
+  width: 16px;
+  min-width: 16px;
+  max-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  max-height: 16px;
   padding: 0;
   border: 1px solid #657181;
   border-radius: 3px;

@@ -20,7 +20,7 @@ from desktop_app.recent_projects import RecentProjects
 from desktop_app.recovery_store import RecoveryStore
 from desktop_app.server import create_app
 from desktop_app.settings_store import SettingsStore
-from speech_bubble_editor.font_catalog import _font_display_names
+from speech_bubble_editor.font_catalog import _font_cmap_is_browser_safe, _font_display_names
 
 
 def make_paths(root: Path) -> DesktopPaths:
@@ -47,7 +47,7 @@ def png_data_url() -> str:
 
 class DesktopCoreTest(unittest.TestCase):
     def test_desktop_bridge_keeps_native_objects_private(self) -> None:
-        bridge = DesktopBridge(app_url="http://127.0.0.1/")
+        bridge = DesktopBridge()
         self.assertNotIn("window", bridge.__dict__)
         self.assertNotIn("palette_window", bridge.__dict__)
         self.assertNotIn("webview", bridge.__dict__)
@@ -88,6 +88,28 @@ class DesktopCoreTest(unittest.TestCase):
             self.assertGreater(store.clear(), 0)
             self.assertFalse(store.status()["available"])
 
+    def test_recovery_preserves_duplicate_logical_image_references(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = RecoveryStore(Path(temporary) / "recovery")
+            image = png_data_url()
+            result = store.save(
+                {
+                    "layout": {"canvas": {"width": 720, "height": 2200}},
+                    "images": [
+                        {"id": "single-background", "name": "same.png", "mime": "image/png", "data_url": image},
+                        {"id": "comic-panel-copy", "name": "same.png", "mime": "image/png", "data_url": image},
+                    ],
+                },
+                checkpoint=True,
+            )
+            self.assertTrue(result["ok"])
+            loaded = store.load()
+            self.assertEqual(
+                [record["id"] for record in loaded["images"]],
+                ["single-background", "comic-panel-copy"],
+            )
+            self.assertEqual(len(list((Path(temporary) / "recovery" / "assets").glob("*"))), 1)
+
     def test_garbled_font_names_fall_back_to_filename(self) -> None:
         with mock.patch(
             "speech_bubble_editor.font_catalog._font_name_table_text",
@@ -100,6 +122,13 @@ class DesktopCoreTest(unittest.TestCase):
             )
         self.assertEqual(family, "EPSON-readable-file-name")
         self.assertEqual(style, "Regular")
+        with tempfile.TemporaryDirectory() as temporary:
+            invalid = Path(temporary) / "invalid.ttf"
+            invalid.write_bytes(b"\0" * 12)
+            self.assertFalse(_font_cmap_is_browser_safe(invalid))
+        legacy_epson = Path("C:/Windows/Fonts/epgyobld.ttf")
+        if legacy_epson.is_file():
+            self.assertFalse(_font_cmap_is_browser_safe(legacy_epson))
 
     def test_settings_recent_and_project_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -107,6 +136,7 @@ class DesktopCoreTest(unittest.TestCase):
             paths = make_paths(root / "app")
             settings = SettingsStore(paths.settings)
             self.assertEqual(settings.load()["theme"], "system")
+            self.assertEqual(settings.load()["language"], "auto")
             self.assertEqual(settings.load()["auto_save_interval_seconds"], 30)
             self.assertEqual(settings.save({"theme": "dark"})["theme"], "dark")
             self.assertEqual(
@@ -143,6 +173,40 @@ class DesktopCoreTest(unittest.TestCase):
             self.assertTrue(saved["ok"])
             self.assertEqual(loaded["layout"]["canvas"], {"width": 720, "height": 1600})
             self.assertEqual(len(loaded["images"]), 1)
+
+            duplicate_path = root / "duplicate-image-roles.sbeproj"
+            duplicate_payload = {
+                **payload,
+                "images": [
+                    {
+                        "id": "__single_background__",
+                        "name": "single.png",
+                        "mime": "image/png",
+                        "data_url": png_data_url(),
+                    },
+                    {
+                        "id": "panel-image-1",
+                        "name": "panel.png",
+                        "mime": "image/png",
+                        "data_url": png_data_url(),
+                    },
+                ],
+            }
+            duplicate_saved = ProjectStore().save(duplicate_path, duplicate_payload)
+            duplicate_loaded = ProjectStore().load(duplicate_path)
+            self.assertEqual(
+                [record["id"] for record in duplicate_saved["manifest"]["images"]],
+                ["__single_background__", "panel-image-1"],
+            )
+            self.assertEqual(
+                [record["id"] for record in duplicate_loaded["images"]],
+                ["__single_background__", "panel-image-1"],
+            )
+            with zipfile.ZipFile(duplicate_path) as archive:
+                self.assertEqual(
+                    len([name for name in archive.namelist() if name.startswith("images/")]),
+                    1,
+                )
 
             recent = RecentProjects(paths.recent)
             recent.touch(project_path)

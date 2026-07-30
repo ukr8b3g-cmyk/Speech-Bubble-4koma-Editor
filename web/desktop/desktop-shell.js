@@ -63,6 +63,7 @@
             </label>
             <label>言語
               <select data-desktop-setting="language">
+                <option value="auto">自動（システム）</option>
                 <option value="ja">日本語</option>
                 <option value="en">English</option>
               </select>
@@ -1006,7 +1007,7 @@
     ["キャンバス幅", "Canvas Width"],
     ["キャンバス高さ", "Canvas Height"],
     ["縦横比を固定", "Lock Aspect Ratio"],
-    ["標準へ戻す（720 × 2160）", "Reset to Standard (720 × 2160)"],
+    ["標準へ戻す（720 × 2200）", "Reset to Standard (720 × 2200)"],
     ["白地・黒線", "White / Black Lines"],
     ["黒地・白線", "Black / White Lines"],
     ["枠線幅", "Border Width"],
@@ -1112,7 +1113,10 @@
 
   let languageObserver = null;
   function applyLanguage(language) {
-    const selected = language === "en" ? "en" : "ja";
+    const requested = ["ja", "en"].includes(language) ? language : "auto";
+    const selected = requested === "auto"
+      ? String(navigator.language || "").toLowerCase().startsWith("ja") ? "ja" : "en"
+      : requested;
     activeDesktopLanguage = selected;
     document.documentElement.lang = selected;
     const text = selected === "en"
@@ -1145,7 +1149,7 @@
     const actionLabels = selected === "en"
       ? {
           openShapeDrawer: "Browse Speech Bubbles…",
-          addText: "+ Add Text (T)",
+          addText: "+ Add Text",
           openSfxDrawer: "Browse Onomatopoeia / SFX…",
           openStampDrawer: "Browse Stamps…",
           openEmphasisDrawer: "Browse Emphasis Lines…",
@@ -1154,7 +1158,7 @@
         }
       : {
           openShapeDrawer: "吹き出し一覧",
-          addText: "＋ 文字を追加（T）",
+          addText: "＋ 文字を追加",
           openSfxDrawer: "オノマトペ一覧",
           openStampDrawer: "スタンプ一覧",
           openEmphasisDrawer: "集中線一覧",
@@ -1165,6 +1169,16 @@
       const element = document.getElementById(id);
       if (element) element.textContent = label;
     });
+    const addText = document.getElementById("addText");
+    if (addText) addText.title = selected === "en" ? "Add Text (T)" : "文字を追加（T）";
+    const languageSelect = document.querySelector('[data-desktop-setting="language"]');
+    if (languageSelect) {
+      const autoOption = languageSelect.querySelector('option[value="auto"]');
+      const japaneseOption = languageSelect.querySelector('option[value="ja"]');
+      if (autoOption) autoOption.textContent = selected === "en" ? "Auto (System)" : "自動（システム）";
+      if (japaneseOption) japaneseOption.textContent = selected === "en" ? "Japanese" : "日本語";
+      languageSelect.value = requested;
+    }
     const fontFilterLabels = selected === "en"
       ? { ja: "Japanese", "zh-hans": "Simplified Chinese", "zh-hant": "Traditional Chinese", ko: "Korean" }
       : { ja: "日本語", "zh-hans": "简体中文", "zh-hant": "繁體中文", ko: "한국어" };

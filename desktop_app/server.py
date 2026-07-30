@@ -60,7 +60,7 @@ def create_app(paths: DesktopPaths, launch_token: str | None = None) -> FastAPI:
                 ),
                 "startupBehavior": configured.get("startup_behavior", "ask"),
                 "theme": configured.get("theme", "system"),
-                "language": configured.get("language", "ja"),
+                "language": configured.get("language", "auto"),
             }
         )
         return RedirectResponse(f"/speech-bubble-editor/static/speech-bubble-editor.html?{query}")

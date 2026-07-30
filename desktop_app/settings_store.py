@@ -11,7 +11,7 @@ DEFAULTS = {
     "window_width": 1440,
     "window_height": 900,
     "theme": "system",
-    "language": "ja",
+    "language": "auto",
     "last_project_directory": "",
     "export_directory": "",
     "last_export_directory": "",
@@ -60,7 +60,7 @@ class SettingsStore:
         merged["window_width"] = max(900, min(3840, int(merged["window_width"])))
         merged["window_height"] = max(640, min(2160, int(merged["window_height"])))
         merged["theme"] = merged["theme"] if merged["theme"] in {"system", "dark", "light"} else "system"
-        merged["language"] = merged["language"] if merged["language"] in {"ja", "en"} else "ja"
+        merged["language"] = merged["language"] if merged["language"] in {"auto", "ja", "en"} else "auto"
         merged["export_directory"] = str(merged.get("export_directory", "") or "").strip()
         merged["last_export_directory"] = str(merged.get("last_export_directory", "") or "").strip()
         merged["auto_export_to_directory"] = bool(merged.get("auto_export_to_directory", False))

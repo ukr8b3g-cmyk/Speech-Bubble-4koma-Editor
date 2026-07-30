@@ -63,14 +63,17 @@ def _decode_project_image(record: dict) -> tuple[str, bytes, dict]:
         raise ValueError("Project image format or dimensions are unsupported")
     image_id = str(record.get("id") or uuid.uuid4())
     extension = ALLOWED_IMAGE_FORMATS[image_format]
+    digest = hashlib.sha256(data).hexdigest()
     metadata = {
         "id": image_id,
-        "path": f"images/{image_id}.{extension}",
+        # The archive blob is content-addressed, while each manifest record
+        # keeps its own logical id (panel image, single background, and so on).
+        "path": f"images/{digest}.{extension}",
         "original_name": str(record.get("name") or f"{image_id}.{extension}")[:260],
         "mime": f"image/{'jpeg' if extension == 'jpg' else extension}",
         "width": width,
         "height": height,
-        "sha256": hashlib.sha256(data).hexdigest(),
+        "sha256": digest,
     }
     return metadata["path"], data, metadata
 
@@ -86,15 +89,11 @@ class ProjectStore:
             raise ValueError("Project layout is invalid")
         comic = layout.get("comic") if isinstance(layout.get("comic"), dict) else {}
         images = []
-        image_files = []
-        seen_hashes = set()
+        image_files = {}
         for record in payload.get("images", []) if isinstance(payload.get("images"), list) else []:
             entry_path, data, metadata = _decode_project_image(record)
-            if metadata["sha256"] in seen_hashes:
-                continue
-            seen_hashes.add(metadata["sha256"])
             images.append(metadata)
-            image_files.append((entry_path, data))
+            image_files.setdefault(entry_path, data)
         now = datetime.now(timezone.utc).isoformat()
         manifest = {
             "format": "speech-bubble-editor-project",
@@ -119,7 +118,7 @@ class ProjectStore:
                 archive.writestr("manifest.json", _json_bytes(manifest))
                 archive.writestr("layout.json", _json_bytes(layout))
                 archive.writestr("comic.json", _json_bytes(comic))
-                for entry_path, data in image_files:
+                for entry_path, data in image_files.items():
                     archive.writestr(entry_path, data)
             with zipfile.ZipFile(temporary, "r") as archive:
                 _safe_entries(archive)
