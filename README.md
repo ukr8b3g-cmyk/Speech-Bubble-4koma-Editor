@@ -2,6 +2,12 @@
 
 一枚画像への吹き出し編集と、日本式の縦4コマ漫画制作に対応したWindows向け独立エディターです。一枚画像と4コマ漫画は別の編集状態として保持され、切り替えながら作業できます。
 
+## ダウンロード
+
+- [インストーラー版（Windows x64）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.0/SpeechBubble4komaEditor-v0.1.0-win-x64-setup.exe)
+- [ポータブル版（Windows x64 ZIP）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.0/SpeechBubble4komaEditor-v0.1.0-win-x64-portable.zip)
+- [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.0/SHA256SUMS.txt)
+
 - GitHub: https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor
 - 対応OS: Windows
 - ライセンス: MIT
@@ -13,20 +19,8 @@
 - Gitで取得: `git clone https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor.git`
 - 初回: `setup_and_start.cmd`
 - 2回目以降: `start.cmd`
-- Portable EXE作成: `build_portable.cmd`
-- ビルド済みEXE: `dist\SpeechBubble4komaEditor\SpeechBubble4komaEditor.exe`
 
 ソース版だけが専用`.venv`を使用します。ビルド済みEXEはPythonや`.venv`を別途用意せず起動できます。二重起動は防止され、起動エラーはローカルのログへ記録されます。
-
-### 配布ファイルの作成
-
-Inno Setup 6をインストールしたWindows環境で、次を実行します。
-
-```powershell
-.\build_release.ps1
-```
-
-`dist\release`へインストーラー版、ポータブルZIP版、`SHA256SUMS.txt`を作成します。バージョンを指定する場合は、例として`.\build_release.ps1 -Version 0.1.0`を使用します。
 
 ### EXE版とHTML直接表示の違い
 
