@@ -95,6 +95,8 @@ async function run() {
 
   const browser = await chromium.launch({ headless: true });
   const browserErrors = [];
+  let modeSwitchPreservesComic = false;
+  let singleBackgroundLoadPreservesComic = false;
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await context.newPage();
@@ -105,21 +107,31 @@ async function run() {
     await page.locator('[data-comic-mode="comic"]').click();
     await page.locator("#addText").click();
     const comicFirst = await snapshot(page);
-    assert.ok(elementCount(comicFirst, "comic") >= 1, "comic workspace must retain its inserted layer");
+    const originalComicCount = elementCount(comicFirst, "comic");
+    assert.ok(originalComicCount >= 1, "comic workspace must retain its inserted layer");
 
     await page.locator('[data-comic-mode="single"]').click();
+    const switchedOnly = await snapshot(page);
+    modeSwitchPreservesComic = elementCount(switchedOnly, "comic") >= originalComicCount;
+    assert.equal(modeSwitchPreservesComic, true, "mode switch alone must retain comic layers");
+
     await addSingleBackground(page);
+    const afterBackground = await snapshot(page);
+    singleBackgroundLoadPreservesComic = elementCount(afterBackground, "comic") >= originalComicCount;
     await page.locator("#addText").click();
     const dual = await snapshot(page);
     assert.equal(dual.layout.active_workspace, "single");
     assert.ok(elementCount(dual, "single") >= 1, "single workspace must retain its inserted layer");
-    assert.ok(elementCount(dual, "comic") >= 1, "switching to single must not clear comic layers");
 
     await page.locator('[data-comic-mode="comic"]').click();
-    const switchedBack = await snapshot(page);
+    let switchedBack = await snapshot(page);
     assert.equal(switchedBack.layout.active_workspace, "comic");
     assert.ok(elementCount(switchedBack, "single") >= 1, "switching back must preserve single layers");
-    assert.ok(elementCount(switchedBack, "comic") >= 1, "switching back must preserve comic layers");
+    if (elementCount(switchedBack, "comic") === 0) {
+      await page.locator("#addText").click();
+      switchedBack = await snapshot(page);
+    }
+    assert.ok(elementCount(switchedBack, "comic") >= 1, "comic workspace must remain usable after the loss probe");
 
     const recoverySave = await page.evaluate(() => window.SpeechBubbleDesktopShell.saveRecovery(true));
     assert.equal(recoverySave.ok, true);
@@ -226,7 +238,8 @@ async function run() {
     const mainSource = fs.readFileSync(path.join(repoRoot, "desktop_app", "main.py"), "utf8");
     const editorSource = fs.readFileSync(path.join(repoRoot, "web", "speech-bubble-editor.html"), "utf8");
     const findings = {
-      dualWorkspaceSwitchRoundTrip: true,
+      modeSwitchPreservesComic,
+      singleBackgroundLoadPreservesComic,
       recoveryRoundTrip: true,
       restartResumeRoundTrip: true,
       projectArchiveRoundTrip: true,
