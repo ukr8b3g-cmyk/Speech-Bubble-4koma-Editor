@@ -8,15 +8,19 @@ import unittest
 import zipfile
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+from unittest import mock
 
 from fastapi.testclient import TestClient
 from PIL import Image
 
 from desktop_app.paths import DesktopPaths
+from desktop_app.main import DesktopBridge
 from desktop_app.project_store import ProjectStore
 from desktop_app.recent_projects import RecentProjects
+from desktop_app.recovery_store import RecoveryStore
 from desktop_app.server import create_app
 from desktop_app.settings_store import SettingsStore
+from speech_bubble_editor.font_catalog import _font_display_names
 
 
 def make_paths(root: Path) -> DesktopPaths:
@@ -42,6 +46,61 @@ def png_data_url() -> str:
 
 
 class DesktopCoreTest(unittest.TestCase):
+    def test_desktop_bridge_keeps_native_objects_private(self) -> None:
+        bridge = DesktopBridge(app_url="http://127.0.0.1/")
+        self.assertNotIn("window", bridge.__dict__)
+        self.assertNotIn("palette_window", bridge.__dict__)
+        self.assertNotIn("webview", bridge.__dict__)
+        self.assertIn("_window", bridge.__dict__)
+        self.assertIn("_palette_window", bridge.__dict__)
+        self.assertIn("_webview", bridge.__dict__)
+
+    def test_recovery_round_trip_generations_and_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = RecoveryStore(Path(temporary) / "recovery")
+            for index in range(7):
+                result = store.save(
+                    {
+                        "title": "autosave",
+                        "layout": {"canvas": {"width": 720, "height": 2160}, "revision": index},
+                        "images": [
+                            {
+                                "id": "image-1",
+                                "name": "panel.png",
+                                "mime": "image/png",
+                                "data_url": png_data_url(),
+                            }
+                        ],
+                    },
+                    checkpoint=True,
+                )
+                self.assertTrue(result["ok"])
+            status = store.status()
+            self.assertEqual(status["generations"], 5)
+            self.assertEqual(status["assets"], 1)
+            self.assertEqual(store.load()["layout"]["revision"], 6)
+
+            store.current.write_text("{broken", encoding="utf-8")
+            self.assertTrue(store.status()["available"])
+            fallback = store.load()
+            self.assertEqual(fallback["fallback_generation"], 1)
+            self.assertEqual(fallback["layout"]["revision"], 6)
+            self.assertGreater(store.clear(), 0)
+            self.assertFalse(store.status()["available"])
+
+    def test_garbled_font_names_fall_back_to_filename(self) -> None:
+        with mock.patch(
+            "speech_bubble_editor.font_catalog._font_name_table_text",
+            side_effect=["EPSON ????????", "????"],
+        ):
+            family, style = _font_display_names(
+                Path("EPSON-readable-file-name.ttf"),
+                "EPSON ????????",
+                "????",
+            )
+        self.assertEqual(family, "EPSON-readable-file-name")
+        self.assertEqual(style, "Regular")
+
     def test_settings_recent_and_project_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -145,6 +204,26 @@ class DesktopCoreTest(unittest.TestCase):
             self.assertEqual(query["autoSave"], ["0"])
             self.assertEqual(query["autoSaveDelay"], ["90000"])
             self.assertEqual(query["startupBehavior"], ["resume"])
+
+    def test_desktop_recovery_routes_survive_app_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            paths = make_paths(Path(temporary) / "app")
+            headers = {"X-SBE-Token": "desktop-test-token"}
+            payload = {
+                "title": "restart",
+                "layout": {"canvas": {"width": 720, "height": 2160}, "comic": {"enabled": True}},
+                "images": [{"id": "image-1", "name": "panel.png", "mime": "image/png", "data_url": png_data_url()}],
+                "checkpoint": True,
+            }
+            first = TestClient(create_app(paths, "desktop-test-token"))
+            saved = first.post("/desktop/recovery/save", headers=headers, json=payload)
+            self.assertEqual(saved.status_code, 200, saved.text)
+
+            second = TestClient(create_app(paths, "desktop-test-token"))
+            loaded = second.get("/desktop/recovery/load", headers=headers)
+            self.assertEqual(loaded.status_code, 200, loaded.text)
+            self.assertEqual(loaded.json()["layout"]["canvas"], {"width": 720, "height": 2160})
+            self.assertEqual(len(loaded.json()["images"]), 1)
 
     def test_desktop_export_writes_to_selected_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

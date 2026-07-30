@@ -118,6 +118,14 @@ html[data-host="desktop"] .desktop-project-actions button {
   margin-top: 7px;
 }
 
+.desktop-image-storage-row {
+  grid-template-columns: minmax(0, 1fr) repeat(3, auto);
+}
+
+.desktop-image-storage-row output {
+  line-height: 1.45;
+}
+
 .desktop-settings-dialog > .replace-dialog-actions {
   margin: 0;
   padding: 8px 12px;
@@ -397,6 +405,14 @@ html[data-host="desktop"] .desktop-project-actions button {
 @media (max-width: 680px) {
   .desktop-settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .desktop-image-storage-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .desktop-image-storage-row output {
+    grid-column: 1 / -1;
   }
 
   .desktop-user-preset-body {

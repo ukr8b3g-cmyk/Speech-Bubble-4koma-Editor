@@ -99,10 +99,19 @@ def _font_name_table_text(path, name_ids):
 
 
 def _font_display_names(path, fallback_family, fallback_style):
-    return (
-        _font_name_table_text(path, (16, 1)) or fallback_family,
-        _font_name_table_text(path, (17, 2)) or fallback_style,
-    )
+    def clean(value, fallback):
+        text = str(value or "").strip()
+        if not text or "??" in text or "\ufffd" in text:
+            text = str(fallback or "").strip()
+        return text
+
+    family = clean(_font_name_table_text(path, (16, 1)), fallback_family)
+    if not family or "??" in family or "\ufffd" in family:
+        family = Path(path).stem
+    style = clean(_font_name_table_text(path, (17, 2)), fallback_style)
+    if not style or "??" in style or "\ufffd" in style:
+        style = "Regular"
+    return family, style
 
 
 def _font_language(family, style, font):

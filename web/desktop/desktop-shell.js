@@ -158,6 +158,7 @@
             <label class="desktop-check"><input data-desktop-setting="auto_save" type="checkbox"><span>自動保存</span></label>
             <label class="desktop-autosave-interval"><span>間隔</span><input data-desktop-setting="auto_save_interval_seconds" type="number" min="5" max="3600" step="5"><span>秒</span></label>
           </div>
+          <button type="button" data-desktop-action="workspace-layout-reset">UIレイアウトを初期状態へ戻す</button>
         </details>
         <details>
           <summary>編集キャッシュ</summary>
@@ -167,6 +168,16 @@
             <button type="button" data-desktop-action="cache-clear">下書きキャッシュを削除</button>
           </div>
           <p class="hint">プロジェクト、ユーザープリセット、設定、書き出し画像は削除しません。</p>
+        </details>
+        <details>
+          <summary>ページ画像・変換履歴</summary>
+          <div class="desktop-cache-row desktop-image-storage-row">
+            <output data-desktop-image-storage-status>確認待ち</output>
+            <button type="button" data-desktop-action="image-storage-refresh">更新</button>
+            <button type="button" data-desktop-action="comic-unused-cleanup">未使用画像を整理</button>
+            <button type="button" data-desktop-action="conversion-history-clear">変換履歴を削除</button>
+          </div>
+          <p class="hint">プレビューはメモリのみで処理します。使用中のページ画像と現在の一枚画像は削除しません。</p>
         </details>
       </div>
       <div class="replace-dialog-actions">
@@ -301,8 +312,10 @@
   let userPresetFilter = "all";
   let userPresetDraftUrl = "";
 
+  let activeDesktopLanguage = document.documentElement.lang === "en" ? "en" : "ja";
+
   function desktopText(japanese, english) {
-    return document.documentElement.lang === "en" ? english : japanese;
+    return activeDesktopLanguage === "en" ? english : japanese;
   }
 
   function defaultUserPresetStyle(preset = {}) {
@@ -721,7 +734,7 @@
       });
       applyTheme(payload.settings?.theme);
       applyLanguage(payload.settings?.language);
-      await Promise.all([refreshCacheStatus(dialog), refreshUserPresetOverview(dialog)]);
+      await Promise.all([refreshCacheStatus(dialog), refreshImageStorageStatus(dialog), refreshUserPresetOverview(dialog)]);
     } catch (error) {
       console.warn("Desktop settings could not be loaded", error);
     }
@@ -796,28 +809,66 @@
   async function refreshCacheStatus(dialog) {
     const output = dialog.querySelector("[data-desktop-cache-status]");
     if (!output) return;
-    output.textContent = "確認中…";
+    output.textContent = desktopText("確認中…", "Checking…");
     try {
       const [payload, browser] = await Promise.all([
         desktopFetch("/desktop/cache/status"),
         root.SpeechBubbleDesktopEditor?.cacheStatus?.() || {},
       ]);
-      const draftFiles = Number(payload.draft_files || 0) + Number(browser.draft_files || 0);
       const temporaryFiles = Number(payload.temporary_files || 0) + Number(browser.temporary_files || 0);
       const totalSize = Number(payload.total_size || 0) + Number(browser.total_size || 0);
-      output.textContent = `下書き ${draftFiles}件 / 一時画像 ${temporaryFiles}件 / ${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
+      const recovery = payload.recovery || {};
+      const updated = recovery.updated_at ? new Date(recovery.updated_at).toLocaleString() : desktopText("なし", "None");
+      output.textContent = desktopText(
+        `復元下書き ${recovery.available ? "あり" : "なし"}・${Number(recovery.generations || 0)}世代 / 素材 ${Number(recovery.assets || 0)}件 / 最終保存 ${updated} / 一時ファイル ${temporaryFiles}件 / ${(totalSize / (1024 * 1024)).toFixed(1)} MB`,
+        `Recovery ${recovery.available ? "available" : "none"} · ${Number(recovery.generations || 0)} generations / ${Number(recovery.assets || 0)} assets / Last saved ${updated} / Temporary files ${temporaryFiles} / ${(totalSize / (1024 * 1024)).toFixed(1)} MB`,
+      );
     } catch (error) {
-      output.textContent = error?.message || "取得できませんでした";
+      output.textContent = error?.message || desktopText("取得できませんでした", "Could not retrieve status");
     }
   }
 
   async function clearDraftCache(dialog) {
-    if (!confirm("自動保存下書きと一時画像を削除しますか？")) return;
+    if (!confirm(desktopText("自動保存下書きと一時画像を削除しますか？", "Delete autosave drafts and temporary images?"))) return;
     await Promise.all([
       desktopFetch("/desktop/cache/clear", { method: "POST", body: "{}" }),
       root.SpeechBubbleDesktopEditor?.clearCache?.(),
     ]);
     await refreshCacheStatus(dialog);
+  }
+
+  async function refreshImageStorageStatus(dialog) {
+    const output = dialog.querySelector("[data-desktop-image-storage-status]");
+    if (!output) return;
+    output.textContent = desktopText("確認中…", "Checking…");
+    try {
+      const [comic, converter] = await Promise.all([
+        root.SpeechBubbleDesktopEditor?.comicStorageStatus?.() || {},
+        root.SpeechBubbleDesktopEditor?.converterStatus?.() || {},
+      ]);
+      const pageCount = Number(comic.page_images || 0);
+      const unused = Number(comic.unused_page_images || 0);
+      const pageBytes = Number(comic.page_image_bytes || 0);
+      const historyCount = Number(converter.conversion_history || 0);
+      const historyBytes = Number(converter.conversion_history_bytes || 0);
+      output.textContent = desktopText(
+        `ページ画像 ${pageCount}件（未使用 ${unused}件）/ ${(pageBytes / (1024 * 1024)).toFixed(1)} MB・変換履歴 ${historyCount}件 / ${(historyBytes / (1024 * 1024)).toFixed(1)} MB・一時プレビュー 保存なし`,
+        `Page Images ${pageCount} (unused ${unused}) / ${(pageBytes / (1024 * 1024)).toFixed(1)} MB · Conversion history ${historyCount} / ${(historyBytes / (1024 * 1024)).toFixed(1)} MB · Temporary previews are not saved`,
+      );
+    } catch (error) {
+      output.textContent = error?.message || desktopText("取得できませんでした", "Could not retrieve status");
+    }
+  }
+
+  async function clearConversionHistory(dialog) {
+    if (!confirm(desktopText("一枚画像のコミック変換履歴を削除しますか？\n現在使用中の画像は削除しません。", "Delete the single-image comic conversion history?\nThe image currently in use will not be deleted."))) return;
+    await root.SpeechBubbleDesktopEditor?.clearConversionHistory?.();
+    await refreshImageStorageStatus(dialog);
+  }
+
+  async function cleanupUnusedComicImages(dialog) {
+    await root.SpeechBubbleDesktopEditor?.cleanupUnusedComicImages?.();
+    await refreshImageStorageStatus(dialog);
   }
 
   function applyTheme(theme) {
@@ -875,9 +926,46 @@
     ["前回の編集を再開", "Resume previous edit"],
     ["常に新規作成", "Always start new"],
     ["編集キャッシュ", "Editor Cache"],
+    ["ページ画像・変換履歴", "Page Images & Conversion History"],
     ["更新", "Refresh"],
     ["下書きキャッシュを削除", "Clear draft cache"],
+    ["未使用画像を整理", "Clean Up Unused Images"],
+    ["変換履歴を削除", "Clear Conversion History"],
     ["プロジェクト、ユーザープリセット、設定、書き出し画像は削除しません。", "Projects, user presets, settings, and exported images are not deleted."],
+    ["プレビューはメモリのみで処理します。使用中のページ画像と現在の一枚画像は削除しません。", "Previews stay in memory. Active page images and the current single image are not deleted."],
+    ["コミック変換", "Comic Conversion"],
+    ["プリセット", "Preset"],
+    ["白黒コミック", "Black & White Comic"],
+    ["カスタム", "Custom"],
+    ["コミック変換を開く", "Open Comic Conversion"],
+    ["画像を選択してください", "Select an image"],
+    ["画像を変更", "Change Image"],
+    ["画像をドロップ", "Drop an image"],
+    ["PNG / JPEG / WebP・Ctrl+V", "PNG / JPEG / WebP or Ctrl+V"],
+    ["カラー原本", "Color Original"],
+    ["変換結果", "Result"],
+    ["明るさ", "Brightness"],
+    ["コントラスト", "Contrast"],
+    ["ガンマ", "Gamma"],
+    ["エッジ保持平滑化", "Edge-preserving smoothing"],
+    ["階調数", "Tone levels"],
+    ["主要輪郭しきい値", "Main edge threshold"],
+    ["主要輪郭の濃さ", "Main edge strength"],
+    ["網点・ディザ量", "Tone / dither"],
+    ["色境界の検出", "Color edge detection"],
+    ["薄いノイズ除去", "Faint noise cleanup"],
+    ["階調を残す", "Preserve tones"],
+    ["暗部を黒ベタ化", "Solid black shadows"],
+    ["XDoG調整", "XDoG Controls"],
+    ["線の太さ σ", "Line width σ"],
+    ["細部・白抜け ε", "Detail / knockout ε"],
+    ["線の硬さ φ", "Line hardness φ"],
+    ["線の濃さ", "Line strength"],
+    ["Gaussian倍率 k", "Gaussian scale k"],
+    ["差分強度 τ", "Difference strength τ"],
+    ["初期設定に戻す", "Reset Defaults"],
+    ["ページ画像へ追加", "Add to Page Images"],
+    ["一枚画像へ適用", "Apply to Single Image"],
     ["閉じる", "Close"],
     ["保存", "Save"],
     ["ユーザープリセット管理", "User Preset Manager"],
@@ -907,27 +995,125 @@
     ["前回の背景画像と編集状態を再開しますか？", "Resume the previous background image and edit state?"],
     ["新規で開く", "Open New"],
     ["前回の単体編集を再開", "Resume Previous Edit"],
+    ["UIレイアウトを初期状態へ戻す", "Reset UI Layout"],
+    ["確認待ち", "Waiting"],
+    ["秒", "sec"],
+    ["ページ画像", "Page Images"],
+    ["画像を追加", "Add Images"],
+    ["＋ 画像を追加", "＋ Add Images"],
+    ["縦4コマ", "Vertical 4-panel Comic"],
+    ["標準4コマ", "Standard 4-panel"],
+    ["キャンバス幅", "Canvas Width"],
+    ["キャンバス高さ", "Canvas Height"],
+    ["縦横比を固定", "Lock Aspect Ratio"],
+    ["標準へ戻す（720 × 2160）", "Reset to Standard (720 × 2160)"],
+    ["白地・黒線", "White / Black Lines"],
+    ["黒地・白線", "Black / White Lines"],
+    ["枠線幅", "Border Width"],
+    ["コマ間隔", "Panel Gap"],
+    ["ページ背景", "Page Background"],
+    ["枠線色", "Border Color"],
+    ["＋ 見出しBoxを追加", "+ Add Header Box"],
+    ["連動", "Linked"],
+    ["上", "Top"],
+    ["右", "Right"],
+    ["下", "Bottom"],
+    ["左", "Left"],
+    ["各コマは独立した枠です。漫画ページレイヤーをロックすると、見出しとコマ境界も固定されます。", "Each panel is independent. Locking the Comic Page layer also locks header boxes and panel boundaries."],
+    ["ページ設定", "Page Settings"],
+    ["コマ背景", "Panel Background"],
+    ["＋ コマ画像を選択", "+ Choose Panel Image"],
+    ["幅", "Width"],
+    ["高さ", "Height"],
+    ["位置 X", "Position X"],
+    ["位置 Y", "Position Y"],
+    ["見出しを表示", "Show Header"],
+    ["キャンバス上で移動・リサイズ", "Move and resize on canvas"],
+    ["位置・サイズを標準へ戻す", "Reset Position and Size"],
+    ["見出しBoxには文字を含めません。文字は通常のTextレイヤーを配置してください。", "Header Boxes do not contain text. Add a regular Text layer."],
+    ["画像を外す", "Remove Image"],
+    ["画像倍率", "Image Scale"],
+    ["画像位置を中央へ戻す", "Center Image"],
+    ["Canvas上でドラッグして移動、Ctrl＋ホイールで拡大・縮小できます。", "Drag on the canvas to move. Use Ctrl + wheel to zoom the panel image."],
+    ["4コマ内の適用先", "Apply Within Comic"],
+    ["4コマ全体", "Entire Comic Page"],
+    ["4コマ内の配置", "Placement Within Comic"],
+    ["ページ上（枠外へ出せる）", "On Page (may extend outside panels)"],
+    ["横書き", "Horizontal"],
+    ["縦書き", "Vertical"],
+    ["中央", "Center"],
+    ["文字枠を内容に合わせる", "Fit Text Box to Content"],
+    ["日本語", "Japanese"],
+    ["简体中文", "Simplified Chinese"],
+    ["繁體中文", "Traditional Chinese"],
+    ["한국어", "Korean"],
+    ["☆をクリックしてお気に入り登録／★で解除", "Click ☆ to add a favorite; click ★ to remove it."],
+    ["読込失敗", "Load failed"],
+    ["漫画ページ", "Comic Page"],
+    ["見出し", "Header"],
+    ["ページ", "Page"],
+    ["コマ", "Panel"],
+    ["画像なし", "No image"],
+    ["表示／非表示", "Show / Hide"],
+    ["画像をここにドロップ", "Drop an image here"],
+    ["画像ファイルを選択", "Choose Image File"],
+    ["Ctrl+Vでクリップボード画像を貼り付け", "Paste an image from the clipboard with Ctrl+V"],
+    ["おすすめ・関連順", "Recommended / Related"],
+    ["使用回数順", "Most Used"],
+    ["名前順", "Name"],
+    ["編集モード", "Editing Mode"],
+    ["Propertiesを移動", "Move Properties"],
+    ["Layersだけをフローティング表示", "Float Layers"],
+    ["Layersを右側へ戻す", "Dock Layers Right"],
+    ["Speech Bubble 4koma Editorの設定を開く", "Open Speech Bubble 4koma Editor Settings"],
   ]);
 
   function translateDesktopDialogs(language) {
     const english = language === "en";
-    for (const dialog of document.querySelectorAll(
-      "#desktopSettingsDialog, #desktopUserPresetDialog, #replaceImageDialog, #imageLayoutRestoreDialog, #resumeStandaloneDialog",
-    )) {
+    const dynamicEnglish = (value) => {
+      let match = value.match(/^(\d+)枚$/);
+      if (match) return `${match[1]} images`;
+      match = value.match(/^コマ\s*(\d+)$/);
+      if (match) return `Panel ${match[1]}`;
+      match = value.match(/^見出しBox\s*(\d+)$/);
+      if (match) return `Header Box ${match[1]}`;
+      match = value.match(/^コマ\s*(\d+)の画像$/);
+      if (match) return `Panel ${match[1]} Image`;
+      match = value.match(/^追加先：コマ\s*(\d+)$/);
+      if (match) return `Insert into: Panel ${match[1]}`;
+      return "";
+    };
+    for (const dialog of [document.body]) {
       const walker = document.createTreeWalker(dialog, NodeFilter.SHOW_TEXT);
       while (walker.nextNode()) {
         const node = walker.currentNode;
+        const parent = node.parentElement;
+        if (!parent || parent.closest("script,style,textarea,.layers .name,.font-family-name,.font-sample,.comic-image-card > span")) continue;
         if (node.__desktopOriginalText === undefined) node.__desktopOriginalText = node.nodeValue;
         const original = node.__desktopOriginalText;
         const trimmed = original.trim();
-        const translated = english ? DESKTOP_EN_TEXT.get(trimmed) : null;
-        node.nodeValue = translated ? original.replace(trimmed, translated) : original;
+        const translated = english ? DESKTOP_EN_TEXT.get(trimmed) || dynamicEnglish(trimmed) : null;
+        const next = translated ? original.replace(trimmed, translated) : original;
+        if (node.nodeValue !== next) node.nodeValue = next;
+      }
+      for (const element of dialog.querySelectorAll("[title],[aria-label],[placeholder]")) {
+        for (const attribute of ["title", "aria-label", "placeholder"]) {
+          if (!element.hasAttribute(attribute)) continue;
+          const property = `desktopOriginal${attribute.replace(/(^|-)([a-z])/g, (_all, _dash, letter) => letter.toUpperCase())}`;
+          if (element.dataset[property] === undefined) element.dataset[property] = element.getAttribute(attribute) || "";
+          const original = element.dataset[property];
+          const translated = english ? DESKTOP_EN_TEXT.get(original) || dynamicEnglish(original) : "";
+          const next = translated || original;
+          if (element.getAttribute(attribute) !== next) element.setAttribute(attribute, next);
+        }
       }
     }
   }
 
+  let languageObserver = null;
   function applyLanguage(language) {
     const selected = language === "en" ? "en" : "ja";
+    activeDesktopLanguage = selected;
     document.documentElement.lang = selected;
     const text = selected === "en"
       ? {
@@ -956,6 +1142,36 @@
       const element = document.getElementById(id);
       if (element) element.textContent = label;
     });
+    const actionLabels = selected === "en"
+      ? {
+          openShapeDrawer: "Browse Speech Bubbles…",
+          addText: "+ Add Text (T)",
+          openSfxDrawer: "Browse Onomatopoeia / SFX…",
+          openStampDrawer: "Browse Stamps…",
+          openEmphasisDrawer: "Browse Emphasis Lines…",
+          openFrameDrawer: "Browse Frames…",
+          fitTextBoxNow: "Fit Text Box to Content",
+        }
+      : {
+          openShapeDrawer: "吹き出し一覧",
+          addText: "＋ 文字を追加（T）",
+          openSfxDrawer: "オノマトペ一覧",
+          openStampDrawer: "スタンプ一覧",
+          openEmphasisDrawer: "集中線一覧",
+          openFrameDrawer: "フレーム一覧",
+          fitTextBoxNow: "文字枠を内容に合わせる",
+        };
+    Object.entries(actionLabels).forEach(([id, label]) => {
+      const element = document.getElementById(id);
+      if (element) element.textContent = label;
+    });
+    const fontFilterLabels = selected === "en"
+      ? { ja: "Japanese", "zh-hans": "Simplified Chinese", "zh-hant": "Traditional Chinese", ko: "Korean" }
+      : { ja: "日本語", "zh-hans": "简体中文", "zh-hant": "繁體中文", ko: "한국어" };
+    Object.entries(fontFilterLabels).forEach(([filter, label]) => {
+      const button = document.querySelector(`[data-font-filter="${filter}"]`);
+      if (button) button.textContent = label;
+    });
     document.querySelectorAll("[data-comic-mode]").forEach((button) => {
       button.textContent =
         button.dataset.comicMode === "single"
@@ -972,11 +1188,36 @@
     document.querySelectorAll("[data-desktop-action='project-save']").forEach((button) => {
       button.textContent = selected === "en" ? "Save Project" : "プロジェクトを保存";
     });
+    const converterSummary = document.querySelector(".comic-converter-launcher > summary");
+    const converterOpen = document.querySelector("[data-comic-converter-open]");
+    const converterPresets = {
+      comic: document.querySelector('[data-converter-preset] option[value="comic"]'),
+      grayscale: document.querySelector('[data-converter-preset] option[value="grayscale"]'),
+      monochrome: document.querySelector('[data-converter-preset] option[value="monochrome"]'),
+      xdog100: document.querySelector('[data-converter-preset] option[value="xdog100"]'),
+      custom: document.querySelector('[data-converter-preset] option[value="custom"]'),
+    };
+    if (converterSummary) converterSummary.textContent = selected === "en" ? "Comic Conversion" : "コミック変換";
+    if (converterOpen) converterOpen.textContent = selected === "en" ? "Open Comic Conversion" : "コミック変換を開く";
+    const converterLabels = selected === "en"
+      ? { comic: "Black & White Comic", grayscale: "Simple Grayscale", monochrome: "Simple Monochrome", xdog100: "XDoG 100", custom: "Custom" }
+      : { comic: "白黒コミック", grayscale: "単純グレースケール", monochrome: "単純モノクロ", xdog100: "XDoG 100", custom: "カスタム" };
+    Object.entries(converterPresets).forEach(([key, option]) => {
+      if (option) option.textContent = converterLabels[key];
+    });
     translateDesktopDialogs(selected);
     const presetDialog = document.getElementById("desktopUserPresetDialog");
     if (presetDialog) {
       if (selectedUserPreset) editUserPreset(presetDialog, selectedUserPreset);
       if (userPresetCatalog) renderUserPresets(presetDialog);
+    }
+    translateDesktopDialogs(selected);
+    root.dispatchEvent(new CustomEvent("speech-bubble:language-change", { detail: { language: selected } }));
+    if (!languageObserver) {
+      languageObserver = new MutationObserver(() => {
+        if (document.documentElement.lang === "en") translateDesktopDialogs("en");
+      });
+      languageObserver.observe(document.body, { childList: true, subtree: true });
     }
   }
 
@@ -1004,6 +1245,24 @@
     });
     await root.SpeechBubbleDesktopEditor.loadProject(payload);
     root.SpeechBubbleDesktopEditor.setStatus(`${path} を開きました`, "saved");
+  }
+
+  let recoverySavePromise = null;
+  async function saveRecovery(checkpoint = false) {
+    if (!root.SpeechBubbleDesktopEditor?.snapshot || new URLSearchParams(location.search).get("palette") === "1") return null;
+    const run = async () => {
+      const snapshot = await root.SpeechBubbleDesktopEditor.snapshot();
+      return desktopFetch("/desktop/recovery/save", {
+        method: "POST",
+        body: JSON.stringify({ ...snapshot, checkpoint: Boolean(checkpoint) }),
+      });
+    };
+    recoverySavePromise = (recoverySavePromise || Promise.resolve()).catch(() => null).then(run);
+    return recoverySavePromise;
+  }
+
+  async function loadRecovery() {
+    return desktopFetch("/desktop/recovery/load");
   }
 
   function install() {
@@ -1126,6 +1385,16 @@
         else if (action === "export-directory-browse") await browseExportDirectory(settings);
         else if (action === "cache-refresh") await refreshCacheStatus(settings);
         else if (action === "cache-clear") await clearDraftCache(settings);
+        else if (action === "workspace-layout-reset") {
+          root.SpeechBubbleWorkspaceLayout?.reset?.();
+          root.SpeechBubbleDesktopEditor?.setStatus(
+            document.documentElement.lang === "en" ? "UI layout was reset." : "UIレイアウトを初期状態へ戻しました",
+            "saved",
+          );
+        }
+        else if (action === "image-storage-refresh") await refreshImageStorageStatus(settings);
+        else if (action === "comic-unused-cleanup") await cleanupUnusedComicImages(settings);
+        else if (action === "conversion-history-clear") await clearConversionHistory(settings);
         else if (action === "user-presets-open") {
           settings.close();
           await openUserPresets();
@@ -1155,7 +1424,7 @@
     });
   }
 
-  root.SpeechBubbleDesktopShell = { openSettings, prepareExportTarget };
+  root.SpeechBubbleDesktopShell = { openSettings, prepareExportTarget, saveRecovery, loadRecovery };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", install, { once: true });
   else install();
 })(globalThis);

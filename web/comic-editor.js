@@ -10,6 +10,7 @@
   const MAX_IMAGE_BYTES = 96 * 1024 * 1024;
   const MAX_IMAGES = 100;
   const tonePatternCache = new Map();
+  const tr = (ja, en) => document.documentElement.lang === "en" ? en : ja;
   const COMIC_SWATCHES = [
     "#111111", "#ffffff", "#9ca3af", "#ef4444", "#f97316", "#facc15", "#84cc16",
     "#22c55e", "#34d399", "#2dd4bf", "#38bdf8", "#60a5fa", "#3b82f6", "#6366f1",
@@ -97,7 +98,7 @@
       image.onload = () => resolve({ image, url });
       image.onerror = () => {
         URL.revokeObjectURL(url);
-        reject(new Error("画像を読み込めませんでした。"));
+        reject(new Error(tr("画像を読み込めませんでした。", "The image could not be loaded.")));
       };
       image.src = url;
     });
@@ -121,7 +122,10 @@
     document.querySelectorAll(".comic-image-drag-ghost").forEach((node) => node.remove());
     const ghost = document.createElement("div");
     ghost.className = "comic-image-drag-ghost";
-    ghost.textContent = `画像を配置: ${String(name || "ページ画像")}`;
+    ghost.textContent = tr(
+      `画像を配置: ${String(name || "ページ画像")}`,
+      `Place image: ${String(name || "Page Image")}`,
+    );
     document.body.append(ghost);
     return ghost;
   }
@@ -132,6 +136,7 @@
     let selectedPanelId = null;
     let selectedHeadingId = null;
     let selectedTarget = null;
+    let selectedTrayImageId = "";
     let drag = null;
     let pendingAssignPanelId = null;
     let hydratedDocumentId = "";
@@ -418,10 +423,8 @@
         } else if (action === "remove-image" && card) {
           removeTrayImage(card.dataset.comicImageId);
         } else if (card) {
-          elements.trayList
-            ?.querySelectorAll(".comic-image-card.selected")
-            .forEach((item) => item.classList.remove("selected"));
-          card.classList.add("selected");
+          selectedTrayImageId = card.dataset.comicImageId || "";
+          renderTray();
         }
       });
       elements.imageInput?.addEventListener("change", async () => {
@@ -679,8 +682,8 @@
           comic.page.gutter = 18;
         }
         ensureSourceMetadata();
-        selectedTarget = "page";
         selectedPanelId ||= layout().panels[0]?.id || null;
+        selectedTarget = selectedPanelId ? "panel" : "page";
         options.clearLayerSelection?.();
       } else {
         selectedTarget = null;
@@ -704,6 +707,7 @@
       renderTray();
       syncTrayViewport();
       syncProperties();
+      options.syncInsertTargetStatus?.();
     }
 
     function syncProperties() {
@@ -724,14 +728,14 @@
       const target = selectedTarget === "image" && !panel?.image_id ? "panel" : selectedTarget;
       elements.properties.querySelector("[data-comic-selection-name]").textContent =
         target === "page"
-          ? "漫画ページ"
+          ? tr("漫画ページ", "Comic Page")
           : target === "heading"
-            ? "見出し"
+            ? tr("見出し", "Header Box")
             : target === "image"
-              ? `コマ ${panelIndex}の画像`
-              : `コマ ${panelIndex}`;
+              ? tr(`コマ ${panelIndex}の画像`, `Panel ${panelIndex} Image`)
+              : tr(`コマ ${panelIndex}`, `Panel ${panelIndex}`);
       elements.properties.querySelector("[data-comic-selection-kind]").textContent =
-        target === "page" ? "ページ" : target === "heading" ? "見出し" : target === "image" ? "画像" : "コマ";
+        target === "page" ? tr("ページ", "Page") : target === "heading" ? tr("見出し", "Header") : target === "image" ? tr("画像", "Image") : tr("コマ", "Panel");
       elements.properties.querySelectorAll("[data-comic-properties]").forEach((section) => {
         section.hidden = section.dataset.comicProperties !== target;
       });
@@ -798,7 +802,7 @@
           thumbnail.append(preview);
         }
       }
-      if (imageName) imageName.textContent = metadata?.name || "画像なし";
+      if (imageName) imageName.textContent = metadata?.name || tr("画像なし", "No image");
       return true;
     }
 
@@ -808,6 +812,7 @@
       if (target !== "heading") selectedHeadingId = null;
       options.clearLayerSelection?.();
       updateUi();
+      options.syncInsertTargetStatus?.();
       options.requestRender({ canvas: true, layers: true });
     }
 
@@ -846,7 +851,7 @@
       const eye = document.createElement("button");
       eye.className = "eye";
       eye.textContent = visible ? "◉" : "○";
-      eye.title = "表示／非表示";
+      eye.title = tr("表示／非表示", "Show / Hide");
       eye.onclick = (event) => {
         event.stopPropagation();
         options.pushUndo();
@@ -900,7 +905,7 @@
       host.append(
         comicLayerRow({
           target: "page",
-          name: "漫画ページ",
+            name: tr("漫画ページ", "Comic Page"),
           kind: "frame",
           visible: comic.page.visible !== false,
           locked: comic.page.structure_locked !== false,
@@ -909,7 +914,7 @@
       comic.headings.forEach((heading, index) => {
         const row = comicLayerRow({
           target: "heading",
-          name: `見出しBox ${index + 1}`,
+          name: tr(`見出しBox ${index + 1}`, `Header Box ${index + 1}`),
           kind: "frame",
           visible: heading.visible !== false,
           nested: true,
@@ -936,7 +941,7 @@
           comicLayerRow({
             target: "panel",
             panelId: panel.id,
-            name: `コマ ${index + 1}`,
+            name: tr(`コマ ${index + 1}`, `Panel ${index + 1}`),
             kind: "frame",
             visible: panel.visible !== false,
             nested: true,
@@ -948,7 +953,7 @@
             comicLayerRow({
               target: "image",
               panelId: panel.id,
-              name: metadata?.name || "コマ画像",
+              name: metadata?.name || tr("コマ画像", "Panel Image"),
               kind: "image",
               visible: panel.image_visible !== false,
               locked: panel.image_locked === true,
@@ -961,9 +966,11 @@
     }
 
     function clearSelection() {
-      if (!selectedTarget) return false;
+      if (!selectedTarget && !selectedTrayImageId) return false;
       selectedTarget = null;
+      selectedTrayImageId = "";
       drag = null;
+      renderTray();
       syncProperties();
       options.requestRender({ canvas: true, layers: true });
       return true;
@@ -1160,6 +1167,113 @@
       return importedIds;
     }
 
+    async function conversionBlob(metadata) {
+      if (!metadata) return null;
+      if (metadata.id === "source") {
+        try {
+          return await options.getSourceBlob?.();
+        } catch {
+          return null;
+        }
+      }
+      return loadImageBlob(documentId(), metadata.id);
+    }
+
+    async function getConversionSources() {
+      ensureSourceMetadata();
+      const panelImageId = selectedPanel()?.image_id || "";
+      const preferredId = selectedTrayImageId || panelImageId;
+      const ordered = [
+        ...comic.images.filter((metadata) => metadata.id === preferredId),
+        ...comic.images.filter((metadata) => metadata.id !== preferredId),
+      ];
+      const sources = [];
+      for (const metadata of ordered) {
+        const blob = await conversionBlob(metadata);
+        if (!blob) continue;
+        sources.push({
+          id: metadata.id,
+          name: metadata.name || "ページ画像",
+          width: Number(metadata.width) || 1,
+          height: Number(metadata.height) || 1,
+          blob,
+          selected: metadata.id === preferredId,
+        });
+      }
+      return sources;
+    }
+
+    async function addConvertedImage(blob, name = "comic-converted.png") {
+      if (!(blob instanceof Blob)) return "";
+      const safeName = String(name || "comic-converted.png").replace(/[\\/:*?"<>|]+/g, "-");
+      const file = new File([blob], /\.png$/i.test(safeName) ? safeName : `${safeName}.png`, {
+        type: "image/png",
+        lastModified: Date.now(),
+      });
+      const ids = await importFiles([file]);
+      const status = await storageStatus();
+      if (status.page_images >= MAX_IMAGES || status.page_image_bytes > 1024 * 1024 * 1024) {
+        options.setStatus?.(
+          `ページ画像が${status.page_images}件 / ${(status.page_image_bytes / (1024 * 1024)).toFixed(1)} MBあります。Settingsの「未使用画像を整理」を確認してください。`,
+          "info",
+        );
+      }
+      return ids[0] || "";
+    }
+
+    async function imageRecordsForDocument() {
+      const targetDocument = documentId();
+      if (!targetDocument) return [];
+      const db = await openImageDb();
+      const records = await new Promise((resolve, reject) => {
+        const transaction = db.transaction(DB_STORE, "readonly");
+        const request = transaction.objectStore(DB_STORE).getAll();
+        request.onsuccess = () =>
+          resolve(
+            (Array.isArray(request.result) ? request.result : []).filter(
+              (record) => record?.documentId === targetDocument,
+            ),
+          );
+        request.onerror = () => reject(request.error);
+      });
+      db.close();
+      return records;
+    }
+
+    async function storageStatus() {
+      const records = await imageRecordsForDocument().catch(() => []);
+      const currentIds = new Set(comic.images.filter((item) => item.id !== "source").map((item) => item.id));
+      const usedIds = new Set(layout().panels.map((item) => item.node.image_id).filter(Boolean));
+      return {
+        page_images: currentIds.size,
+        page_image_bytes: records.reduce(
+          (total, record) => total + (currentIds.has(record.imageId) ? Number(record?.blob?.size) || 0 : 0),
+          0,
+        ),
+        unused_page_images: [...currentIds].filter((id) => !usedIds.has(id)).length,
+      };
+    }
+
+    async function cleanupUnusedImages() {
+      const usedIds = new Set(layout().panels.map((item) => item.node.image_id).filter(Boolean));
+      const unused = comic.images.filter((item) => item.id !== "source" && !usedIds.has(item.id));
+      if (!unused.length) return { removed: 0 };
+      if (!confirm(`コマで使用していないページ画像${unused.length}件を削除しますか？\nこの操作は元に戻せません。`)) {
+        return { removed: 0, cancelled: true };
+      }
+      options.pushUndo();
+      const unusedIds = new Set(unused.map((item) => item.id));
+      comic.images = comic.images.filter((item) => !unusedIds.has(item.id));
+      for (const metadata of unused) {
+        releaseRuntimeImage(metadata.id);
+        await deleteImageBlob(documentId(), metadata.id).catch(() => {});
+      }
+      renderTray();
+      updateUi();
+      changed();
+      return { removed: unused.length };
+    }
+
     async function removeTrayImage(imageId) {
       if (imageId === "source") return;
       const index = comic.images.findIndex((item) => item.id === imageId);
@@ -1172,8 +1286,12 @@
       options.pushUndo();
       for (const item of usedPanels) item.node.image_id = null;
       comic.images.splice(index, 1);
-      releaseRuntimeImage(imageId);
-      await deleteImageBlob(documentId(), imageId).catch(() => {});
+      if (selectedTrayImageId === imageId) selectedTrayImageId = "";
+      // Keep the blob alive while this deletion is present in the editor
+      // history. The scene snapshot restores the metadata and panel links;
+      // retaining the runtime/IndexedDB asset lets Undo restore the pixels too.
+      // Explicit cache cleanup remains the operation that permanently removes
+      // unused image data.
       if (selectedTarget === "image" && usedPanels.some((item) => item.id === selectedPanelId)) selectedTarget = "panel";
       renderTray();
       updateUi();
@@ -1233,12 +1351,15 @@
       if (!elements.trayList) return;
       ensureSourceMetadata();
       const trayImages = comic.images.filter((metadata) => metadata.id !== "source");
+      if (selectedTrayImageId && !trayImages.some((metadata) => metadata.id === selectedTrayImageId)) {
+        selectedTrayImageId = "";
+      }
       const usedIds = new Set(layout().panels.map((item) => item.node.image_id).filter(Boolean));
-      elements.tray.querySelector("[data-comic-image-count]").textContent = `${trayImages.length}枚`;
+      elements.tray.querySelector("[data-comic-image-count]").textContent = tr(`${trayImages.length}枚`, `${trayImages.length} images`);
       elements.trayList.replaceChildren(
         ...trayImages.map((metadata) => {
           const card = document.createElement("article");
-          card.className = `comic-image-card${usedIds.has(metadata.id) ? " used" : ""}`;
+          card.className = `comic-image-card${usedIds.has(metadata.id) ? " used" : ""}${selectedTrayImageId === metadata.id ? " selected" : ""}`;
           card.dataset.comicImageId = metadata.id;
           card.draggable = true;
           const preview = document.createElement("div");
@@ -1251,7 +1372,7 @@
             image.draggable = false;
             preview.append(image);
           } else {
-            preview.textContent = "読込待ち";
+            preview.textContent = tr("読込待ち", "Waiting to load");
           }
           const name = document.createElement("span");
           name.textContent = metadata.name;
@@ -1262,7 +1383,7 @@
             remove.type = "button";
             remove.dataset.comicAction = "remove-image";
             remove.textContent = "×";
-            remove.title = usedIds.has(metadata.id) ? "使用中のコマから外して削除" : "ページ画像から削除";
+            remove.title = usedIds.has(metadata.id) ? tr("使用中のコマから外して削除", "Remove from panels and delete") : tr("ページ画像から削除", "Delete from Page Images");
             card.append(remove);
           }
           card.addEventListener("dragstart", (event) => {
@@ -1279,10 +1400,8 @@
             document.querySelectorAll(".comic-image-drag-ghost").forEach((node) => node.remove());
           });
           card.addEventListener("pointerdown", () => {
-            elements.trayList
-              ?.querySelectorAll(".comic-image-card.selected")
-              .forEach((item) => item.classList.remove("selected"));
-            card.classList.add("selected");
+            selectedTrayImageId = metadata.id;
+            renderTray();
           });
           return card;
         }),
@@ -1472,7 +1591,7 @@
           target.font = `${Math.max(11, 13 / Math.max(0.5, canvasState().zoom || 1))}px sans-serif`;
           target.textAlign = "center";
           target.textBaseline = "middle";
-          target.fillText("＋ 画像を入れる", button.x + button.w / 2, button.y + button.h / 2);
+          target.fillText(tr("＋ 画像を入れる", "+ Add Image"), button.x + button.w / 2, button.y + button.h / 2);
         }
       }
       for (const divider of comic.page.structure_locked ? [] : computed.dividers) {
@@ -1529,14 +1648,40 @@
       return selectedPanelId || layout().panels[0]?.id || "";
     }
 
+    function selectedInsertionTarget() {
+      if (!comic.enabled) return null;
+      if ((selectedTarget === "panel" || selectedTarget === "image") && selectedPanelId) {
+        const panels = layout().panels;
+        const index = panels.findIndex((entry) => entry.id === selectedPanelId);
+        const panel = panels[index];
+        return panel ? { scope: "panel", panelId: panel.id, panelIndex: Math.max(0, index), rect: panelContentRect(panel) } : null;
+      }
+      if (selectedTarget === "page" || selectedTarget === "heading") return { scope: "free" };
+      return null;
+    }
+
+    function panelInsertionTarget(panelId) {
+      if (!comic.enabled || !panelId) return null;
+      const panels = layout().panels;
+      const index = panels.findIndex((entry) => entry.id === panelId);
+      const panel = panels[index];
+      return panel ? { scope: "panel", panelId: panel.id, panelIndex: Math.max(0, index), rect: panelContentRect(panel) } : null;
+    }
+
+    function defaultPanelInsertionTarget() {
+      if (!comic.enabled) return null;
+      const panel = layout().panels[0];
+      return panel ? { scope: "panel", panelId: panel.id, panelIndex: 0, rect: panelContentRect(panel) } : { scope: "free" };
+    }
+
     function elementTargetOptions(item) {
       const pageValue = item?.type === "emphasis_lines" ? "page" : "free";
-      const pageLabel = item?.type === "emphasis_lines" ? "4コマ全体" : "ページ上（枠外へ出せる）";
+      const pageLabel = item?.type === "emphasis_lines" ? tr("4コマ全体", "Entire Comic Page") : tr("ページ上（枠外へ出せる）", "On Page (may extend outside panels)");
       return [
         { value: pageValue, label: pageLabel },
         ...layout().panels.slice(0, 4).map((panel, index) => ({
           value: `panel:${panel.id}`,
-          label: `コマ${index + 1}`,
+          label: tr(`コマ${index + 1}`, `Panel ${index + 1}`),
         })),
       ];
     }
@@ -1604,30 +1749,33 @@
           ? activeHeading
           : null;
       const heading = resizeHeading || headingAt(point);
-      if (heading && !comic.page.structure_locked) {
-        options.pushUndo();
+      if (heading) {
         selectedHeadingId = heading.id;
         selectedTarget = "heading";
         selectedPanelId = null;
-        drag = resizeHeading === heading
-          ? {
-              type: "heading-resize",
-              heading,
-              startX: point.x,
-              startY: point.y,
-              width: heading.width,
-              height: heading.height,
-              changed: false,
-            }
-          : {
-              type: "heading",
-              heading,
-              startX: point.x,
-              startY: point.y,
-              x: heading.x,
-              y: heading.y,
-              changed: false,
-            };
+        drag = null;
+        if (!comic.page.structure_locked) {
+          options.pushUndo();
+          drag = resizeHeading === heading
+            ? {
+                type: "heading-resize",
+                heading,
+                startX: point.x,
+                startY: point.y,
+                width: heading.width,
+                height: heading.height,
+                changed: false,
+              }
+            : {
+                type: "heading",
+                heading,
+                startX: point.x,
+                startY: point.y,
+                x: heading.x,
+                y: heading.y,
+                changed: false,
+              };
+        }
         options.clearLayerSelection?.();
         updateUi();
         options.requestRender({ canvas: true, layers: true });
@@ -1819,8 +1967,7 @@
         return true;
       }
       if (comic.enabled && (event.key === "Delete" || event.key === "Backspace")) {
-        const selectedCard = elements.trayList?.querySelector(".comic-image-card.selected");
-        const imageId = selectedCard?.dataset.comicImageId;
+        const imageId = selectedTrayImageId;
         if (imageId && imageId !== "source") {
           event.preventDefault();
           removeTrayImage(imageId);
@@ -1901,6 +2048,10 @@
       isActive: () => comic.enabled,
       isEditing: () => comic.enabled && Boolean(selectedTarget),
       importFiles,
+      addConvertedImage,
+      getConversionSources,
+      storageStatus,
+      cleanupUnusedImages,
       exportProjectImages,
       importProjectImages,
       drawUnderlay,
@@ -1908,6 +2059,9 @@
       emphasisClipRect,
       assetClipRect,
       selectedPanelForEffects,
+      selectedInsertionTarget,
+      panelInsertionTarget,
+      defaultPanelInsertionTarget,
       elementTargetOptions,
       elementTargetValue,
       assignElementTarget,
@@ -1925,6 +2079,7 @@
       scale,
       syncProperties,
       renderLayers,
+      refreshLanguage: updateUi,
       clearSelection,
       setEditMode,
       dispose,

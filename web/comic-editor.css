@@ -3,11 +3,34 @@
   flex: 0 0 auto;
 }
 
-.comic-mode-toggle button.active,
 .comic-template-grid button.active,
 .comic-frame-style button.active {
   background: #2f8f59;
   border-color: #55bb7d;
+  color: #fff;
+}
+
+.comic-mode-toggle [data-comic-mode="single"] {
+  border-color: #3f79a8;
+  background: #172a3b;
+  color: #b9dcf8;
+}
+
+.comic-mode-toggle [data-comic-mode="single"].active {
+  border-color: #65b9ff;
+  background: #2e79bc;
+  color: #fff;
+}
+
+.comic-mode-toggle [data-comic-mode="comic"] {
+  border-color: #3f7857;
+  background: #183326;
+  color: #bce7cd;
+}
+
+.comic-mode-toggle [data-comic-mode="comic"].active {
+  border-color: #62c88c;
+  background: #2f8f59;
   color: #fff;
 }
 
@@ -141,10 +164,18 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-height: 28px;
 }
 
 .comic-tray-heading .spacer {
   flex: 1;
+}
+
+.comic-tray-heading button {
+  flex: 0 0 auto;
+  min-height: 26px;
+  padding-block: 3px;
+  white-space: nowrap;
 }
 
 .comic-tray-list {
@@ -203,13 +234,37 @@
   pointer-events: none;
 }
 
-.comic-image-card.used {
-  border-color: #55bb7d;
+.comic-image-card.selected {
+  border: 3px solid #e54b4b;
+  padding: 1px;
+  box-shadow: inset 0 0 0 1px #fff;
 }
 
-.comic-image-card.selected {
-  outline: 2px solid #4fa3ff;
-  outline-offset: -2px;
+.comic-image-card.selected::before,
+.comic-image-card.used::after {
+  position: absolute;
+  z-index: 2;
+  padding: 1px 3px;
+  border-radius: 2px;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 12px;
+  pointer-events: none;
+}
+
+.comic-image-card.selected::before {
+  content: "SELECTED";
+  top: 2px;
+  left: 2px;
+  background: #b92323e8;
+}
+
+.comic-image-card.used::after {
+  content: "使用中";
+  right: 2px;
+  bottom: 20px;
+  background: #23894fe8;
 }
 
 .comic-image-card > span {

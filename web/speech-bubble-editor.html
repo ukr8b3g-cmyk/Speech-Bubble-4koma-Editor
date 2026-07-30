@@ -5,10 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Speech Bubble 4koma Editor</title>
   <link rel="stylesheet" href="./comic-editor.css?v=0.5.0-desktop-4">
-  <link rel="stylesheet" href="./desktop/desktop.css?v=0.5.0-desktop-4">
+  <link rel="stylesheet" href="./comic-converter.css?v=0.5.0-desktop-1">
+  <link rel="stylesheet" href="./desktop/desktop.css?v=0.5.0-desktop-5">
   <script src="./comic-panels.js?v=0.5.0-desktop-4"></script>
   <script src="./comic-editor.js?v=0.5.0-desktop-4"></script>
-  <script src="./desktop/desktop-shell.js?v=0.5.0-desktop-4"></script>
+  <script src="./comic-converter.js?v=0.5.0-desktop-1"></script>
+  <script src="./desktop/desktop-shell.js?v=0.5.0-desktop-5"></script>
   <script>
     (() => {
       const requested = new URLSearchParams(location.search).get("theme");
@@ -19,7 +21,7 @@
     :root { color-scheme: dark; --bg:#17191d; --panel:#22262d; --panel2:#2b3038; --line:#454c58; --accent:#4fa3ff; --text:#e9edf2; --muted:#9ca7b5; --field:#171a1f; --header:#1d2025; --drawer:#20242a; --layer:#252a31; --drawer-card-width:96px; --drawer-card-gap:4px; }
     :root[data-theme="light"] { color-scheme: light; --bg:#eef1f5; --panel:#ffffff; --panel2:#f2f4f7; --line:#bcc5d0; --accent:#1976d2; --text:#20252b; --muted:#657181; --field:#ffffff; --header:#f7f8fa; --drawer:#ffffff; --layer:#f5f7f9; }
     * { box-sizing:border-box; }
-    html, body { margin:0; width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--text); font:12px Segoe UI, Arial, sans-serif; }
+    html, body { margin:0; width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--text); font:12px Segoe UI, Arial, sans-serif; -webkit-text-size-adjust:100%; text-size-adjust:100%; }
     button, input, select, textarea { font:inherit; color:inherit; }
     button { border:1px solid var(--line); border-radius:4px; background:var(--panel2); padding:4px 7px; cursor:pointer; }
     button:hover { border-color:var(--accent); }
@@ -53,35 +55,47 @@
     header { height:40px; display:flex; align-items:center; gap:6px; padding:5px 8px; border-bottom:1px solid #0e1013; background:var(--header); overflow-x:auto; overflow-y:hidden; scrollbar-width:thin; }
     header::-webkit-scrollbar { height:4px; }
     header strong { flex:0 0 auto; margin-right:8px; font-size:14px; white-space:nowrap; }
+    header button { flex:0 0 auto; min-height:28px; white-space:nowrap; }
     header .spacer { flex:1; }
-    .layout { height:calc(100% - 40px); display:grid; grid-template-columns:clamp(150px,22vw,224px) minmax(220px,1fr) clamp(230px,30vw,304px); min-width:600px; }
+    .layout { height:calc(100% - 40px); display:grid; grid-template-columns:clamp(150px,20vw,224px) minmax(220px,1fr); min-width:900px; }
     aside { background:var(--panel); overflow:auto; }
     .left { position:relative; border-right:1px solid #0f1114; padding:7px; }
-    .right { border-left:1px solid #0f1114; padding:0; overflow:hidden; display:flex; flex-direction:column; min-height:0; }
+    .right { position:fixed; inset:0; z-index:69; border:0; padding:0; overflow:visible; display:block; min-width:0; min-height:0; background:transparent; pointer-events:none; }
+    .right > * { pointer-events:auto; }
     .properties-dock.floating-panel,.layers-dock.floating-panel { position:fixed; z-index:70; flex:none !important; min-width:240px; min-height:180px; max-width:calc(100vw - 16px); max-height:calc(100vh - 16px); border:1px solid var(--line); border-radius:6px; background:var(--panel); box-shadow:0 12px 36px #0009; resize:both; }
     .properties-dock.floating-panel { overflow:auto; }
     .layers-dock.floating-panel { overflow:hidden; }
-    .floating-panel .dock-float-button { display:none; }
-    .dock-return-button,.dock-drag-grip { display:none; }
-    .floating-panel .dock-return-button,.floating-panel .dock-drag-grip { display:inline-grid; }
-    .dock-drag-grip { flex:none; width:48px; height:22px; place-items:center; border:1px solid #4d789c; border-radius:4px; background:#24445e; color:#d8efff; cursor:move; user-select:none; touch-action:none; letter-spacing:3px; }
-    .dock-return-button { flex:none; min-height:22px; padding:2px 6px; font-size:10px; }
-    .dock-float-button { flex:none; min-height:22px; padding:2px 6px; font-size:10px; }
-    .properties-dock { flex:0 0 50%; min-height:0; overflow:auto; padding:7px; }
-    .right-dock-divider { flex:none; height:7px; cursor:row-resize; touch-action:none; border-top:1px solid #101318; border-bottom:1px solid #3f4651; background:#181b20; }
-    .right-dock-divider:hover,.right-dock-divider.active { background:#4fa3ff66; }
-    .layers-dock { flex:1 1 auto; min-height:0; overflow:hidden; display:flex; flex-direction:column; padding:6px 7px 7px; }
-    .properties-dock.collapsed { flex:0 0 31px !important; overflow:hidden; }
-    .layers-dock.collapsed { flex:0 0 31px !important; overflow:hidden; }
-    .properties-dock.collapsed > :not(.dock-heading),.layers-dock.collapsed > :not(.layers-title-row) { display:none !important; }
+    .properties-dock { flex:0 0 56%; min-width:0; min-height:0; overflow:auto; padding:7px; }
+    .layers-dock { flex:1 1 auto; min-width:0; min-height:0; overflow:hidden; display:flex; flex-direction:column; padding:6px 7px 7px; }
     .dock-heading { display:flex; align-items:center; gap:5px; min-height:28px; }
-    .floating-panel .dock-heading,.floating-panel .layers-title-row { cursor:move; user-select:none; touch-action:none; }
+    .dock-heading,.layers-title-row { cursor:move; user-select:none; touch-action:none; }
     .dock-title { flex:1; min-width:0; color:#c9d3df; font-weight:600; }
-    .dock-toggle { flex:1; display:flex; align-items:center; gap:5px; min-width:0; padding:2px 0; border:0; background:transparent; color:#c9d3df; font-weight:600; text-align:left; }
-    .dock-toggle::before { content:"▾"; width:10px; color:#9eabb9; }
-    .collapsed .dock-toggle::before { content:"▸"; }
     .layers-dock .layers-title-row { margin-top:0; }
     .layers-dock .hint { flex:none; margin-bottom:6px; }
+    html.external-palette-active:not([data-palette-window="1"]) .right { display:none; }
+    html[data-palette-window="1"] body { overflow:hidden; }
+    html[data-palette-window="1"] body > header,
+    html[data-palette-window="1"] .layout > .left,
+    html[data-palette-window="1"] .layout > .canvas-panel { display:none !important; }
+    html[data-palette-window="1"] .layout { display:block; height:100%; min-width:580px; }
+    html[data-palette-window="1"] .right {
+      position:fixed; inset:0; z-index:1; display:grid; grid-template-columns:minmax(280px,1fr) 7px minmax(280px,1fr);
+      gap:0; padding:7px; background:var(--bg); pointer-events:auto;
+    }
+    html[data-palette-window="1"] .properties-dock.floating-panel,
+    html[data-palette-window="1"] .layers-dock.floating-panel {
+      position:static; width:auto !important; height:auto !important; min-width:0; max-width:none; max-height:none;
+      border-radius:5px; resize:none; box-shadow:none;
+    }
+    html[data-palette-window="1"] .properties-dock.floating-panel { grid-column:1; }
+    html[data-palette-window="1"] .layers-dock.floating-panel { grid-column:3; }
+    .external-palette-divider {
+      grid-column:2; cursor:col-resize; touch-action:none; background:transparent;
+      border-left:1px solid transparent; border-right:1px solid transparent;
+    }
+    .external-palette-divider:hover,.external-palette-divider.active {
+      border-color:#4fa3ff88; background:#4fa3ff33;
+    }
     .section-title { color:#c9d3df; font-weight:600; margin:6px 0; }
     .hint { color:var(--muted); font-size:10px; line-height:1.25; margin:3px 0 6px; }
     #frameAssetWarning[data-level="warn"] { color:#e7bd72; }
@@ -166,8 +180,8 @@
     .drawer .sfx-card canvas { width:min(76px,100%); height:auto; aspect-ratio:19/15; }
     .drawer .sfx-card .shape-name { display:block; min-height:16px; line-height:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     #quickShapes,#quickSfx,#quickStamps,#quickFrames,#quickEmphasisLines { grid-template-columns:repeat(2,minmax(0,1fr)); }
-    #quickEmphasisLines .emphasis-card,#allEmphasisLines .emphasis-card { border-color:#876f2f; background:#3d3420; color:#ffe6a3; }
-    #quickEmphasisLines .emphasis-card:hover,#allEmphasisLines .emphasis-card:hover { border-color:#e6bc4b; }
+    #quickEmphasisLines .emphasis-card,#allEmphasisLines .emphasis-card { border-color:var(--line); background:var(--layer); color:var(--text); }
+    #quickEmphasisLines .emphasis-card:hover,#allEmphasisLines .emphasis-card:hover { border-color:var(--accent); }
     #openEmphasisDrawer { border-color:#876f2f; background:#5c4518; color:#ffe6a3; }
     #openEmphasisDrawer:hover { border-color:#e6bc4b; background:#73591f; }
     .drawer.open { transform:translateX(0); }
@@ -226,7 +240,14 @@
     #openSfxDrawer { background:#5a4328; border-color:#9b7441; color:#fff3d8; }
     #openStampDrawer { background:#503b5d; border-color:#8a67a0; color:#faefff; }
     #openFrameDrawer { background:#29414b; border-color:#527887; color:#e4f7ff; }
-    #addText { background:#293730; border-color:#4c6558; color:#dcebe2; }
+    #addText { min-height:46px; background:#5650c9; border-color:#817cf2; color:#fff; font-weight:700; }
+    #addText:hover { background:#6660db; }
+    .dock-float-button { background:#243b52; border-color:#4e7397; color:#cfe8ff; }
+    .floating-panel .dock-return-button { background:#315f87; border-color:#6ba6d2; color:#fff; }
+    [data-comic-converter-open] { background:#a94f19; border-color:#db7937; color:#fff; }
+    [data-comic-converter-open]:hover { background:#bd5b20; }
+    .comic-insert-target-status { margin:4px 2px 6px; color:#8fc8f4; font-size:10px; line-height:1.25; }
+    #openEditorSettings { border-color:#8461aa; background:#38284a; color:#f2e7ff; }
     #randomizeShape { background:#2b3638; border-color:#50666a; color:#dce9eb; }
     #saveUserPreset { background:#393328; border-color:#665a42; color:#eee4cd; }
     .vector-tools button { background:#302f3a; border-color:#57566a; color:#e1deea; }
@@ -243,7 +264,7 @@
     .font-picker-button { width:100%; min-height:29px; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:5px; padding:3px 5px; text-align:left; }
     .font-current-name { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--text); font-size:12px; }
     .font-language-badge { flex:none; border:1px solid #536476; border-radius:3px; background:#27323d; color:#c9d9e8; padding:2px 5px; font:600 9px Segoe UI,Arial,sans-serif; letter-spacing:.02em; }
-    .font-browser { position:fixed; z-index:500; display:none; width:min(540px,calc(100vw - 24px)); max-height:min(680px,calc(100vh - 24px)); border:1px solid #59616d; border-radius:6px; background:#1d2127; box-shadow:0 14px 45px #000c; overflow:hidden; }
+    .font-browser { position:fixed; z-index:100000; display:none; width:min(540px,calc(100vw - 24px)); max-height:min(680px,calc(100vh - 24px)); border:1px solid #59616d; border-radius:6px; background:#1d2127; box-shadow:0 14px 45px #000c; overflow:hidden; }
     .font-browser.open { display:flex; flex-direction:column; }
     .font-browser-head { display:flex; align-items:center; gap:8px; padding:9px 10px; border-bottom:1px solid var(--line); }
     .font-browser-head strong { flex:1; font-size:14px; }
@@ -310,7 +331,6 @@
     :root[data-theme="light"] header { border-bottom-color:#c8d0d9; }
     :root[data-theme="light"] .left { border-right-color:#c8d0d9; }
     :root[data-theme="light"] .right { border-left-color:#c8d0d9; }
-    :root[data-theme="light"] .right-dock-divider { border-color:#c8d0d9; background:#e4e8ed; }
     :root[data-theme="light"] .drawer { border-right-color:#c8d0d9; box-shadow:8px 0 20px #0002; }
     :root[data-theme="light"] .layer.selected { background:#dceeff; }
     :root[data-theme="light"] .font-browser { background:#fff; box-shadow:0 14px 45px #0003; }
@@ -336,11 +356,18 @@
   </header>
   <div class="layout">
     <aside class="left">
+      <details class="left-section comic-converter-launcher" data-left-section="comic-converter" open>
+        <summary>コミック変換</summary>
+        <div class="comic-converter-source-summary" data-comic-converter-source-summary>画像を選択してください</div>
+        <button type="button" data-comic-converter-open>コミック変換を開く</button>
+      </details>
       <details class="left-section" data-left-section="bubbles" open>
         <summary>Speech Bubbles</summary>
         <div id="quickShapes" class="palette"></div>
         <button id="openShapeDrawer" title="Open the full speech bubble and shape library">Browse Shapes…</button>
       </details>
+      <button id="addText" title="Add a new text layer" style="width:100%;margin-top:5px;">＋ Add Text</button>
+      <div id="comicInsertTargetStatus" class="comic-insert-target-status" hidden>追加先：コマ1</div>
       <details class="left-section" data-left-section="sfx" open>
         <summary>Onomatopoeia / SFX</summary>
         <div id="quickSfx" class="palette"></div>
@@ -361,7 +388,6 @@
         <div id="quickFrames" class="palette"></div>
         <button id="openFrameDrawer" title="Open the frame library">Browse Frames…</button>
       </details>
-      <button id="addText" title="Add a new text layer" style="width:100%;margin-top:5px;">＋ Text</button>
       <div id="shapeDrawer" class="drawer">
         <div class="drawer-resizer" title="Drag to resize. Double-click to reset."></div>
         <div class="drawer-head"><strong id="shapeDrawerTitle">All Speech Bubbles</strong><button id="closeShapeDrawer" title="Close the shape library">Close</button></div>
@@ -411,8 +437,8 @@
       <div class="footer">Wheel: zoom　Middle mouse or Space + drag: pan　Drag: move　8 handles: resize　Standard: lock ratio　Shift + corner: free transform　Green handle: rotate</div>
     </main>
       <aside class="right">
-      <section id="propertiesDock" class="properties-dock">
-      <div class="dock-heading"><span class="dock-drag-grip" data-dock-drag="properties" title="Propertiesを移動">•••</span><span id="propertiesDockTitle" class="dock-title">Properties</span><button id="propertiesDockFloat" class="dock-float-button" type="button" title="Propertiesだけをフローティング表示">フロート</button><button id="propertiesDockReturn" class="dock-return-button" type="button" title="Propertiesを右側へ戻す">右側へ戻す</button></div>
+      <section id="propertiesDock" class="properties-dock floating-panel">
+      <div class="dock-heading"><span id="propertiesDockTitle" class="dock-title">Properties</span></div>
       <div id="empty" class="hint">Select a layer to edit it.</div>
       <div id="properties" class="disabled">
         <div id="groupProps" class="selection-info" hidden><strong id="selectionCount">Multiple layers selected</strong><div>Drag the canvas handles to move, resize, or rotate them together.</div></div>
@@ -604,9 +630,8 @@
         </details>
       </div>
       </section>
-      <div id="rightDockDivider" class="right-dock-divider" role="separator" aria-label="Resize Properties and Layers" aria-orientation="horizontal" tabindex="0"></div>
-      <section id="layersDock" class="layers-dock">
-        <div class="layers-title-row"><span class="dock-drag-grip" data-dock-drag="layers" title="Layersを移動">•••</span><button id="layersDockToggle" class="dock-toggle" type="button" aria-expanded="true" title="Show or hide the Layers panel">Layers</button><button id="groupSelection" title="Group selected layers (Ctrl+G)">Group</button><button id="ungroupSelection" title="Ungroup selected layers (Ctrl+Shift+G)">Ungroup</button><button id="layersDockFloat" class="dock-float-button" type="button" title="Layersだけをフローティング表示">フロート</button><button id="layersDockReturn" class="dock-return-button" type="button" title="Layersを右側へ戻す">右側へ戻す</button></div>
+      <section id="layersDock" class="layers-dock floating-panel">
+        <div class="layers-title-row"><span id="layersDockTitle" class="dock-title">Layers</span><button id="groupSelection" title="Group selected layers (Ctrl+G)">Group</button><button id="ungroupSelection" title="Ungroup selected layers (Ctrl+Shift+G)">Ungroup</button></div>
         <div class="hint" title="Alt-click selects inside a group. Alt-drag moves independently.">Ctrl/Shift: Multi-select</div>
         <div id="layers" class="layers"></div>
       </section>
@@ -654,6 +679,10 @@
   </dialog>
   <script>
     const params = new URLSearchParams(location.search);
+    const isPaletteWindow = params.get("palette") === "1";
+    if(isPaletteWindow)document.documentElement.dataset.paletteWindow="1";
+    const uiEnglish=()=>document.documentElement.lang==="en";
+    const uiText=(ja,en)=>uiEnglish()?en:ja;
     const jsonKey = params.get("jsonKey") || `speech_bubble:standalone:${Date.now()}`;
     const directFileMode = location.protocol === "file:";
     const hostMode = params.get("host") || (directFileMode ? "desktop-file" : "standalone");
@@ -675,9 +704,10 @@
     const apiBase = (params.get("apiBase") || "/speech_bubble").replace(/\/$/, "");
     const forgeApiBase = (params.get("forgeApiBase") || "/speech-bubble-editor").replace(/\/$/, "");
     const desktopLaunchToken = params.get("token") || "";
-    let autoSaveEnabled = params.get("autoSave") !== "0";
+    let autoSaveEnabled = params.get("autoSave") !== "0" && !isPaletteWindow;
     const startupBehavior = ["resume","new"].includes(params.get("startupBehavior")) ? params.get("startupBehavior") : "ask";
     let autoSaveDelay = Math.max(5000, Math.min(3600000, Number(params.get("autoSaveDelay")) || 30000));
+    let lastRecoveryCheckpoint=Date.now();
     const keepLayoutEnabled = params.get("keepLayout") !== "0";
     const promptExportLocation = params.get("promptExportLocation") === "1";
     const useForgeOutputDir = params.get("useForgeOutputDir") !== "0";
@@ -725,23 +755,33 @@
     let pendingFreshBaseline = false;
     let imageRestoreResolver = null;
     let standaloneResumeResolver = null;
+    let standaloneResumePromise = null;
     const DEBUG_RENDER = false;
     let renderFrameId = 0;
     let renderRevision = Math.max(0, Math.round(Number(params.get("revisionBase")) || 0));
     let pendingRenderOptions = {canvas:false,layers:false,preview:false};
     const state = { width: 1024, height: 1024, zoom: 1, panX: 0, panY: 0, backgroundVisible: true, elements: [], selected: null, selection: [], vectorEditId: null, vectorAnchorIndex: null, vectorAddMode: false, drag: null, undo: [], redo: [], propertyEditSnapshot: null, canvasFromLayout: false, spaceDown: false };
+    const WORKSPACE_VIEW_KEY="speech_bubble:workspace_views:v1";
+    function storedWorkspaceViews(){try{const value=JSON.parse(localStorage.getItem(WORKSPACE_VIEW_KEY)||"{}");return value&&typeof value==="object"?value:{};}catch{return{};}}
+    const storedViews=storedWorkspaceViews();
+    const firstApplicationView=!storedViews.single&&!storedViews.comic;
+    function normalizedWorkspaceView(value){const zoom=Number(value?.zoom),panX=Number(value?.panX),panY=Number(value?.panY);return Number.isFinite(zoom)&&Number.isFinite(panX)&&Number.isFinite(panY)?{zoom:Math.max(.1,Math.min(4,zoom)),panX,panY}:null;}
+    function saveWorkspaceViews(){try{localStorage.setItem(WORKSPACE_VIEW_KEY,JSON.stringify({single:workspaces.single.view||null,comic:workspaces.comic.view||null}));}catch{}}
     let activeWorkspace="single";
     const workspaces={
-      single:{width:1024,height:1024,backgroundVisible:true,elements:[]},
-      comic:{width:720,height:2160,backgroundVisible:true,elements:[]},
+      single:{width:1024,height:1024,backgroundVisible:true,elements:[],view:normalizedWorkspaceView(storedViews.single)},
+      comic:{width:720,height:2160,backgroundVisible:true,elements:[],view:normalizedWorkspaceView(storedViews.comic)},
     };
     function captureActiveWorkspace(){
       const target=workspaces[activeWorkspace];
       target.width=state.width;target.height=state.height;target.backgroundVisible=state.backgroundVisible;target.elements=state.elements;
+      target.view={zoom:state.zoom,panX:state.panX,panY:state.panY};saveWorkspaceViews();
     }
+    function restoreWorkspaceView(source,renderCanvas=false){const view=normalizedWorkspaceView(source?.view);if(!view){fitView(renderCanvas);return;}state.zoom=view.zoom;state.panX=view.panX;state.panY=view.panY;applyViewTransform();if(renderCanvas)requestRender({canvas:true});}
     function switchEditorWorkspace(requested){
       const next=requested==="comic"?"comic":"single";
       if(next===activeWorkspace)return;
+      if(hostMode==="desktop"&&!isPaletteWindow)window.SpeechBubbleDesktopShell?.saveRecovery?.(true).catch?.(error=>console.warn("Speech Bubble workspace checkpoint failed",error));
       captureActiveWorkspace();
       activeWorkspace=next;
       const source=workspaces[next];
@@ -750,15 +790,16 @@
       state.backgroundVisible=source.backgroundVisible!==false;
       state.elements=source.elements;
       state.selected=null;state.selection=[];state.vectorEditId=null;state.vectorAnchorIndex=null;state.vectorAddMode=false;state.drag=null;
-      fitView(false);
+      restoreWorkspaceView(source,false);
     }
-    let comicEditor=null,comicOverlayExport=false;
+    let comicEditor=null,comicConverter=null,comicOverlayExport=false;
     function initializeComicEditor(){
       if(!["desktop","desktop-file"].includes(hostMode)||comicEditor||!window.SpeechBubbleComicEditor)return comicEditor;
       comicEditor=window.SpeechBubbleComicEditor.create({
         getCanvasState:()=>state,
         getDocumentId:()=>documentId,
         getSourceImage:()=>image,
+        getSourceBlob:()=>sourceImageBlob(),
          getSourceName:()=>sourceName,
          pushUndo,
          clearLayerSelection:()=>setSelection([],null),
@@ -789,8 +830,34 @@
          syncActionState:updateActionState,
          setStatus:setSaveState,
          switchWorkspace:switchEditorWorkspace,
+         syncInsertTargetStatus,
        });
       return comicEditor;
+    }
+    function initializeComicConverter(){
+      if(comicConverter||!window.SpeechBubbleComicConverter)return comicConverter;
+      comicConverter=window.SpeechBubbleComicConverter.create({
+        getMode:()=>comicEditor?.isActive()?"comic":"single",
+        getDocumentId:()=>documentId,
+        getSingleSource:async()=>{
+          if(!imageLoaded||!image.naturalWidth)return null;
+          return{blob:await sourceImageBlob(),name:sourceName||"speech_bubble",width:image.naturalWidth,height:image.naturalHeight};
+        },
+        getComicSources:()=>comicEditor?.getConversionSources?.()||Promise.resolve([]),
+        addPageImage:(blob,name)=>comicEditor?.addConvertedImage?.(blob,name),
+        applySingleImage:async(blob,name)=>{
+          if(!blob)return false;
+          const currentDocumentId=documentId,currentMode=documentMode;
+          await displayImageBlob(blob,{name:name||`${sourceName||"speech_bubble"}-comic`,tab:sourceTab});
+          documentId=currentDocumentId;documentMode=currentMode;
+          scaleStateToImageSize(image.naturalWidth,image.naturalHeight);
+          if(documentMode==="standalone")await storeDocumentBackground(documentId,blob,sourceName);
+          layoutDirty=true;requestRender({canvas:true,layers:true,preview:true});syncProperties();scheduleAutoSave();updateActionState();
+          return true;
+        },
+        setStatus:setSaveState,
+      });
+      return comicConverter;
     }
     const savedLayoutKey = (id=documentId) => id ? `${SAVED_LAYOUT_PREFIX}${id}` : "";
     const draftLayoutKey = (id=documentId) => id ? `${DRAFT_LAYOUT_PREFIX}${id}` : "";
@@ -848,7 +915,7 @@
     async function storeGeneratedBackground(id,blob,name,tab,url){if(!id?.startsWith("generated:")||!blob)return;try{await storeCachedBackground({documentId:id,kind:"generated",blob,sourceName:name||"speech_bubble",sourceTab:tab||"",sourceUrl:String(url||"")});}catch(error){console.warn("Speech Bubble generated background save failed",error);}}
     function setSaveState(message,level="info"){const node=document.getElementById("saveState");if(!node)return;node.textContent=message;node.dataset.level=level;}
     function hasEditableDocument(){return Boolean(imageLoaded&&image.naturalWidth)||Boolean(comicEditor?.isActive());}
-    function updateActionState(){const hasDocument=hasEditableDocument();document.getElementById("saveLayout").disabled=!hasDocument;document.getElementById("exportImage").disabled=!hasDocument;document.getElementById("discardChanges").disabled=!hasDocument||!layoutDirty;document.getElementById("emptyCanvasState").hidden=hasDocument;if(!hasDocument)setSaveState("画像を読み込んでください","info");else if(layoutDirty)setSaveState(autoSaveEnabled?"未保存の変更（下書き保存対象）":"未保存の変更があります","dirty");else if(hasExplicitSavedLayout)setSaveState("レイアウト保存済み","saved");else setSaveState(comicEditor?.isActive()&&!imageLoaded?"新規漫画ページ":"新規レイアウト","info");}
+    function updateActionState(){const hasDocument=hasEditableDocument();document.getElementById("saveLayout").disabled=!hasDocument;document.getElementById("exportImage").disabled=!hasDocument;document.getElementById("discardChanges").disabled=!hasDocument||!layoutDirty;document.getElementById("emptyCanvasState").hidden=hasDocument;if(!hasDocument)setSaveState(uiText("画像を読み込んでください","Load an image to begin"),"info");else if(layoutDirty)setSaveState(autoSaveEnabled?uiText("未保存の変更（下書き保存対象）","Unsaved changes (included in draft)"):uiText("未保存の変更があります","Unsaved changes"),"dirty");else if(hasExplicitSavedLayout)setSaveState(uiText("レイアウト保存済み","Layout saved"),"saved");else setSaveState(comicEditor?.isActive()&&!imageLoaded?uiText("新規漫画ページ","New comic page"):uiText("新規レイアウト","New layout"),"info");}
     function markLayoutDirty(){if(!dirtyTrackingEnabled||!hasEditableDocument())return;layoutDirty=currentLayoutJson()!==lastSavedLayout;updateActionState();}
     let sfxBrowseMode="sfx";
     let sfxSortMode="recommended";
@@ -864,6 +931,8 @@
     const ASSET_FAVORITES_KEY = "speech_bubble:asset_favorites:v1";
     const FONT_LANGUAGE_ORDER = ["ja","zh-hans","zh-hant","ko","latin","arabic","hebrew","devanagari","emoji","symbol","other"];
     const FONT_LANGUAGE_LABELS = {ja:"日本語","zh-hans":"简体中文","zh-hant":"繁體中文",ko:"한국어",latin:"Latin",arabic:"العربية",hebrew:"עברית",devanagari:"देवनागरी",emoji:"Emoji",symbol:"Symbols",other:"Other"};
+    const FONT_LANGUAGE_LABELS_EN = {ja:"Japanese","zh-hans":"Simplified Chinese","zh-hant":"Traditional Chinese",ko:"Korean",latin:"Latin",arabic:"Arabic",hebrew:"Hebrew",devanagari:"Devanagari",emoji:"Emoji",symbol:"Symbols",other:"Other"};
+    function fontLanguageLabel(language){return(uiEnglish()?FONT_LANGUAGE_LABELS_EN:FONT_LANGUAGE_LABELS)[language]||"Other";}
     const COMIC_YELLOW = "#ffd42a";
     const SFX_ASSET_VERSION = assetCacheVersion;
     const SFX_SORT_KEY = "speech_bubble:sfx_sort:v1";
@@ -872,9 +941,9 @@
     const EMPHASIS_EDGE_OVERSHOOT = .035;
     const EMPHASIS_PRESETS = Object.freeze([
       Object.freeze({id:"center",label:"Center",line_count:180,inner_x:.5,inner_y:.5,line_width:.006,line_length:1,taper:1,center_x:.5,center_y:.5,length_random:0,inner_random:.5,width_random:.48,spacing_random:.38}),
-      Object.freeze({id:"wide",label:"Wide",line_count:210,inner_x:.27,inner_y:.16,line_width:.005,line_length:1,taper:1,center_x:.5,center_y:.5,length_random:0,inner_random:.5,width_random:.55,spacing_random:.42}),
-      Object.freeze({id:"tall",label:"Tall",line_count:190,inner_x:.13,inner_y:.29,line_width:.0055,line_length:1,taper:1,center_x:.5,center_y:.5,length_random:0,inner_random:.5,width_random:.50,spacing_random:.42}),
-      Object.freeze({id:"side",label:"One Side",line_count:130,inner_x:.15,inner_y:.20,line_width:.008,line_length:1,taper:1,center_x:-.12,center_y:.5,length_random:0,inner_random:.5,width_random:.50,spacing_random:.34}),
+      Object.freeze({id:"wide",label:"Wide",line_count:210,inner_x:.45,inner_y:.45,line_width:.005,line_length:1,taper:1,center_x:.5,center_y:.5,length_random:0,inner_random:.5,width_random:.55,spacing_random:.42}),
+      Object.freeze({id:"tall",label:"Tall",line_count:190,inner_x:.45,inner_y:.45,line_width:.0055,line_length:1,taper:1,center_x:.5,center_y:.5,length_random:0,inner_random:.5,width_random:.50,spacing_random:.42}),
+      Object.freeze({id:"side",label:"One Side",line_count:130,inner_x:.45,inner_y:.45,line_width:.008,line_length:1,taper:1,center_x:-.12,center_y:.5,length_random:0,inner_random:.5,width_random:.50,spacing_random:.34}),
     ]);
     const EMPHASIS_BY_ID = new Map(EMPHASIS_PRESETS.map(preset=>[preset.id,preset]));
     const EMPHASIS_GEOMETRY_KEYS = new Set(["preset","line_count","inner_x","inner_y","line_width","line_length","taper","center_x","center_y","length_random","inner_random","width_random","spacing_random","seed","w","h"]);
@@ -1432,19 +1501,22 @@
     function fontLanguageBadge(font){if(!font)return"AUTO";const base={ja:"JP","zh-hans":"SC","zh-hant":"TC",ko:"KR",latin:"EN",arabic:"AR",hebrew:"HE",devanagari:"HI",emoji:"EMOJI",symbol:"SYM",other:"OTHER"}[font.language]||"OTHER";return font.supports_latin&&base!=="EN"&&!["EMOJI","SYM","OTHER"].includes(base)?`${base}+EN`:base;}
     const loadedFontFaces=new Set(),fontLoadPromises=new Map(),failedFontFaces=new Map();
     function fontCssFamily(font){return font?.id?`SpeechBubbleFont_${font.id}`:String(font?.family||"sans-serif").replaceAll('"',"");}
+    function hasSavedFontIdentity(item){const family=fontFamilyKey(item?.font_family);return Boolean(item?.font_id||item?.font_path||(family&&family!=="sans-serif"));}
+    function matchingSavedFont(item,catalog=fontCatalog){return catalog.find(candidate=>candidate.id===item?.font_id)||catalog.find(candidate=>candidate.path&&candidate.path===item?.font_path)||catalog.find(candidate=>fontFamilyKey(candidate.family)===fontFamilyKey(item?.font_family))||null;}
+    function applyResolvedFont(item,font){item.font_id=font.id;item.font_family=font.family;item.font_css_family=fontCssFamily(font);item.font_path="";}
     function fontFileUrl(fontId){const url=new URL(`${apiBase}/font-file/${encodeURIComponent(fontId)}`,location.href);if(desktopLaunchToken)url.searchParams.set("token",desktopLaunchToken);return url.href;}
     async function ensureFontLoaded(font){if(!font?.id)return false;if(loadedFontFaces.has(font.id))return true;if(!fontLoadPromises.has(font.id)){const promise=(async()=>{const face=new FontFace(fontCssFamily(font),`url("${fontFileUrl(font.id)}")`);await face.load();document.fonts.add(face);loadedFontFaces.add(font.id);failedFontFaces.delete(font.id);return true;})().catch(error=>{const name=font.name||font.family||font.id;failedFontFaces.set(font.id,`${name}: ${error?.message||"load failed"}`);console.warn(`Speech Bubble font could not be loaded: ${name}`,error);if(fontLoadPromises.get(font.id)===promise)fontLoadPromises.delete(font.id);return false;});fontLoadPromises.set(font.id,promise);}return fontLoadPromises.get(font.id);}
     function applyFontPreviewStyle(node,font){const family=fontCssFamily(font),style=String(font?.style||"").toLowerCase();node.style.fontFamily=`"${family}", sans-serif`;node.style.fontStyle=style.includes("italic")||style.includes("oblique")?"italic":"normal";node.style.fontWeight=style.includes("black")||style.includes("heavy")?"900":style.includes("bold")?"700":style.includes("semi")||style.includes("demi")?"600":style.includes("medium")?"500":style.includes("light")?"300":style.includes("thin")?"200":"400";}
-    function selectedFont(){const item=state.elements.find(element=>element.id===state.selected);if(item?.type!=="text")return null;return fontCatalog.find(font=>font.id===item.font_id)||fontCatalog.find(font=>fontFamilyKey(font.family)===fontFamilyKey(item.font_family))||null;}
+    function selectedFont(){const item=state.elements.find(element=>element.id===state.selected);return item?.type==="text"?matchingSavedFont(item):null;}
     function updateFontPicker(item){const name=document.getElementById("fontCurrentName"),badge=document.getElementById("fontCurrentBadge"),button=document.getElementById("fontPickerButton");if(!name||!badge||!button)return;const font=item?.type==="text"?(fontCatalog.find(candidate=>candidate.id===item.font_id)||fontCatalog.find(candidate=>fontFamilyKey(candidate.family)===fontFamilyKey(item.font_family))):null;name.textContent=font?.name||item?.font_family||"Auto / System Default";badge.textContent=fontLanguageBadge(font);applyFontPreviewStyle(name,font);button.setAttribute("aria-label",`Choose font. Current: ${name.textContent}`);}
     function fontFamilyByKey(key){return fontFamilies.find(family=>family.key===key);}
     function markRecentFont(family){const next=[family.key,...storedStringList(FONT_RECENT_KEY).filter(key=>key!==family.key)].slice(0,12);saveStringList(FONT_RECENT_KEY,next);}
     function toggleFavoriteFont(family){const current=storedStringList(FONT_FAVORITES_KEY),exists=current.includes(family.key),next=exists?current.filter(key=>key!==family.key):[family.key,...current];saveStringList(FONT_FAVORITES_KEY,next);renderFontBrowser();}
-    async function selectFontRecord(font,family){const item=state.elements.find(element=>element.id===state.selected);if(!item||item.type!=="text"||item.locked)return;const selectedId=item.id;setSaveState(`${font.name||font.family} を読み込んでいます…`,"info");if(!await ensureFontLoaded(font)){setSaveState(`${font.name||font.family} を読み込めませんでした`,"error");return;}const current=state.elements.find(element=>element.id===selectedId);if(!current||current.type!=="text"||current.locked)return;pushUndo();current.font_id=font.id;current.font_family=font.family;current.font_css_family=fontCssFamily(font);current.font_path="";fitTextBox(current,true,!current.auto_fit);markRecentFont(family);syncProperties();render();setSaveState(`${font.name||font.family} を適用しました`,"info");}
+    async function selectFontRecord(font,family){const item=state.elements.find(element=>element.id===state.selected);if(!item||item.type!=="text"||item.locked)return;const selectedId=item.id;setSaveState(`${font.name||font.family} を読み込んでいます…`,"info");if(!await ensureFontLoaded(font)){setSaveState(`${font.name||font.family} を読み込めませんでした`,"error");return;}const current=state.elements.find(element=>element.id===selectedId);if(!current||current.type!=="text"||current.locked)return;pushUndo();applyResolvedFont(current,font);fitTextBox(current,true,!current.auto_fit);markRecentFont(family);syncProperties();render();setSaveState(`${font.name||font.family} を適用しました`,"info");}
     function familiesForFontFilter(filter){if(filter==="favorites")return storedStringList(FONT_FAVORITES_KEY).map(fontFamilyByKey).filter(Boolean);if(filter==="recent")return storedStringList(FONT_RECENT_KEY).map(fontFamilyByKey).filter(Boolean);if(filter==="other")return fontFamilies.filter(family=>!["ja","zh-hans","zh-hant","ko","latin"].includes(family.language));if(filter==="all")return fontFamilies;return fontFamilies.filter(family=>family.language===filter);}
-    function createFontRow(family,font=family.primary,isVariant=false){const row=document.createElement("div");row.className=`font-row${isVariant?" font-variant-row":""}`;row.setAttribute("role","option");const current=selectedFont();if(current?.id===font.id)row.classList.add("selected");const favorite=document.createElement(isVariant?"span":"button");if(isVariant){favorite.setAttribute("aria-hidden","true");}else{const active=storedStringList(FONT_FAVORITES_KEY).includes(family.key);favorite.type="button";favorite.className=`font-favorite${active?" active":""}`;favorite.textContent=active?"★":"☆";favorite.title=active?"Remove from favorites":"Add to favorites";favorite.setAttribute("aria-label",active?`Remove ${family.family} from favorites`:`Add ${family.family} to favorites`);favorite.setAttribute("aria-pressed",String(active));favorite.onclick=event=>{event.stopPropagation();toggleFavoriteFont(family);};}const choose=document.createElement("button");choose.type="button";choose.className="font-family-select";const title=document.createElement("span");title.className="font-family-name";title.textContent=isVariant?(font.style||font.name):family.family;const meta=document.createElement("span"),badge=document.createElement("span");meta.className="font-family-meta";badge.className="font-language-badge";badge.textContent=fontLanguageBadge(font);meta.append(badge);if(!isVariant&&font.style){const style=document.createElement("span");style.textContent=font.style;meta.append(style);}choose.append(title,meta);const sample=document.createElement("button");sample.type="button";sample.className="font-sample";sample.textContent=font.sample||family.sample;applyFontPreviewStyle(sample,font);choose.onclick=sample.onclick=()=>selectFontRecord(font,family);ensureFontLoaded(font).then(loaded=>{if(loaded&&document.body.contains(sample))sample.style.fontFamily=`\"${fontCssFamily(font)}\", sans-serif`;else if(!loaded&&document.body.contains(row)){row.classList.add("font-load-failed");sample.textContent=`読込失敗: ${font.name||font.family||font.id}`;sample.title=failedFontFaces.get(font.id)||sample.textContent;}});const styles=document.createElement("span");if(!isVariant&&family.variants.length>1){const button=document.createElement("button");button.type="button";button.className="font-styles";button.textContent=expandedFontFamilies.has(family.key)?"Hide":`${family.variants.length} styles`;button.onclick=event=>{event.stopPropagation();expandedFontFamilies.has(family.key)?expandedFontFamilies.delete(family.key):expandedFontFamilies.add(family.key);renderFontBrowser();};row.append(favorite,choose,sample,button);}else row.append(favorite,choose,sample,styles);return row;}
+    function createFontRow(family,font=family.primary,isVariant=false){const row=document.createElement("div");row.className=`font-row${isVariant?" font-variant-row":""}`;row.setAttribute("role","option");const current=selectedFont();if(current?.id===font.id)row.classList.add("selected");const favorite=document.createElement(isVariant?"span":"button");if(isVariant){favorite.setAttribute("aria-hidden","true");}else{const active=storedStringList(FONT_FAVORITES_KEY).includes(family.key);favorite.type="button";favorite.className=`font-favorite${active?" active":""}`;favorite.textContent=active?"★":"☆";favorite.title=active?uiText("お気に入りから削除","Remove from favorites"):uiText("お気に入りに追加","Add to favorites");favorite.setAttribute("aria-label",active?`Remove ${family.family} from favorites`:`Add ${family.family} to favorites`);favorite.setAttribute("aria-pressed",String(active));favorite.onclick=event=>{event.stopPropagation();toggleFavoriteFont(family);};}const choose=document.createElement("button");choose.type="button";choose.className="font-family-select";const title=document.createElement("span");title.className="font-family-name";title.textContent=isVariant?(font.style||font.name):family.family;const meta=document.createElement("span"),badge=document.createElement("span");meta.className="font-family-meta";badge.className="font-language-badge";badge.textContent=fontLanguageBadge(font);meta.append(badge);if(!isVariant&&font.style){const style=document.createElement("span");style.textContent=font.style;meta.append(style);}choose.append(title,meta);const sample=document.createElement("button");sample.type="button";sample.className="font-sample";sample.textContent=font.sample||family.sample;applyFontPreviewStyle(sample,font);choose.onclick=sample.onclick=()=>selectFontRecord(font,family);ensureFontLoaded(font).then(loaded=>{if(loaded&&document.body.contains(sample))sample.style.fontFamily=`\"${fontCssFamily(font)}\", sans-serif`;else if(!loaded&&document.body.contains(row)){row.classList.add("font-load-failed");sample.textContent=`${uiText("読込失敗","Load failed")}: ${font.name||font.family||font.id}`;sample.title=failedFontFaces.get(font.id)||sample.textContent;}});const styles=document.createElement("span");if(!isVariant&&family.variants.length>1){const button=document.createElement("button");button.type="button";button.className="font-styles";button.textContent=expandedFontFamilies.has(family.key)?"Hide":`${family.variants.length} styles`;button.onclick=event=>{event.stopPropagation();expandedFontFamilies.has(family.key)?expandedFontFamilies.delete(family.key):expandedFontFamilies.add(family.key);renderFontBrowser();};row.append(favorite,choose,sample,button);}else row.append(favorite,choose,sample,styles);return row;}
     function appendFontSection(host,label,families){if(!families.length)return;const heading=document.createElement("div");heading.className="font-section-title";heading.textContent=`${label} · ${families.length}`;host.append(heading);families.forEach(family=>{host.append(createFontRow(family));if(expandedFontFamilies.has(family.key))family.variants.filter(font=>font.id!==family.primary.id).forEach(font=>host.append(createFontRow(family,font,true)));});}
-    function renderFontBrowser(){const host=document.getElementById("fontList");if(!host)return;host.replaceChildren();const query=document.getElementById("fontSearch")?.value.trim().toLocaleLowerCase()||"";if(!fontFamilies.length){const empty=document.createElement("div");empty.className="font-empty";empty.textContent="Loading system fonts…";host.append(empty);return;}if(query){appendFontSection(host,"Search Results",fontFamilies.filter(family=>family.searchText.includes(query)));}else if(fontFilter==="all"){FONT_LANGUAGE_ORDER.forEach(language=>appendFontSection(host,FONT_LANGUAGE_LABELS[language],fontFamilies.filter(family=>family.language===language)));}else{const label={favorites:"Favorites",recent:"Recent",other:"Other scripts"}[fontFilter]||FONT_LANGUAGE_LABELS[fontFilter]||"Fonts";appendFontSection(host,label,familiesForFontFilter(fontFilter));}if(!host.children.length){const empty=document.createElement("div");empty.className="font-empty";empty.textContent=query?"No matching font families.":"No fonts in this section yet.";host.append(empty);}}
+    function renderFontBrowser(){const host=document.getElementById("fontList");if(!host)return;host.replaceChildren();const query=document.getElementById("fontSearch")?.value.trim().toLocaleLowerCase()||"";if(!fontFamilies.length){const empty=document.createElement("div");empty.className="font-empty";empty.textContent=uiText("システムフォントを読み込み中…","Loading system fonts…");host.append(empty);return;}if(query){appendFontSection(host,uiText("検索結果","Search Results"),fontFamilies.filter(family=>family.searchText.includes(query)));}else if(fontFilter==="all"){FONT_LANGUAGE_ORDER.forEach(language=>appendFontSection(host,fontLanguageLabel(language),fontFamilies.filter(family=>family.language===language)));}else{const label={favorites:uiText("お気に入り","Favorites"),recent:uiText("最近使用","Recent"),other:uiText("その他の文字体系","Other scripts")}[fontFilter]||fontLanguageLabel(fontFilter)||"Fonts";appendFontSection(host,label,familiesForFontFilter(fontFilter));}if(!host.children.length){const empty=document.createElement("div");empty.className="font-empty";empty.textContent=query?uiText("一致するフォントがありません。","No matching font families."):uiText("この分類にはフォントがありません。","No fonts in this section yet.");host.append(empty);}}
     function positionFontBrowser(){const browser=document.getElementById("fontBrowser"),button=document.getElementById("fontPickerButton"),propertiesDock=document.getElementById("propertiesDock");if(!browser?.classList.contains("open")||!button)return;const margin=12,gap=8,rect=button.getBoundingClientRect(),width=browser.offsetWidth,height=browser.offsetHeight;let left=Math.max(margin,Math.min(rect.left,innerWidth-width-margin)),top=Math.max(margin,Math.min(rect.bottom+5,innerHeight-height-margin));if(propertiesDock?.classList.contains("floating-panel")){const panel=propertiesDock.getBoundingClientRect(),leftOfPanel=panel.left-width-gap,rightOfPanel=panel.right+gap;if(leftOfPanel>=margin)left=leftOfPanel;else if(rightOfPanel+width<=innerWidth-margin)left=rightOfPanel;top=Math.max(margin,Math.min(panel.top,innerHeight-height-margin));}browser.style.left=`${Math.round(left)}px`;browser.style.top=`${Math.round(top)}px`;}
     function openFontBrowser(){const browser=document.getElementById("fontBrowser");browser.classList.add("open");document.getElementById("fontPickerButton").setAttribute("aria-expanded","true");renderFontBrowser();positionFontBrowser();document.getElementById("fontSearch").focus();}
     function closeFontBrowser(){document.getElementById("fontBrowser").classList.remove("open");document.getElementById("fontPickerButton").setAttribute("aria-expanded","false");}
@@ -1496,7 +1568,7 @@
       item.path_points=presetPath(preset.path,shapeOptions(item,tuning));
       return item;
     }
-    function defaultText() { const item={ id:id(), type:"text", x:600, y:150, w:320, h:80, text:"こんにちは", writing:"horizontal", align:"center", font_path:"", font_id:"", font_family:"sans-serif", font_css_family:"sans-serif", font_size:54, tracking:0, font_scale_x:100, font_scale_y:100, rotation:0, auto_fit:true, color:"#111111", stroke_width:0, stroke_color:"#ffffff", bold:false, italic:false, underline:false, strikethrough:false, shadow_enabled:false, shadow_color:"#000000", shadow_x:6, shadow_y:6, shadow_blur:4, visible:true }; fitTextBox(item); return item; }
+    function defaultText() { const item={ id:id(), type:"text", x:600, y:150, w:320, h:80, text:uiText("こんにちは","Hello!"), writing:"horizontal", align:"center", font_path:"", font_id:"", font_family:"sans-serif", font_css_family:"sans-serif", font_size:54, tracking:0, font_scale_x:100, font_scale_y:100, rotation:0, auto_fit:true, color:"#111111", stroke_width:0, stroke_color:"#ffffff", bold:false, italic:false, underline:false, strikethrough:false, shadow_enabled:false, shadow_color:"#000000", shadow_x:6, shadow_y:6, shadow_blur:4, visible:true }; fitTextBox(item); return item; }
     function versionedSfxSrc(src){if(!src)return src;return `${src}${String(src).includes("?")?"&":"?"}v=${SFX_ASSET_VERSION}`;}
     function sfxPresetFill(preset){if(!preset?.mask)return preset?.fill||"#111111";if(isComicStamp(preset)){if(String(preset.id||"").startsWith("arrow-"))return"#e53935";return COMIC_STAMP_FILLS.get(preset.id)||"#ffffff";}return preset.fill||(preset.category==="japanese"?COMIC_YELLOW:"#ffffff");}
     const compactSwatchTargets={text:"color",bubble:"fill",frame:"border_color",asset:"fill",emphasis:"color",shadow:"shadow_color",glow:"glow_color"};
@@ -1510,6 +1582,7 @@
     function basicSymbolKindFor(item){const kind=SFX_BY_ID.get(item?.asset_id)?.symbolKind;return ["circle","triangle","square","trapezoid"].includes(kind)?kind:"";}
     function normalizeBasicSymbolSettings(item){const kind=basicSymbolKindFor(item);if(kind==="trapezoid")item.symbol_top_width=normalizeNumericValue("symbol_top_width",item.symbol_top_width,100);if(kind==="square")item.symbol_skew=normalizeNumericValue("symbol_skew",item.symbol_skew,0);return kind;}
     function defaultSfx(presetId="don-exclamation-mask") { const preset=SFX_BY_ID.get(presetId)||SFX_PRESETS[0],style=preset.userPreset?(preset.styleDefaults||normalizeUserAssetStyle({},preset.w,preset.h)):null,mask=style?style.mask_mode:!!preset.mask,presetOutline=style?style.stroke_width:(Number.isFinite(Number(preset.outlineWidth))?Number(preset.outlineWidth):(mask?sfxDefaultOutlineWidth(preset):0)),item={id:id(),type:"sfx",asset_id:preset.id,asset_label:preset.label,asset_format:preset.format,asset_src:preset.src,asset_width:preset.w,asset_height:preset.h,user_preset_id:preset.userPresetId||"",user_asset_id:preset.userAssetId||"",mask_mode:mask,user_fill_initialized:!preset.userPreset||mask,fill:style?style.fill:sfxPresetFill(preset),stroke:style?style.stroke:(preset.stroke||"#111111"),stroke_width:presetOutline,x:0,y:0,w:style?style.width:preset.w,h:style?style.height:preset.h,rotation:0,opacity:style?style.opacity:1,shadow_enabled:style?style.shadow_enabled:false,shadow_color:style?style.shadow_color:"#000000",shadow_x:style?style.shadow_x:6,shadow_y:style?style.shadow_y:6,shadow_blur:style?style.shadow_blur:4,glow_enabled:style?style.glow_enabled:false,glow_color:style?style.glow_color:"#ffffff",glow_opacity:style?style.glow_opacity:.75,glow_blur:style?style.glow_blur:16,glow_spread:style?style.glow_spread:0,visible:true};if(preset.symbolKind==="trapezoid")item.symbol_top_width=100;if(preset.symbolKind==="square")item.symbol_skew=0;return item; }
+    function builtinAssetDisplayLabel(item){const label=String(item?.asset_label||"SFX Stamp");if(!uiEnglish()||item?.user_asset_id||!/[^\x00-\x7f]/.test(label))return label;return String(item?.asset_id||"SFX Stamp").replace(/-(?:mask|rgba)$/,"").split("-").filter(Boolean).map(word=>word.charAt(0).toUpperCase()+word.slice(1)).join(" ");}
     function randomEmphasisSeed(){if(globalThis.crypto?.getRandomValues){const value=new Uint32Array(1);globalThis.crypto.getRandomValues(value);return value[0];}return Math.floor(Math.random()*4294967296)>>>0;}
     function syncEmphasisCenterGapMaster(item,force=false){const range=document.getElementById("emphasisCenterGapRange"),number=document.getElementById("emphasisCenterGapValue"),active=item?.type==="emphasis_lines";if(!range||!number)return;range.disabled=!active;number.disabled=!active;if(!active){range.value=.03;number.value="";return;}const value=emphasisCenterGapValue(item);if(force||document.activeElement!==range)range.value=String(value);if(force||document.activeElement!==number)number.value=String(Number(value.toFixed(4)));}
     function regenerateEmphasisRays(item){if(!item||item.type!=="emphasis_lines")return[];item.overshoot=EMPHASIS_EDGE_OVERSHOOT;item.rays=generateNormalizedEmphasisRays(item,item.w,item.h);return item.rays;}
@@ -1554,7 +1627,7 @@
         if (!item.id) item.id = id();
         if (item.visible === undefined) item.visible = true;
         item.rotation=Number(item.rotation)||0;if(item.shadow_enabled===undefined)item.shadow_enabled=false;if(!item.shadow_color)item.shadow_color="#000000";if(!Number.isFinite(Number(item.shadow_x)))item.shadow_x=6;if(!Number.isFinite(Number(item.shadow_y)))item.shadow_y=6;if(!Number.isFinite(Number(item.shadow_blur)))item.shadow_blur=4;
-        if (item.type === "text") { item.text=String(item.text??"").slice(0,100000);item.font_size=integerFontSize(item.font_size);item.font_id=String(item.font_id||"");item.font_family=item.font_family||"sans-serif";item.font_css_family=item.font_css_family||item.font_family;item.writing=item.writing==="vertical"?"vertical":"horizontal";item.align=["left","right"].includes(item.align)?item.align:"center";const hasTracking=Number.isFinite(Number(item.tracking));item.tracking=hasTracking?trackingValue(item.tracking):trackingValue(finiteOr(item.letter_spacing,0)*1000/item.font_size);delete item.letter_spacing;item.font_scale_x=fontScaleValue(item.font_scale_x);item.font_scale_y=fontScaleValue(item.font_scale_y);if(item.auto_fit===undefined)item.auto_fit=true;fitTextBox(item,true,!item.auto_fit); }
+        if (item.type === "text") { item.text=String(item.text??"").slice(0,100000);item.font_size=integerFontSize(item.font_size);item.font_id=String(item.font_id||"");item.font_family=item.font_family||"sans-serif";item.font_css_family=item.font_css_family||item.font_family;item.writing=item.writing==="vertical"?"vertical":"horizontal";item.align=["left","right"].includes(item.align)?item.align:"center";const hasTracking=Number.isFinite(Number(item.tracking));item.tracking=hasTracking?trackingValue(item.tracking):trackingValue(finiteOr(item.letter_spacing,0)*1000/item.font_size);delete item.letter_spacing;item.font_scale_x=fontScaleValue(item.font_scale_x);item.font_scale_y=fontScaleValue(item.font_scale_y);if(item.auto_fit===undefined)item.auto_fit=true;const restoredFont=matchingSavedFont(item);if(restoredFont){applyResolvedFont(item,restoredFont);ensureFontLoaded(restoredFont).then(loaded=>{if(!loaded||!state.elements.includes(item))return;fitTextBox(item,true,!item.auto_fit);syncProperties();render();});}fitTextBox(item,true,!item.auto_fit); }
         else if(item.type==="sfx"||item.type==="sfx_stamp"){item.type="sfx";const savedUserAssetId=String(item.user_asset_id||"").replace(/^user:/,"")||(String(item.asset_id||"").startsWith("user:")?String(item.asset_id).slice(5):""),catalogPreset=savedUserAssetId?null:SFX_BY_ID.get(item.asset_id),preset=catalogPreset||(!savedUserAssetId?SFX_PRESETS[0]:{id:item.asset_id||`user:${savedUserAssetId}`,label:item.asset_label||"User Preset",format:item.asset_format||"PNG RGBA",src:item.asset_src||`${forgeApiBase}/user-assets/asset/${savedUserAssetId}`,mask:false,w:Math.max(1,finiteOr(item.w,360)),h:Math.max(1,finiteOr(item.h,360)),userPreset:true,userAssetId:savedUserAssetId,userPresetId:item.user_preset_id||""}),mask=!!preset.mask,presetOutline=Number.isFinite(Number(preset.outlineWidth))?Number(preset.outlineWidth):(mask?3:0);item.asset_id=item.asset_id||preset.id;item.asset_label=item.asset_label||preset.label;item.asset_format=item.asset_format||preset.format;item.asset_src=item.asset_src||preset.src;item.asset_width=Math.max(1,finiteOr(item.asset_width,preset.w||item.w||360));item.asset_height=Math.max(1,finiteOr(item.asset_height,preset.h||item.h||360));item.user_preset_id=item.user_preset_id||preset.userPresetId||"";item.user_asset_id=savedUserAssetId||preset.userAssetId||"";item.mask_mode=savedUserAssetId?(item.mask_mode??false):(item.mask_mode??mask);item.user_fill_initialized=savedUserAssetId?(item.user_fill_initialized===true||item.mask_mode===true):true;item.fill=savedUserAssetId&&!item.user_fill_initialized?"#ffffff":(item.fill||sfxPresetFill(preset));item.stroke=item.stroke||preset.stroke||"#111111";item.stroke_width=Math.max(0,finiteOr(item.stroke_width,presetOutline));item.opacity=Math.max(0,Math.min(1,finiteOr(item.opacity,1)));item.glow_enabled=!!item.glow_enabled;item.glow_color=item.glow_color||"#ffffff";item.glow_opacity=Math.max(0,Math.min(1,finiteOr(item.glow_opacity,.75)));item.glow_blur=Math.max(0,finiteOr(item.glow_blur,16));item.glow_spread=Math.max(0,finiteOr(item.glow_spread,0));if(!Number.isFinite(Number(item.w)))item.w=preset.w;if(!Number.isFinite(Number(item.h)))item.h=preset.h;normalizeBasicSymbolSettings(item);}
         else if(item.type==="bubble"||item.type==="shape") {
           item.type="bubble";
@@ -1596,6 +1669,7 @@
             height:Math.round(Math.max(1,Math.min(65535,finiteOr(rawWorkspace.canvas?.height,fallback.height)))),
             backgroundVisible:rawWorkspace.background_visible!==false,
             elements,
+            view:normalizedWorkspaceView(rawWorkspace.view)||normalizedWorkspaceView(storedViews[name]),
           };
         }
         activeWorkspace=requestedWorkspace;
@@ -1603,16 +1677,19 @@
         state.width=active.width;state.height=active.height;state.backgroundVisible=active.backgroundVisible;state.elements=active.elements;
       }else{
         activeWorkspace=requestedWorkspace;
-        workspaces.single={width:1024,height:1024,backgroundVisible:true,elements:[]};
-        workspaces.comic={width:720,height:2160,backgroundVisible:true,elements:[]};
+        workspaces.single={width:1024,height:1024,backgroundVisible:true,elements:[],view:normalizedWorkspaceView(storedViews.single)};
+        workspaces.comic={width:720,height:2160,backgroundVisible:true,elements:[],view:normalizedWorkspaceView(storedViews.comic)};
         workspaces[activeWorkspace]={
           width:state.width,
           height:state.height,
           backgroundVisible:state.backgroundVisible,
           elements:state.elements,
+          view:normalizedWorkspaceView(storedViews[activeWorkspace]),
         };
       }
       normalizePinnedFrameOrder();
+      const initialView=normalizedWorkspaceView(workspaces[activeWorkspace]?.view);
+      if(initialView){state.zoom=initialView.zoom;state.panX=initialView.panX;state.panY=initialView.panY;}
       captureActiveWorkspace();
       state.selected = state.elements[state.elements.length - 1]?.id || null;
       state.selection = state.selected ? [state.selected] : [];
@@ -1629,7 +1706,7 @@
     function isFrameSelected(item){return Boolean(item)&&item.type==="frame"&&state.selection.length===1&&state.selection[0]===item.id&&!item.locked;}
     function canvasItemEditable(item){return Boolean(item)&&!item.locked&&(item.type!=="frame"||isFrameSelected(item));}
     function canvasHitEnabled(item){return Boolean(item)&&item.type!=="frame"&&item.type!=="emphasis_lines";}
-    function setSelection(ids,primary=null){const next=[...new Set(ids)].filter(itemId=>state.elements.some(item=>item.id===itemId));state.selection=next;state.selected=primary&&state.selection.includes(primary)?primary:(state.selection.at(-1)||null);if(next.length)comicEditor?.clearSelection();if(state.selection.length!==1){state.vectorEditId=null;state.vectorAnchorIndex=null;state.vectorAddMode=false;}}
+    function setSelection(ids,primary=null){const next=[...new Set(ids)].filter(itemId=>state.elements.some(item=>item.id===itemId));state.selection=next;state.selected=primary&&state.selection.includes(primary)?primary:(state.selection.at(-1)||null);if(next.length)comicEditor?.clearSelection();if(state.selection.length!==1){state.vectorEditId=null;state.vectorAnchorIndex=null;state.vectorAddMode=false;}syncInsertTargetStatus();}
     function selectionBounds(items=selectedItems()){
       if(!items.length)return null;const points=items.flatMap(item=>{const h=handlePoints(item);return[h[0],h[2],h[4],h[6]];});
       const xs=points.map(point=>point.x),ys=points.map(point=>point.y),x=Math.min(...xs),y=Math.min(...ys),right=Math.max(...xs),bottom=Math.max(...ys);
@@ -1641,9 +1718,17 @@
     function ensureCanvasBitmapSize(){if(canvas.width!==state.width)canvas.width=state.width;if(canvas.height!==state.height)canvas.height=state.height;}
     function updateCanvasViewportSize(){const width=`${state.width*state.zoom}px`,height=`${state.height*state.zoom}px`,stageWidth=`${state.width*state.zoom+80}px`,stageHeight=`${state.height*state.zoom+80}px`;if(canvas.style.width!==width)canvas.style.width=width;if(canvas.style.height!==height)canvas.style.height=height;if(stage.style.width!==stageWidth)stage.style.width=stageWidth;if(stage.style.height!==stageHeight)stage.style.height=stageHeight;applyViewTransform();const label=`${Math.round(state.zoom*100)}%`,zoom=document.getElementById("zoom");if(zoom.textContent!==label)zoom.textContent=label;}
     function setCanvasSize(){ensureCanvasBitmapSize();updateCanvasViewportSize();}
-    function centerView() { const viewW=viewport.clientWidth,viewH=viewport.clientHeight,stageW=state.width*state.zoom+80,stageH=state.height*state.zoom+80;state.panX=Math.max(0,(viewW-stageW)/2);state.panY=Math.max(0,(viewH-stageH)/2);applyViewTransform(); }
-    function fitView(renderCanvas=true) { state.zoom=Math.max(.1,Math.min((viewport.clientWidth-80)/state.width,(viewport.clientHeight-80)/state.height,1));centerView();if(renderCanvas)requestRender({canvas:true}); }
+    function unobscuredViewportSize(){const viewRect=viewport.getBoundingClientRect();let right=viewRect.right;for(const panel of document.querySelectorAll(".floating-panel")){const rect=panel.getBoundingClientRect();if(rect.bottom<=viewRect.top||rect.top>=viewRect.bottom||rect.left<=viewRect.left+viewRect.width*.45)continue;right=Math.min(right,rect.left-8);}return{width:Math.max(160,right-viewRect.left),height:viewport.clientHeight};}
+    function centerView() { const available=unobscuredViewportSize(),stageW=state.width*state.zoom+80,stageH=state.height*state.zoom+80;state.panX=Math.max(0,(available.width-stageW)/2);state.panY=Math.max(0,(available.height-stageH)/2);applyViewTransform(); }
+    function fitView(renderCanvas=true) { const available=unobscuredViewportSize();state.zoom=Math.max(.1,Math.min((available.width-80)/state.width,(available.height-80)/state.height,1));centerView();if(workspaces?.[activeWorkspace]){workspaces[activeWorkspace].view={zoom:state.zoom,panX:state.panX,panY:state.panY};saveWorkspaceViews();}if(renderCanvas)requestRender({canvas:true}); }
     function imagePoint(event) { const rect = canvas.getBoundingClientRect(); return { x:(event.clientX - rect.left) * state.width / rect.width, y:(event.clientY - rect.top) * state.height / rect.height }; }
+    function visibleCanvasDocumentRect(){
+      const canvasRect=canvas.getBoundingClientRect(),viewRect=viewport.getBoundingClientRect(),left=Math.max(canvasRect.left,viewRect.left),top=Math.max(canvasRect.top,viewRect.top),right=Math.min(canvasRect.right,viewRect.right),bottom=Math.min(canvasRect.bottom,viewRect.bottom),sx=state.width/Math.max(1,canvasRect.width),sy=state.height/Math.max(1,canvasRect.height);
+      if(right<=left||bottom<=top)return{x:0,y:0,w:state.width,h:state.height};
+      return{x:(left-canvasRect.left)*sx,y:(top-canvasRect.top)*sy,w:(right-left)*sx,h:(bottom-top)*sy};
+    }
+    function intersectDocumentRects(a,b){const x=Math.max(a.x,b.x),y=Math.max(a.y,b.y),right=Math.min(a.x+a.w,b.x+b.w),bottom=Math.min(a.y+a.h,b.y+b.h);return right>x&&bottom>y?{x,y,w:right-x,h:bottom-y}:a;}
+    function clampItemToRect(item,rect,margin=12){const x1=rect.x+margin,y1=rect.y+margin,x2=Math.max(x1,rect.x+rect.w-margin-item.w),y2=Math.max(y1,rect.y+rect.h-margin-item.h);item.x=Math.round(Math.max(x1,Math.min(x2,item.x)));item.y=Math.round(Math.max(y1,Math.min(y2,item.y)));}
     function rgba(hex, alpha=1) { const value = String(hex || "#000000").replace("#", ""); const r=parseInt(value.slice(0,2),16)||0, g=parseInt(value.slice(2,4),16)||0, b=parseInt(value.slice(4,6),16)||0; return `rgba(${r},${g},${b},${alpha})`; }
     function textPadding(item){return Math.max(4,(Number(item.stroke_width)||0)*2+(item.shadow_enabled?Math.max(Math.abs(Number(item.shadow_x)||0),Math.abs(Number(item.shadow_y)||0),Number(item.shadow_blur)||0):0));}
     function fontScaleFactor(item,key){return fontScaleValue(item?.[key])/100;}
@@ -1877,9 +1962,35 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     function recordPresetUse(presetId){const usage=presetUsage();usage[presetId]=(usage[presetId]||0)+1;try{localStorage.setItem(PRESET_USAGE_KEY,JSON.stringify(usage));}catch{}}
     const EDITOR_DRAG_TYPE="application/x-speech-bubble-editor-item";
     function placeInsertedItem(item,point=null){const center=point||{x:state.width/2,y:state.height/2};item.x=Math.round(center.x-item.w/2);item.y=Math.round(center.y-item.h/2);}
+    function selectedComicLayerTarget(){
+      const selected=state.elements.find(item=>item.id===state.selected);
+      if(comicEditor?.isActive()&&selected?.comic_scope==="panel"&&selected.comic_panel_id)return comicEditor.panelInsertionTarget?.(selected.comic_panel_id)||{scope:"panel",panelId:selected.comic_panel_id};
+      return comicEditor?.selectedInsertionTarget?.()||null;
+    }
+    function bubbleComicTarget(){return selectedComicLayerTarget()||comicEditor?.defaultPanelInsertionTarget?.()||null;}
+    function applyComicPanelTarget(item,target,point=null){
+      if(!target||target.scope!=="panel")return false;
+      const resolved=target.rect?target:comicEditor?.panelInsertionTarget?.(target.panelId),rect=resolved?.rect||null;
+      item.comic_scope="panel";item.comic_panel_id=target.panelId;item.comic_stack="above_image";
+      if(rect){
+        const scale=Math.min(1,(rect.w*.78)/Math.max(1,item.w),(rect.h*.72)/Math.max(1,item.h));
+        if(scale<1){item.w=Math.max(1,Math.round(item.w*scale));item.h=Math.max(1,Math.round(item.h*scale));}
+        const center=point&&point.x>=rect.x&&point.x<=rect.x+rect.w&&point.y>=rect.y&&point.y<=rect.y+rect.h?point:{x:rect.x+rect.w/2,y:rect.y+rect.h/2};
+        placeInsertedItem(item,center);
+        item.x=Math.round(Math.max(rect.x,Math.min(rect.x+rect.w-item.w,item.x)));
+        item.y=Math.round(Math.max(rect.y,Math.min(rect.y+rect.h-item.h,item.y)));
+      }else placeInsertedItem(item,point);
+      return true;
+    }
+    function syncInsertTargetStatus(){
+      const status=document.getElementById("comicInsertTargetStatus");if(!status)return;
+      status.hidden=!comicEditor?.isActive();if(status.hidden)return;
+      const target=selectedComicLayerTarget()||comicEditor?.defaultPanelInsertionTarget?.();
+      status.textContent=target?.scope==="panel"?`追加先：コマ${Math.max(1,(Number(target.panelIndex)||0)+1)}`:"追加先：ページ全体";
+    }
     function enablePresetDrag(element,payload){element.draggable=true;element.addEventListener("dragstart",event=>{event.dataTransfer.effectAllowed="copy";event.dataTransfer.setData(EDITOR_DRAG_TYPE,JSON.stringify(payload));});}
     function insertBubbleBelowText(item){const firstTextIndex=state.elements.findIndex(layer=>layer.type==="text");if(firstTextIndex<0)state.elements.push(item);else state.elements.splice(firstTextIndex,0,item);}
-    function insertPreset(presetId,point=null){pushUndo();const item=defaultBubble(presetId);placeInsertedItem(item,point);insertBubbleBelowText(item);recordPresetUse(presetId);setSelection([item.id],item.id);syncProperties();render();}
+    function insertPreset(presetId,point=null){pushUndo();const item=defaultBubble(presetId),target=comicEditor?.isActive()?bubbleComicTarget():null;if(!applyComicPanelTarget(item,target,point)){placeInsertedItem(item,point);insertBubbleBelowText(item);}else state.elements.push(item);recordPresetUse(presetId);setSelection([item.id],item.id);syncProperties();render();}
     function makePresetCard(preset){const button=document.createElement("button"),preview=document.createElement("canvas"),name=document.createElement("span"),awaitingShapeAsset=!bubbleShapeAssetsReady&&["base-thought","base-heart"].includes(preset.id);button.type="button";button.className="shape-card";button.dataset.preset=preset.id;button.dataset.category=preset.category;button.dataset.search=`${preset.label} ${preset.keywords||""}`.toLowerCase();button.disabled=awaitingShapeAsset;button.title=awaitingShapeAsset?`${preset.label} — 素材を読み込み中`:`${preset.label} — click or drag to canvas`;name.className="shape-name";name.textContent=awaitingShapeAsset?`${preset.label}…`:preset.label;button.append(preview,name,makeFavoriteMarker("bubble",preset.id));if(!awaitingShapeAsset){button.onclick=()=>insertPreset(preset.id);enablePresetDrag(button,{kind:"bubble",id:preset.id});}drawPresetThumbnail(preview,preset);return button;}
     function drawFrameThumbnail(canvasElement,preset){const scale=2,w=68*scale,h=40*scale,target=canvasElement.getContext("2d");canvasElement.width=w;canvasElement.height=h;target.clearRect(0,0,w,h);if(preset.preview_src){const preview=cachedFrameImage(preset.preview_src);if(preview?.complete&&preview.naturalWidth){const ratio=Math.min(w/preview.naturalWidth,h/preview.naturalHeight),drawW=preview.naturalWidth*ratio,drawH=preview.naturalHeight*ratio;target.drawImage(preview,(w-drawW)/2,(h-drawH)/2,drawW,drawH);}return;}if(preset.asset_src||preset.frame_mode==="edge-repeat"||preset.frame_mode==="decorated-border"){const item={frame_scale:finiteOr(preset.default_scale,100),w,h,frame_mode:preset.frame_mode,frame_slice:preset.frame_slice,attached_decorations:(preset.attached_decorations||[]).map(decoration=>decoration.id)},asset=frameImageFor(preset,item);target.drawImage(frameSurface(item,preset,asset,w,h),0,0,w,h);return;}const border=Math.max(3,(Number(preset.border_width)||24)/10*scale),inner=Math.max(0,(Number(preset.inner_stroke_width)||0)/2*scale);target.fillStyle=preset.border_color||"#fff";target.beginPath();addRoundedRectPath(target,3*scale,3*scale,w-6*scale,h-6*scale,0);addRoundedRectPath(target,3*scale+border,3*scale+border,w-6*scale-border*2,h-6*scale-border*2,0);target.fill("evenodd");if(inner>0){target.strokeStyle=preset.inner_stroke_color||"#111";target.lineWidth=inner;target.beginPath();addRoundedRectPath(target,3*scale+border+inner/2,3*scale+border+inner/2,w-6*scale-border*2-inner,h-6*scale-border*2-inner,0);target.stroke();}}
     function makeFrameCard(preset){const button=document.createElement("button"),preview=document.createElement("canvas"),name=document.createElement("span");button.type="button";button.className="shape-card";button.dataset.frame=preset.id;button.dataset.category=preset.category;button.dataset.search=`${preset.label} ${preset.keywords||""}`.toLowerCase();button.title=`${preset.label} — click to fit canvas, or drag for manual placement`;name.className="shape-name";name.textContent=preset.label;button.append(preview,name,makeFavoriteMarker("frame",preset.id));button.onclick=()=>insertFrame(preset.id);enablePresetDrag(button,{kind:"frame",id:preset.id});drawFrameThumbnail(preview,preset);return button;}
@@ -1889,7 +2000,21 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     function makeEmphasisCard(preset){const button=document.createElement("button"),preview=document.createElement("canvas"),name=document.createElement("span");button.type="button";button.className="shape-card emphasis-card";button.dataset.emphasis=preset.id;button.title=`${preset.label} — click to add, or drag the focus point to the canvas`;name.className="shape-name";name.textContent=preset.label;button.append(preview,name,makeFavoriteMarker("emphasis",preset.id));button.onclick=()=>insertEmphasisLines(preset.id);enablePresetDrag(button,{kind:"emphasis-lines",id:preset.id});drawEmphasisThumbnail(preview,preset);return button;}
     function refreshQuickEmphasisLines(){const quick=document.getElementById("quickEmphasisLines");if(!quick)return;quick.replaceChildren(...favoriteAssets("emphasis",EMPHASIS_PRESETS,["center","wide"]).map(makeEmphasisCard));}
     function renderEmphasisBrowser(){document.getElementById("allEmphasisLines")?.replaceChildren(...EMPHASIS_PRESETS.map(makeEmphasisCard));}
-    function insertEmphasisLines(presetId,point=null){pushUndo();const item=defaultEmphasisLines(presetId);if(point){item.center_x=emphasisClamp(point.x/state.width,-.5,1.5,item.center_x);item.center_y=emphasisClamp(point.y/state.height,-.5,1.5,item.center_y);regenerateEmphasisRays(item);}state.elements.push(item);normalizePinnedFrameOrder();setSelection([item.id],item.id);syncProperties();render();}
+    function insertEmphasisLines(presetId,point=null){
+      pushUndo();
+      const item=defaultEmphasisLines(presetId),target=comicEditor?.isActive()?selectedComicLayerTarget():null,resolved=target?.scope==="panel"?(target.rect?target:comicEditor?.panelInsertionTarget?.(target.panelId)):null,rect=resolved?.rect;
+      if(rect){
+        item.comic_scope="panel";item.comic_panel_id=resolved.panelId;item.comic_stack="above_image";item.fit_to_canvas=false;
+        item.x=Math.round(rect.x);item.y=Math.round(rect.y);item.w=Math.max(1,Math.round(rect.w));item.h=Math.max(1,Math.round(rect.h));
+        const focus=point&&point.x>=rect.x&&point.x<=rect.x+rect.w&&point.y>=rect.y&&point.y<=rect.y+rect.h?point:{x:rect.x+rect.w/2,y:rect.y+rect.h/2};
+        item.center_x=emphasisClamp((focus.x-rect.x)/Math.max(1,rect.w),-.5,1.5,item.center_x);
+        item.center_y=emphasisClamp((focus.y-rect.y)/Math.max(1,rect.h),-.5,1.5,item.center_y);
+      }else if(point){
+        item.center_x=emphasisClamp(point.x/state.width,-.5,1.5,item.center_x);
+        item.center_y=emphasisClamp(point.y/state.height,-.5,1.5,item.center_y);
+      }
+      regenerateEmphasisRays(item);state.elements.push(item);normalizePinnedFrameOrder();setSelection([item.id],item.id);syncProperties();render();
+    }
     function filterFrameCards(){const query=document.getElementById("frameSearch").value.trim().toLowerCase(),category=document.getElementById("frameCategory").value;document.querySelectorAll("#allFrames [data-frame]").forEach(card=>{card.hidden=!((category==="all"||card.dataset.category===category)&&(!query||card.dataset.search.includes(query)));});}
     function renderFrameBrowser(){document.getElementById("frameDrawerTitle").textContent=`Frames (${FRAME_PRESETS.length})`;document.getElementById("allFrames").replaceChildren(...FRAME_PRESETS.map(makeFrameCard));filterFrameCards();}
     function isComicStamp(preset){return preset?.userPreset?preset.userCategory==="stamp":["symbols","effects"].includes(preset?.category);}
@@ -1980,7 +2105,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     function makeSfxLibrarySection(label,presets,{open=true,user=false}={}){const section=document.createElement("details"),summary=document.createElement("summary"),count=document.createElement("small"),grid=document.createElement("div");section.className="sfx-library-section";section.dataset.sfxSection=user?"user":"builtin";section.open=open;summary.append(document.createTextNode(label),count);count.textContent=`${presets.length}`;grid.className="palette";if(presets.length)grid.append(...presets.map(makeSfxCard));else{const empty=document.createElement("div");empty.className="sfx-library-empty";empty.textContent=user?"SettingsでPNG / WebPを登録できます。":"素材がありません。";grid.append(empty);}section.append(summary,grid);return section;}
     function renderSfxDrawer(){const presets=sortedSfxPresets(sfxPresetsForMode(sfxBrowseMode)),userPresets=presets.filter(preset=>preset.userPreset),builtinPresets=presets.filter(preset=>!preset.userPreset),stamps=sfxBrowseMode==="stamps",category=document.getElementById("sfxCategory"),search=document.getElementById("sfxSearch"),sort=document.getElementById("sfxSort"),all=document.getElementById("allSfx"),previousUserOpen=all.querySelector('[data-sfx-section="user"]')?.open!==false,previousBuiltinOpen=all.querySelector('[data-sfx-section="builtin"]')?.open!==false;document.getElementById("sfxDrawerTitle").textContent=`${stamps?"Comic Stamps / Symbols":"Onomatopoeia / SFX"} (${presets.length})`;search.placeholder=stamps?"Search comic stamps…":"Search onomatopoeia…";category.innerHTML=stamps?'<option value="all">All stamp categories</option><option value="user">My Presets</option><option value="symbols">Symbols</option><option value="effects">Effects</option>':'<option value="all">All SFX</option><option value="user">Presets</option><option value="builtin">Templates</option>';sort.value=sfxSortMode;all.classList.add("sfx-library");all.replaceChildren(makeSfxLibrarySection("My Presets",userPresets,{open:previousUserOpen,user:true}),makeSfxLibrarySection("Built-in",builtinPresets,{open:previousBuiltinOpen}));filterSfxCards();}
     function renderSfxBrowser(){refreshQuickSfx();renderSfxDrawer();}
-    function closePresetDrawers(){document.getElementById("shapeDrawer").classList.remove("open");document.getElementById("sfxDrawer").classList.remove("open");document.getElementById("frameDrawer").classList.remove("open");}
+    function closePresetDrawers(){document.getElementById("shapeDrawer").classList.remove("open");document.getElementById("sfxDrawer").classList.remove("open");document.getElementById("frameDrawer").classList.remove("open");document.getElementById("emphasisDrawer").classList.remove("open");}
     function openSfxBrowser(mode){sfxBrowseMode=mode;document.getElementById("shapeDrawer").classList.remove("open");document.getElementById("frameDrawer").classList.remove("open");document.getElementById("emphasisDrawer").classList.remove("open");document.getElementById("sfxSearch").value="";renderSfxDrawer();document.getElementById("sfxDrawer").classList.add("open");document.getElementById("sfxSearch").focus();}
     function openFrameBrowser(){document.getElementById("shapeDrawer").classList.remove("open");document.getElementById("sfxDrawer").classList.remove("open");document.getElementById("emphasisDrawer").classList.remove("open");document.getElementById("frameSearch").value="";renderFrameBrowser();document.getElementById("frameDrawer").classList.add("open");document.getElementById("frameSearch").focus();}
     function filterSfxCards(){const query=document.getElementById("sfxSearch").value.trim().toLowerCase(),category=document.getElementById("sfxCategory").value;document.querySelectorAll("#allSfx [data-sfx]").forEach(button=>{const categoryMatches=category==="all"||button.dataset.category===category||(category==="builtin"&&button.dataset.category!=="user");button.style.display=(!query||button.dataset.search.includes(query))&&categoryMatches?"":"none";});document.querySelectorAll("#allSfx [data-sfx-section]").forEach(section=>{const cards=[...section.querySelectorAll("[data-sfx]")],visible=cards.some(card=>card.style.display!=="none"),isUser=section.dataset.sfxSection==="user";section.hidden=(category==="user"&&!isUser)||(category!=="all"&&category!=="user"&&isUser)||(!visible&&cards.length>0);});}
@@ -1990,7 +2115,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     async function loadUserPresets(){try{const response=await fetch(`${apiBase}/presets`);if(!response.ok)throw new Error(`Preset list failed (${response.status})`);const result=await response.json();userPresets=Array.isArray(result.presets)?result.presets:[];renderPresetBrowser();}catch(error){console.warn("Speech Bubble user presets unavailable",error);}}
     async function saveSelectedUserPreset(){const item=state.elements.find(element=>element.id===state.selected);if(!item||item.type!=="bubble"||item.locked||state.selection.length!==1)return;const name=prompt(item.user_preset_id?"Update user preset name:":"User preset name:",item.user_preset_name||presetLabel(item));if(!name?.trim())return;try{const result=await updateUserPresets({action:"upsert",preset:userPresetPayload(item,name.trim())}),saved=result.presets?.at(-1);if(saved){pushUndo();item.user_preset_id=saved.id;item.user_preset_name=saved.name;syncProperties();render();}}catch(error){alert(`Could not save the user preset.\n${error.message}`);}}
     async function deleteUserPreset(presetId){const preset=userPresets.find(item=>item.id===presetId);if(!preset||!confirm(`Delete user preset “${preset.name}”?`))return;try{await updateUserPresets({action:"delete",id:presetId});}catch(error){alert(`Could not delete the user preset.\n${error.message}`);}}
-    function insertUserPreset(presetId,point=null){const preset=userPresets.find(entry=>entry.id===presetId);if(!preset)return;pushUndo();const item=defaultBubble(preset.base_preset_id||"base-oval"),shapeData=preset.shape_data||{},ratio=Math.max(.1,Math.min(10,Number(preset.aspect_ratio)||item.w/item.h)),area=item.w*item.h;item.w=Math.round(Math.sqrt(area*ratio));item.h=Math.round(area/item.w);item.shape=shapeData.shape||item.shape;for(const key of USER_SHAPE_KEYS)if(shapeData[key]!==undefined)item[key]=shapeData[key];if(Array.isArray(shapeData.path_points))item.path_points=clonePath(shapeData.path_points);item.user_preset_id=preset.id;item.user_preset_name=preset.name;placeInsertedItem(item,point);state.elements.push(item);setSelection([item.id],item.id);document.getElementById("shapeDrawer").classList.remove("open");syncProperties();render();}
+    function insertUserPreset(presetId,point=null){const preset=userPresets.find(entry=>entry.id===presetId);if(!preset)return;pushUndo();const item=defaultBubble(preset.base_preset_id||"base-oval"),shapeData=preset.shape_data||{},ratio=Math.max(.1,Math.min(10,Number(preset.aspect_ratio)||item.w/item.h)),area=item.w*item.h;item.w=Math.round(Math.sqrt(area*ratio));item.h=Math.round(area/item.w);item.shape=shapeData.shape||item.shape;for(const key of USER_SHAPE_KEYS)if(shapeData[key]!==undefined)item[key]=shapeData[key];if(Array.isArray(shapeData.path_points))item.path_points=clonePath(shapeData.path_points);item.user_preset_id=preset.id;item.user_preset_name=preset.name;const target=comicEditor?.isActive()?bubbleComicTarget():null;if(!applyComicPanelTarget(item,target,point))placeInsertedItem(item,point);state.elements.push(item);setSelection([item.id],item.id);document.getElementById("shapeDrawer").classList.remove("open");syncProperties();render();}
     function makeUserPresetCard(preset){const wrapper=document.createElement("div"),button=document.createElement("button"),preview=document.createElement("canvas"),name=document.createElement("span"),remove=document.createElement("button"),shapeData=preset.shape_data||{};wrapper.className="user-preset-card";wrapper.dataset.preset=preset.id;wrapper.dataset.category="user";wrapper.dataset.search=`${preset.name} user custom`.toLowerCase();button.type="button";button.className="shape-card";button.title=`${preset.name} — click or drag to canvas`;name.className="shape-name";name.textContent=preset.name;button.append(preview,name);button.onclick=()=>insertUserPreset(preset.id);enablePresetDrag(button,{kind:"user-bubble",id:preset.id});remove.type="button";remove.className="user-preset-delete";remove.title="Delete user preset";remove.textContent="×";remove.onclick=event=>{event.stopPropagation();deleteUserPreset(preset.id);};wrapper.append(button,remove);drawPresetThumbnail(preview,{shape:shapeData.shape||"custom",path_points:shapeData.path_points||defaultVectorPath("oval"),tail:"none"});return wrapper;}
     function renderPresetBrowser(){const all=document.getElementById("allShapes"),total=BUBBLE_PRESETS.length+userPresets.length,previous=document.getElementById("userPresetSection"),builtinCards=BUBBLE_PRESETS.map(makePresetCard);document.getElementById("shapeDrawerTitle").textContent=`Speech Bubbles (${BUBBLE_PRESETS.length} built-in + ${userPresets.length} user)`;document.getElementById("shapeSearch").placeholder=`Search ${total} presets…`;all.replaceChildren(...builtinCards);if(userPresets.length){const section=document.createElement("details"),summary=document.createElement("summary"),grid=document.createElement("div");section.id="userPresetSection";section.className="user-preset-section";summary.textContent=`User Presets (${userPresets.length})`;grid.className="palette";grid.append(...userPresets.map(makeUserPresetCard));section.append(summary,grid);section.open=previous?.open===true;all.append(section);}filterPresetCards();}
     function exportUserPresets(){const blob=new Blob([JSON.stringify({version:1,presets:userPresets},null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="speech-bubble-user-presets.json";link.click();setTimeout(()=>URL.revokeObjectURL(url),0);}
@@ -2073,8 +2198,8 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
         background_visible:active.backgroundVisible,
         elements:active.elements,
         workspaces:{
-          single:{canvas:{width:workspaces.single.width,height:workspaces.single.height},background_visible:workspaces.single.backgroundVisible,elements:workspaces.single.elements},
-          comic:{canvas:{width:workspaces.comic.width,height:workspaces.comic.height},background_visible:workspaces.comic.backgroundVisible,elements:workspaces.comic.elements},
+          single:{canvas:{width:workspaces.single.width,height:workspaces.single.height},background_visible:workspaces.single.backgroundVisible,elements:workspaces.single.elements,view:workspaces.single.view||null},
+          comic:{canvas:{width:workspaces.comic.width,height:workspaces.comic.height},background_visible:workspaces.comic.backgroundVisible,elements:workspaces.comic.elements,view:workspaces.comic.view||null},
         },
       },comic=comicEditor?.serialize();
       if(comic)payload.comic=comic;
@@ -2210,6 +2335,13 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       layoutDirty=currentLayoutJson()!==lastSavedLayout;
       updateActionState();
     }
+    async function persistDesktopRecovery(checkpoint=false){
+      if(hostMode!=="desktop"||isPaletteWindow||!autoSaveEnabled||!hasEditableDocument())return null;
+      const createGeneration=checkpoint||Date.now()-lastRecoveryCheckpoint>=600000;
+      const result=await window.SpeechBubbleDesktopShell?.saveRecovery?.(createGeneration);
+      if(createGeneration&&result)lastRecoveryCheckpoint=Date.now();
+      return result;
+    }
     function persistDraftNow(){
       if(!autoSaveEnabled||!hasEditableDocument()||!documentId||!layoutDirty)return;
       const layout=currentLayoutJson();
@@ -2217,6 +2349,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       if(documentMode==="standalone")try{localStorage.setItem(LAST_STANDALONE_ID_KEY,documentId);}catch{}
       postHost("speech_bubble:autosave_layout",{revision:renderRevision,image_hash:imageHash,document_id:documentId});
       setSaveState("下書きを自動保存しました","dirty");
+      persistDesktopRecovery(false).catch(error=>{console.warn("Speech Bubble desktop recovery save failed",error);setSaveState(uiText("復元キャッシュを保存できませんでした","Could not save the recovery cache"),"error");});
     }
     function scheduleAutoSave(){
       if(!autoSaveEnabled||!hasEditableDocument()||!documentId)return;
@@ -2363,8 +2496,21 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     }
     function loadImageElement(url){return new Promise((resolve,reject)=>{image.onload=()=>resolve();image.onerror=()=>reject(new Error("画像を表示できませんでした。"));image.src=url;if(image.complete&&image.naturalWidth)resolve();});}
     function showImageRestoreChoice(){return new Promise(resolve=>{const dialog=document.getElementById("imageLayoutRestoreDialog");imageRestoreResolver=resolve;if(typeof dialog.showModal==="function")dialog.showModal();else{imageRestoreResolver=null;resolve(confirm("この画像の保存済みレイアウトを単体編集へコピーしますか？")?"restore":"new");}});}
-    function showStandaloneResumeChoice(){return new Promise(resolve=>{const dialog=document.getElementById("resumeStandaloneDialog");standaloneResumeResolver=resolve;if(typeof dialog.showModal==="function")dialog.showModal();else{standaloneResumeResolver=null;resolve(confirm("前回の単体編集を再開しますか？")?"resume":"new");}});}
-    function finishDialogChoice(dialogId,resolverName,value){document.getElementById(dialogId).close();if(resolverName==="image"){const resolve=imageRestoreResolver;imageRestoreResolver=null;resolve?.(value);}else{const resolve=standaloneResumeResolver;standaloneResumeResolver=null;resolve?.(value);}}
+    function showStandaloneResumeChoice(){
+      if(standaloneResumePromise)return standaloneResumePromise;
+      const dialog=document.getElementById("resumeStandaloneDialog");
+      standaloneResumePromise=new Promise(resolve=>{
+        standaloneResumeResolver=resolve;
+        if(typeof dialog.showModal==="function"){
+          if(!dialog.open)dialog.showModal();
+        }else{
+          standaloneResumeResolver=null;
+          resolve(confirm("前回の単体編集を再開しますか？")?"resume":"new");
+        }
+      }).finally(()=>{standaloneResumePromise=null;});
+      return standaloneResumePromise;
+    }
+    function finishDialogChoice(dialogId,resolverName,value){const dialog=document.getElementById(dialogId);if(dialog.open)dialog.close();if(resolverName==="image"){const resolve=imageRestoreResolver;imageRestoreResolver=null;resolve?.(value);}else{const resolve=standaloneResumeResolver;standaloneResumeResolver=null;resolve?.(value);}}
     function setStandaloneContext(id){
       const match=String(id||"").toLowerCase().match(/^standalone:([a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/);
       standaloneId=match?.[1]||createUuid();documentMode="standalone";documentId=`standalone:${standaloneId}`;
@@ -2531,7 +2677,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     }
     function takePendingRenderOptions(){const options=pendingRenderOptions;pendingRenderOptions={canvas:false,layers:false,preview:false};return options;}
     function performRequestedRender(){const options=takePendingRenderOptions(),revision=renderRevision;if(options.canvas)renderCanvas();if(options.layers)refreshLayers();if(options.preview)scheduleLivePreview(revision);}
-    function requestRender(options={canvas:true,layers:false,preview:false}){renderRevision+=1;pendingRenderOptions.canvas||=options.canvas===true;pendingRenderOptions.layers||=options.layers===true;pendingRenderOptions.preview||=options.preview===true;if(options.preview===true){markLayoutDirty();scheduleAutoSave();}if(!renderFrameId)renderFrameId=requestAnimationFrame(()=>{renderFrameId=0;performRequestedRender();});}
+    function requestRender(options={canvas:true,layers:false,preview:false}){renderRevision+=1;pendingRenderOptions.canvas||=options.canvas===true;pendingRenderOptions.layers||=options.layers===true;pendingRenderOptions.preview||=options.preview===true;if(options.preview===true){markLayoutDirty();scheduleAutoSave();}schedulePaletteSync();if(!renderFrameId)renderFrameId=requestAnimationFrame(()=>{renderFrameId=0;performRequestedRender();});}
     function flushPendingRender(){if(!renderFrameId&&!pendingRenderOptions.canvas&&!pendingRenderOptions.layers&&!pendingRenderOptions.preview)return;if(renderFrameId){cancelAnimationFrame(renderFrameId);renderFrameId=0;}performRequestedRender();}
     function render(){requestRender({canvas:true,layers:true,preview:true});}
     function refreshLayers(){
@@ -2545,7 +2691,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
         row.addEventListener("drop",event=>{event.preventDefault();const draggedId=event.dataTransfer.getData("text/plain");if(!draggedId||draggedId===item.id)return;pushUndo();const from=state.elements.findIndex(layer=>layer.id===draggedId);if(from<0)return;const dragged=state.elements.splice(from,1)[0];const target=state.elements.findIndex(layer=>layer.id===item.id);state.elements.splice(target+1,0,dragged);if(comicEditor?.isActive()&&dragged.type!=="frame"){if(item.comic_scope==="panel"){dragged.comic_scope="panel";dragged.comic_panel_id=item.comic_panel_id||"";dragged.comic_stack=item.comic_stack==="below_image"?"below_image":"above_image";}else{dragged.comic_scope=dragged.type==="emphasis_lines"?"page":"free";dragged.comic_panel_id="";dragged.comic_stack="above_image";}}normalizePinnedFrameOrder();render();});
         const eye=document.createElement("button");eye.className="eye";eye.textContent=item.visible===false?"○":"◉";eye.title="Show / Hide";eye.onclick=event=>{event.stopPropagation();pushUndo();item.visible=item.visible===false;render();};
         const kind=document.createElement("span"),assetPreset=item.type==="sfx"?SFX_BY_ID.get(item.asset_id):null,kindName=item.type==="text"?"text":item.type==="sfx"?(isComicStamp(assetPreset)?"stamp":"sfx"):item.type==="frame"?"frame":item.type==="emphasis_lines"?"emphasis":"bubble";row.dataset.layerKind=kindName;kind.className=`kind ${kindName}`;kind.textContent=item.type==="text"?"T":item.type==="sfx"?(kindName==="stamp"?"ST":"FX"):item.type==="frame"?"▣":item.type==="emphasis_lines"?"✺":"";
-        const name=document.createElement("span"),emphasisPreset=EMPHASIS_BY_ID.get(item.preset);name.className="name";name.textContent=item.type==="text"?(item.text||"Text"):item.type==="sfx"?(item.asset_label||"SFX Stamp"):item.type==="frame"?`${item.frame_label||"Frame Border"}${isPinnedFrame(item)?" · TOP":""}`:item.type==="emphasis_lines"?`Emphasis — ${emphasisPreset?.label||"Center"}`:presetLabel(item);if(comicEditor?.isActive()&&item.comic_scope==="panel"){const target=comicEditor.elementTargetValue?.(item),option=comicEditor.elementTargetOptions?.(item).find(candidate=>candidate.value===target);name.textContent+=` · ${option?.label||"コマ内"}`;}
+        const name=document.createElement("span"),emphasisPreset=EMPHASIS_BY_ID.get(item.preset);name.className="name";name.textContent=item.type==="text"?(item.text||"Text"):item.type==="sfx"?builtinAssetDisplayLabel(item):item.type==="frame"?`${item.frame_label||"Frame Border"}${isPinnedFrame(item)?" · TOP":""}`:item.type==="emphasis_lines"?`Emphasis — ${emphasisPreset?.label||"Center"}`:presetLabel(item);if(comicEditor?.isActive()&&item.comic_scope==="panel"){const target=comicEditor.elementTargetValue?.(item),option=comicEditor.elementTargetOptions?.(item).find(candidate=>candidate.value===target);name.textContent+=` · ${option?.label||uiText("コマ内","Inside Panel")}`;}
         const lock=document.createElement("button");lock.className="lock";lock.textContent=item.locked?"🔒":"🔓";lock.title="Lock / Unlock";lock.onclick=event=>{event.stopPropagation();pushUndo();item.locked=!item.locked;syncProperties();render();};
         const more=document.createElement("button");more.className="more";more.textContent="⋮";more.title="Layer options";more.onclick=event=>{event.stopPropagation();if(state.selection.length>1&&state.selection.includes(item.id))state.selected=item.id;else setSelection(selectionIdsFor(item),item.id);syncProperties();render();updateLayerMenuState();const menu=document.getElementById("layerMenu");menu.style.left=`${Math.min(event.clientX,window.innerWidth-165)}px`;menu.style.top=`${Math.min(event.clientY,window.innerHeight-155)}px`;menu.classList.add("open");};
         row.append(eye,kind,name,lock,more);host.append(row);
@@ -2595,18 +2741,18 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       document.querySelectorAll("[data-writing]").forEach(button=>{const active=button.dataset.writing===item.writing;button.classList.toggle("active",active);button.setAttribute("aria-pressed",String(active));});document.querySelectorAll("[data-text-align]").forEach(button=>{const active=button.dataset.textAlign===(item.align||"center");button.classList.toggle("active",active);button.setAttribute("aria-pressed",String(active));});document.querySelectorAll("[data-toggle-key]").forEach(button=>{const active=!!item[button.dataset.toggleKey];button.classList.toggle("active",active);button.setAttribute("aria-pressed",String(active));});document.getElementById("saveUserPreset").textContent=item.user_preset_id?"Update User Preset…":"Save as User Preset…";
       updateFontPicker(item);if(document.getElementById("fontBrowser").classList.contains("open"))renderFontBrowser();
     }
-    function showFontLoadError(message){const list=document.getElementById("fontList");if(!list)return;const retry=document.createElement("button");retry.type="button";retry.className="font-family-select";retry.textContent=`${message} — 再試行`;retry.onclick=()=>{retry.disabled=true;retry.textContent="システムフォントを再読込中…";loadSystemFonts();};list.replaceChildren(retry);}
+    function showFontLoadError(message){const list=document.getElementById("fontList");if(!list)return;const retry=document.createElement("button");retry.type="button";retry.className="font-family-select";retry.textContent=`${message} — ${uiText("再試行","Retry")}`;retry.onclick=()=>{retry.disabled=true;retry.textContent=uiText("システムフォントを再読込中…","Reloading system fonts…");loadSystemFonts();};list.replaceChildren(retry);}
     async function loadSystemFonts(){
       if(location.protocol==="file:"){
-        showFontLoadError("システムフォントは start.cmd から起動すると利用できます");
+        showFontLoadError(uiText("システムフォントは start.cmd から起動すると利用できます","System fonts are available when launched with start.cmd."));
         return;
       }
       const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);
       try{
         const response=await fetch(`${apiBase}/fonts?v=${encodeURIComponent(assetCacheVersion)}`,{signal:controller.signal});if(!response.ok)throw new Error(`Font catalog failed (${response.status})`);const catalog=(await response.json()).fonts||[];if(!catalog.length)throw new Error("System font catalog is empty");
         fontCatalog=catalog;fontFamilies=buildFontFamilies(catalog);const select=document.getElementById("fontSelect");select.innerHTML='<option value="">Auto / System Default</option>';catalog.forEach(font=>{const option=document.createElement("option");option.value=font.id;option.textContent=font.name;option.dataset.family=font.family;option.dataset.language=font.language;select.append(option);});
-        const fallback=catalog.find(font=>font.recommended)||catalog[0],loaders=[];state.elements.filter(item=>item.type==="text").forEach(item=>{let font=catalog.find(candidate=>candidate.id===item.font_id)||catalog.find(candidate=>candidate.path&&candidate.path===item.font_path)||catalog.find(candidate=>fontFamilyKey(candidate.family)===fontFamilyKey(item.font_family));if(!font)font=fallback;if(font){item.font_id=font.id;item.font_family=font.family;item.font_css_family=fontCssFamily(font);item.font_path="";loaders.push(ensureFontLoaded(font));}});syncProperties();render();Promise.all(loaders).then(()=>{verticalGlyphSpriteCache.clear();state.elements.filter(item=>item.type==="text").forEach(item=>fitTextBox(item,true,!item.auto_fit));syncProperties();render();});
-      }catch(error){console.warn("Speech Bubble font list unavailable",error);showFontLoadError(error?.name==="AbortError"?"システムフォントの読込がタイムアウトしました":"システムフォントを読み込めませんでした");}
+        const fallback=catalog.find(font=>font.recommended)||catalog[0],loaders=[];state.elements.filter(item=>item.type==="text").forEach(item=>{const font=matchingSavedFont(item,catalog)||(hasSavedFontIdentity(item)?null:fallback);if(font){applyResolvedFont(item,font);loaders.push(ensureFontLoaded(font));}else item.font_css_family=item.font_css_family||item.font_family||"sans-serif";});syncProperties();render();Promise.all(loaders).then(()=>{verticalGlyphSpriteCache.clear();state.elements.filter(item=>item.type==="text").forEach(item=>fitTextBox(item,true,!item.auto_fit));syncProperties();render();});
+      }catch(error){console.warn("Speech Bubble font list unavailable",error);showFontLoadError(error?.name==="AbortError"?uiText("システムフォントの読込がタイムアウトしました","System font loading timed out."):uiText("システムフォントを読み込めませんでした","System fonts could not be loaded."));}
       finally{clearTimeout(timeout);}
     }
     const rangeSpecs={x:[-8192,8192,1],y:[-8192,8192,1],w:[1,8192,1],h:[1,8192,1],sfx_scale:[10,400,1],symbol_top_width:[20,180,1],symbol_skew:[-50,50,1],opacity:[0,1,.05],font_size:[1,500,1],tracking:[-200,500,5],font_scale_x:[10,500,1],font_scale_y:[10,500,1],rotation:[-180,180,1],stroke_width:[0,100,.5],border_width:[0,1000,1],border_width_x:[0,1000,1],border_width_y:[0,1000,1],inner_stroke_width:[0,200,1],frame_scale:[10,400,1],frame_inset:[-2048,2048,1],shadow_opacity:[0,1,.05],shadow_x:[-500,500,1],shadow_y:[-500,500,1],shadow_blur:[0,200,1],glow_opacity:[0,1,.05],glow_blur:[0,200,1],glow_spread:[0,100,1],shape_intensity:[0,100,1],shape_asymmetry:[0,100,1],shape_roundness:[0,100,1],spike_count:[5,32,1],valley_concavity:[0,100,1],lobe_count:[5,20,1],lobe_depth:[0,100,1],shape_softness:[0,100,1],line_count:[20,500,1],inner_x:[.03,.65,.005],inner_y:[.03,.65,.005],line_width:[.0005,.035,.0005],line_length:[.15,1,.01],taper:[0,1,.01],center_x:[-.5,1.5,.005],center_y:[-.5,1.5,.005],length_random:[0,1,.01],inner_random:[0,1,.01],width_random:[0,1,.01],spacing_random:[0,1,.01],seed:[0,4294967295,1]};
@@ -2620,67 +2766,115 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     function initializeAccordionState(){let saved={};try{saved=JSON.parse(localStorage.getItem(PANEL_STATE_KEY)||"{}")||{};}catch{}for(const details of [document.getElementById("textLayoutDetails"),document.getElementById("transformDetails"),document.getElementById("shadowEffects"),document.getElementById("frameEffects")]){details.open=saved[details.id]===true;details.addEventListener("toggle",()=>{let current={};try{current=JSON.parse(localStorage.getItem(PANEL_STATE_KEY)||"{}")||{};}catch{}current[details.id]=details.open;try{localStorage.setItem(PANEL_STATE_KEY,JSON.stringify(current));}catch{}});}}
     const LEFT_SECTION_STATE_KEY="speech_bubble:left_sections:v1";
     function initializeLeftSectionState(){let saved={};try{saved=JSON.parse(localStorage.getItem(LEFT_SECTION_STATE_KEY)||"{}")||{};}catch{}for(const details of document.querySelectorAll(".left-section[data-left-section]")){const key=details.dataset.leftSection;details.open=saved[key]!==false;details.addEventListener("toggle",()=>{let current={};try{current=JSON.parse(localStorage.getItem(LEFT_SECTION_STATE_KEY)||"{}")||{};}catch{}current[key]=details.open;try{localStorage.setItem(LEFT_SECTION_STATE_KEY,JSON.stringify(current));}catch{}});}}
-    const RIGHT_DOCK_SPLIT_KEY="speech_bubble:right_dock_split:v4";
-    const RIGHT_DOCK_FLOAT_KEY="speech_bubble:right_floating_panels:v2";
-    function initializeRightDockDefault(){try{if(localStorage.getItem(RIGHT_DOCK_SPLIT_KEY)===null)localStorage.setItem(RIGHT_DOCK_SPLIT_KEY,"0.58");}catch{}}
-    function initializeRightDockResize(){
-      const right=document.querySelector(".right"),propertiesDock=document.getElementById("propertiesDock"),layersDock=document.getElementById("layersDock"),divider=document.getElementById("rightDockDivider"),layersToggle=document.getElementById("layersDockToggle");
-      if(!right||!propertiesDock||!layersDock||!divider||!layersToggle)return;
-      let ratio=.64,panelState={};
-      try{const saved=Number(localStorage.getItem(RIGHT_DOCK_SPLIT_KEY));if(Number.isFinite(saved))ratio=saved;panelState=JSON.parse(localStorage.getItem(PANEL_STATE_KEY)||"{}")||{};}catch{}
-      let layersCollapsed=panelState.layersDockCollapsed===true;
-      propertiesDock.classList.remove("collapsed");
-      const savePanels=()=>{let current={};try{current=JSON.parse(localStorage.getItem(PANEL_STATE_KEY)||"{}")||{};}catch{}current.propertiesDockCollapsed=false;current.layersDockCollapsed=layersCollapsed;try{localStorage.setItem(PANEL_STATE_KEY,JSON.stringify(current));}catch{}};
-      const apply=next=>{
-        const propertiesFloating=propertiesDock.classList.contains("floating-panel"),layersFloating=layersDock.classList.contains("floating-panel");
-        propertiesDock.classList.remove("collapsed");
-        layersDock.classList.toggle("collapsed",layersCollapsed);
-        layersToggle.setAttribute("aria-expanded",String(!layersCollapsed));
-        divider.hidden=layersCollapsed||propertiesFloating||layersFloating;
-        propertiesDock.style.removeProperty("flex-basis");layersDock.style.removeProperty("flex-basis");
-        if(propertiesFloating||layersFloating){if(!layersFloating&&layersCollapsed)layersDock.style.flexBasis="31px";return;}
-        if(layersCollapsed){propertiesDock.style.flex="1 1 auto";layersDock.style.flexBasis="31px";return;}
-        propertiesDock.style.removeProperty("flex");
-        const dividerHeight=divider.offsetHeight||7,usable=Math.max(1,right.clientHeight-dividerHeight),minimumProperties=Math.min(160,usable*.42),minimumLayers=Math.min(280,usable*.48),maximumProperties=Math.max(minimumProperties,usable-minimumLayers),height=Math.max(minimumProperties,Math.min(maximumProperties,usable*next));
-        ratio=Math.max(0,Math.min(1,height/usable));propertiesDock.style.flexBasis=`${height}px`;divider.setAttribute("aria-valuenow",String(Math.round(ratio*100)));
-      };
-      const saveRatio=()=>{try{localStorage.setItem(RIGHT_DOCK_SPLIT_KEY,String(ratio));}catch{}};
-      layersToggle.addEventListener("click",()=>{layersCollapsed=!layersCollapsed;savePanels();apply(ratio);});
-      divider.addEventListener("pointerdown",event=>{event.preventDefault();divider.classList.add("active");divider.setPointerCapture(event.pointerId);});
-      divider.addEventListener("pointermove",event=>{if(!divider.hasPointerCapture(event.pointerId))return;const bounds=right.getBoundingClientRect();apply((event.clientY-bounds.top)/Math.max(1,right.clientHeight));});
-      divider.addEventListener("pointerup",event=>{if(divider.hasPointerCapture(event.pointerId))divider.releasePointerCapture(event.pointerId);divider.classList.remove("active");saveRatio();});
-      divider.addEventListener("pointercancel",()=>divider.classList.remove("active"));
-      divider.addEventListener("dblclick",()=>{apply(.64);saveRatio();});
-      divider.addEventListener("keydown",event=>{if(!["ArrowUp","ArrowDown","Home"].includes(event.key))return;event.preventDefault();apply(event.key==="Home"?.64:ratio+(event.key==="ArrowUp"?-.03:.03));saveRatio();});
-      window.addEventListener("resize",()=>apply(ratio));window.addEventListener("speech-bubble:dock-change",()=>apply(ratio));apply(ratio);
-    }
+    const RIGHT_DOCK_FLOAT_KEY="speech_bubble:floating_panels:v4";
+    const LEGACY_RIGHT_DOCK_FLOAT_KEY="speech_bubble:floating_panels:v3";
+    const EXTERNAL_PALETTE_GEOMETRY_KEY="speech_bubble:external_palette_geometry:v1";
+    const EXTERNAL_PALETTE_SPLIT_KEY="speech_bubble:external_palette_split:v1";
     function initializeRightDockFloating(){
       const definitions=[
-        {key:"properties",panel:document.getElementById("propertiesDock"),floatButton:document.getElementById("propertiesDockFloat"),dockButton:document.getElementById("propertiesDockReturn"),grip:document.querySelector('[data-dock-drag="properties"]'),dragSurface:document.querySelector("#propertiesDock > .dock-heading"),minHeight:260},
-        {key:"layers",panel:document.getElementById("layersDock"),floatButton:document.getElementById("layersDockFloat"),dockButton:document.getElementById("layersDockReturn"),grip:document.querySelector('[data-dock-drag="layers"]'),dragSurface:document.querySelector("#layersDock > .layers-title-row"),minHeight:220},
+        {key:"properties",panel:document.getElementById("propertiesDock"),dragSurface:document.querySelector("#propertiesDock > .dock-heading"),minHeight:260},
+        {key:"layers",panel:document.getElementById("layersDock"),dragSurface:document.querySelector("#layersDock > .layers-title-row"),minHeight:220},
       ];
-      if(definitions.some(entry=>!entry.panel||!entry.floatButton||!entry.dockButton||!entry.grip||!entry.dragSurface))return;
-      let saved={},zCounter=80;
-      try{saved=JSON.parse(localStorage.getItem(RIGHT_DOCK_FLOAT_KEY)||"{}")||{};}catch{}
-      for(const entry of definitions)zCounter=Math.max(zCounter,Number(saved[entry.key]?.z)||0);
-      const save=()=>{try{localStorage.setItem(RIGHT_DOCK_FLOAT_KEY,JSON.stringify(saved));}catch{}};
-      const clampGeometry=(entry,geometry={})=>{const width=Math.max(240,Math.min(innerWidth-16,Math.round(Number(geometry.width)||304))),height=Math.max(entry.minHeight,Math.min(innerHeight-16,Math.round(Number(geometry.height)||Math.min(560,innerHeight-16)))),left=Math.max(8,Math.min(innerWidth-width-8,Math.round(Number(geometry.left)||innerWidth-width-16))),top=Math.max(8,Math.min(innerHeight-height-8,Math.round(Number(geometry.top)||48)));return{left,top,width,height};};
-      const currentGeometry=entry=>{const rect=entry.panel.getBoundingClientRect();return clampGeometry(entry,{left:rect.left,top:rect.top,width:rect.width,height:rect.height});};
-      const applyGeometry=(entry,geometry)=>{const next=clampGeometry(entry,geometry);entry.applying=true;entry.panel.style.left=`${next.left}px`;entry.panel.style.top=`${next.top}px`;entry.panel.style.width=`${next.width}px`;entry.panel.style.height=`${next.height}px`;entry.applying=false;saved[entry.key]={...(saved[entry.key]||{}),...next};};
-      const bringToFront=(entry,persist=true)=>{if(!entry.panel.classList.contains("floating-panel"))return;zCounter+=1;entry.panel.style.zIndex=String(zCounter);saved[entry.key]={...(saved[entry.key]||{}),z:zCounter};if(persist)save();};
-      const setFloating=(entry,floating,geometry=null)=>{if(floating){const next=geometry||currentGeometry(entry);entry.panel.classList.add("floating-panel");applyGeometry(entry,next);saved[entry.key]={...(saved[entry.key]||{}),floating:true};bringToFront(entry,false);}else{if(entry.panel.classList.contains("floating-panel"))saved[entry.key]={...(saved[entry.key]||{}),...currentGeometry(entry)};entry.panel.classList.remove("floating-panel");for(const property of ["left","top","width","height","z-index"])entry.panel.style.removeProperty(property);saved[entry.key]={...(saved[entry.key]||{}),floating:false};}save();window.dispatchEvent(new Event("speech-bubble:dock-change"));if(document.getElementById("fontBrowser")?.classList.contains("open"))positionFontBrowser();};
-      for(const entry of definitions){
-        entry.floatButton.addEventListener("click",()=>setFloating(entry,true,currentGeometry(entry)));
-        entry.dockButton.addEventListener("click",()=>setFloating(entry,false));
-        entry.panel.addEventListener("pointerdown",()=>bringToFront(entry),true);
-        const startDrag=event=>{if(event.button!==0||!entry.panel.classList.contains("floating-panel")||event.target.closest("button,input,select,textarea,a"))return;event.preventDefault();event.stopPropagation();bringToFront(entry);const geometry=currentGeometry(entry),capture=event.currentTarget;entry.drag={pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,left:geometry.left,top:geometry.top,capture};capture.setPointerCapture(event.pointerId);};
-        const moveDrag=event=>{if(!entry.drag||entry.drag.pointerId!==event.pointerId)return;applyGeometry(entry,{...(saved[entry.key]||{}),left:entry.drag.left+event.clientX-entry.drag.startX,top:entry.drag.top+event.clientY-entry.drag.startY});if(document.getElementById("fontBrowser")?.classList.contains("open"))positionFontBrowser();};
-        const endDrag=event=>{if(!entry.drag||entry.drag.pointerId!==event.pointerId)return;const capture=entry.drag.capture;entry.drag=null;if(capture?.hasPointerCapture(event.pointerId))capture.releasePointerCapture(event.pointerId);save();};
-        for(const surface of [entry.grip,entry.dragSurface]){surface.addEventListener("pointerdown",startDrag);surface.addEventListener("pointermove",moveDrag);surface.addEventListener("pointerup",endDrag);surface.addEventListener("pointercancel",endDrag);}
-        if("ResizeObserver" in window)new ResizeObserver(()=>{if(entry.applying||!entry.panel.classList.contains("floating-panel"))return;saved[entry.key]={...(saved[entry.key]||{}),...currentGeometry(entry)};save();if(document.getElementById("fontBrowser")?.classList.contains("open"))positionFontBrowser();}).observe(entry.panel);
+      if(definitions.some(entry=>!entry.panel||!entry.dragSurface))return;
+      const externalApi=()=>window.pywebview?.api;
+      if(isPaletteWindow){
+        const right=document.querySelector(".right"),divider=document.createElement("div");
+        divider.className="external-palette-divider";
+        divider.title=uiText("PropertiesとLayersの幅を調整","Resize Properties and Layers");
+        right.insertBefore(divider,definitions[1].panel);
+        definitions.forEach(entry=>{
+          entry.panel.classList.add("floating-panel");entry.dragSurface.style.cursor="move";
+          entry.dragSurface.addEventListener("pointerdown",event=>{
+            if(event.button!==0||event.target.closest("button,input,select,textarea,a"))return;
+            event.preventDefault();externalApi()?.begin_palette_drag?.();
+          });
+        });
+        let split=.5;
+        try{split=Math.max(.32,Math.min(.68,Number(localStorage.getItem(EXTERNAL_PALETTE_SPLIT_KEY))||.5));}catch{}
+        const applySplit=()=>{const available=Math.max(560,right.clientWidth-21),left=Math.round(available*split);right.style.gridTemplateColumns=`${left}px 7px minmax(280px,1fr)`;};
+        const saveExternalGeometry=()=>{try{localStorage.setItem(EXTERNAL_PALETTE_GEOMETRY_KEY,JSON.stringify({x:screenX,y:screenY,width:outerWidth,height:outerHeight,split}));}catch{}};
+        divider.addEventListener("pointerdown",event=>{if(event.button!==0)return;event.preventDefault();divider.classList.add("active");divider.setPointerCapture(event.pointerId);});
+        divider.addEventListener("pointermove",event=>{if(!divider.hasPointerCapture(event.pointerId))return;const rect=right.getBoundingClientRect();split=Math.max(.32,Math.min(.68,(event.clientX-rect.left-7)/Math.max(1,rect.width-21)));applySplit();});
+        const finishSplit=event=>{if(!divider.hasPointerCapture(event.pointerId))return;divider.releasePointerCapture(event.pointerId);divider.classList.remove("active");try{localStorage.setItem(EXTERNAL_PALETTE_SPLIT_KEY,String(split));}catch{}saveExternalGeometry();};
+        divider.addEventListener("pointerup",finishSplit);divider.addEventListener("pointercancel",finishSplit);
+        window.addEventListener("resize",()=>{applySplit();saveExternalGeometry();});
+        window.addEventListener("pagehide",saveExternalGeometry);
+        applySplit();saveExternalGeometry();
+        window.SpeechBubbleWorkspaceLayout={
+          reset(){split=.5;applySplit();try{localStorage.setItem(EXTERNAL_PALETTE_SPLIT_KEY,String(split));}catch{}},
+          reattachExternal(){externalApi()?.close_palette?.();},
+        };
+        return;
       }
-      window.addEventListener("resize",()=>{for(const entry of definitions)if(entry.panel.classList.contains("floating-panel"))applyGeometry(entry,saved[entry.key]);save();if(document.getElementById("fontBrowser")?.classList.contains("open"))positionFontBrowser();});
-      for(const entry of definitions)if(saved[entry.key]?.floating)setFloating(entry,true,saved[entry.key]);
+      let store={version:4,modes:{},externalActive:false},zCounter=80,activeMode="";
+      try{
+        const current=JSON.parse(localStorage.getItem(RIGHT_DOCK_FLOAT_KEY)||"null");
+        if(current?.version===4&&current.modes)store=current;
+      }catch{}
+      const modeKey=()=>{
+        const availableWidth=Number(screen?.availWidth)||innerWidth,availableHeight=Number(screen?.availHeight)||innerHeight;
+        return Math.abs(outerWidth-availableWidth)<28&&Math.abs(outerHeight-availableHeight)<48?"maximized":"windowed";
+      };
+      const defaultFloatingLayout=()=>{
+        const margin=8,top=48,gap=8,maximumPairWidth=Math.max(560,innerWidth-margin*2-gap),width=Math.max(280,Math.min(320,Math.round(innerWidth*.15),Math.floor(maximumPairWidth/2))),availableHeight=Math.max(260,innerHeight-top-margin),height=Math.max(260,Math.min(760,availableHeight)),layersLeft=innerWidth-margin-width,propertiesLeft=layersLeft-gap-width;
+        return{properties:{left:Math.max(margin,propertiesLeft),top,width,height,z:81},layers:{left:Math.max(margin,layersLeft),top,width,height,z:82}};
+      };
+      const legacyDefaultAtLeft=legacy=>{const properties=legacy?.properties,layers=legacy?.layers;if(!properties||!layers)return false;return Number(properties.left)<=16&&Math.abs(Number(layers.left)-(Number(properties.left)+Number(properties.width)+8))<=20;};
+      activeMode=modeKey();
+      if(!store.modes[activeMode]){
+        try{
+          const legacy=JSON.parse(localStorage.getItem(LEGACY_RIGHT_DOCK_FLOAT_KEY)||"null");
+          if(legacy&&!legacyDefaultAtLeft(legacy))store.modes[activeMode]=legacy;
+        }catch{}
+      }
+      let saved=store.modes[activeMode]||defaultFloatingLayout();
+      const normalizedGeometry=geometry=>{const width=Math.max(240,Number(geometry.width)||280),height=Math.max(180,Number(geometry.height)||260),horizontalRange=Math.max(1,innerWidth-width-16),verticalRange=Math.max(1,innerHeight-height-16);return{...geometry,leftRatio:(Number(geometry.left)-8)/horizontalRange,topRatio:(Number(geometry.top)-8)/verticalRange,viewportWidth:innerWidth,viewportHeight:innerHeight};};
+      const geometryForViewport=(entry,geometry={})=>{
+        let width=Number(geometry.width),height=Number(geometry.height);
+        if(Number.isFinite(Number(geometry.viewportWidth))&&Number(geometry.viewportWidth)>0)width*=innerWidth/Number(geometry.viewportWidth);
+        width=Math.max(240,Math.min(360,innerWidth-16,Math.round(width||Math.max(280,innerWidth*.15))));
+        if(Number.isFinite(Number(geometry.viewportHeight))&&Number(geometry.viewportHeight)>0)height*=innerHeight/Number(geometry.viewportHeight);
+        height=Math.max(entry.minHeight,Math.min(innerHeight-16,Math.round(height||Math.min(760,innerHeight-64))));
+        const horizontalRange=Math.max(0,innerWidth-width-16),verticalRange=Math.max(0,innerHeight-height-16);
+        const left=Number.isFinite(Number(geometry.leftRatio))?8+horizontalRange*Math.max(0,Math.min(1,Number(geometry.leftRatio))):Number(geometry.left);
+        const top=Number.isFinite(Number(geometry.topRatio))?8+verticalRange*Math.max(0,Math.min(1,Number(geometry.topRatio))):Number(geometry.top);
+        return{left:Math.max(8,Math.min(innerWidth-width-8,Math.round(Number.isFinite(left)?left:8))),top:Math.max(8,Math.min(innerHeight-height-8,Math.round(Number.isFinite(top)?top:48))),width,height};
+      };
+      for(const entry of definitions)zCounter=Math.max(zCounter,Number(saved[entry.key]?.z)||0);
+      const save=()=>{store.version=4;store.modes[activeMode]=saved;try{localStorage.setItem(RIGHT_DOCK_FLOAT_KEY,JSON.stringify(store));}catch{}};
+      const currentGeometry=entry=>{const rect=entry.panel.getBoundingClientRect();return geometryForViewport(entry,{left:rect.left,top:rect.top,width:rect.width,height:rect.height});};
+      const applyGeometry=(entry,geometry)=>{const next=geometryForViewport(entry,geometry);entry.applying=true;entry.panel.style.left=`${next.left}px`;entry.panel.style.top=`${next.top}px`;entry.panel.style.width=`${next.width}px`;entry.panel.style.height=`${next.height}px`;entry.panel.style.zIndex=String(Number(geometry?.z)||Number(saved[entry.key]?.z)||70);entry.applying=false;saved[entry.key]=normalizedGeometry({...saved[entry.key],...next});};
+      const bringToFront=(entry,persist=true)=>{zCounter+=1;entry.panel.style.zIndex=String(zCounter);saved[entry.key]={...(saved[entry.key]||{}),z:zCounter};if(persist)save();};
+      store.externalActive=false;
+      document.documentElement.classList.remove("external-palette-active");
+      for(const entry of definitions){
+        entry.panel.classList.add("floating-panel");
+        entry.panel.addEventListener("pointerdown",()=>bringToFront(entry),true);
+        const startDrag=event=>{if(event.button!==0||event.target.closest("button,input,select,textarea,a"))return;event.preventDefault();event.stopPropagation();bringToFront(entry);const geometry=currentGeometry(entry),capture=event.currentTarget;entry.drag={pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,left:geometry.left,top:geometry.top,capture};capture.setPointerCapture(event.pointerId);};
+        const moveDrag=event=>{if(!entry.drag||entry.drag.pointerId!==event.pointerId)return;const next={...(saved[entry.key]||{}),left:entry.drag.left+event.clientX-entry.drag.startX,top:entry.drag.top+event.clientY-entry.drag.startY};delete next.leftRatio;delete next.topRatio;applyGeometry(entry,next);if(document.getElementById("fontBrowser")?.classList.contains("open"))positionFontBrowser();};
+        const endDrag=event=>{if(!entry.drag||entry.drag.pointerId!==event.pointerId)return;const capture=entry.drag.capture;entry.drag=null;if(capture?.hasPointerCapture(event.pointerId))capture.releasePointerCapture(event.pointerId);save();};
+        entry.dragSurface.addEventListener("pointerdown",startDrag);entry.dragSurface.addEventListener("pointermove",moveDrag);entry.dragSurface.addEventListener("pointerup",endDrag);entry.dragSurface.addEventListener("pointercancel",endDrag);
+        if("ResizeObserver" in window)new ResizeObserver(()=>{if(entry.applying)return;saved[entry.key]={...(saved[entry.key]||{}),...currentGeometry(entry)};save();if(document.getElementById("fontBrowser")?.classList.contains("open"))positionFontBrowser();}).observe(entry.panel);
+      }
+      window.addEventListener("resize",()=>{
+        const nextMode=modeKey();
+        if(nextMode!==activeMode){for(const entry of definitions)saved[entry.key]=normalizedGeometry({...saved[entry.key],...currentGeometry(entry)});store.modes[activeMode]=saved;activeMode=nextMode;saved=store.modes[activeMode]||defaultFloatingLayout();}
+        for(const entry of definitions)applyGeometry(entry,saved[entry.key]);save();if(document.getElementById("fontBrowser")?.classList.contains("open"))positionFontBrowser();
+      });
+      for(const entry of definitions)applyGeometry(entry,saved[entry.key]);
+      save();
+      window.SpeechBubbleWorkspaceLayout={
+        reset(){
+          saved=defaultFloatingLayout();
+          store.modes={maximized:saved,windowed:defaultFloatingLayout()};store.externalActive=false;
+          try{localStorage.removeItem("speech_bubble:right_dock_split:v5");localStorage.removeItem("speech_bubble:right_floating_panels:v2");localStorage.removeItem(WORKSPACE_VIEW_KEY);}catch{}
+          document.documentElement.classList.remove("external-palette-active");
+          for(const entry of definitions)applyGeometry(entry,saved[entry.key]);
+          save();
+          fitView(false);captureActiveWorkspace();requestRender({canvas:true,layers:true,preview:false});
+        },
+        reattachExternal(){store.externalActive=false;save();document.documentElement.classList.remove("external-palette-active");for(const entry of definitions)applyGeometry(entry,saved[entry.key]);},
+      };
     }
     function sceneSnapshot(){
       captureActiveWorkspace();
@@ -2692,6 +2886,34 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
         comic:comicEditor?.serialize(),
       });
     }
+    let paletteSyncApplying=false,paletteSyncTimer=null,lastPaletteSyncSnapshot="";
+    function schedulePaletteSync(){
+      if(paletteSyncApplying||hostMode!=="desktop"||!window.pywebview?.api)return;
+      clearTimeout(paletteSyncTimer);
+      paletteSyncTimer=setTimeout(()=>{
+        paletteSyncTimer=null;
+        const snapshot=sceneSnapshot();
+        if(snapshot===lastPaletteSyncSnapshot)return;
+        lastPaletteSyncSnapshot=snapshot;
+        const method=isPaletteWindow?"palette_update":"main_update";
+        window.pywebview.api[method]?.(snapshot);
+      },45);
+    }
+    window.SpeechBubblePaletteSync={
+      snapshot:()=>sceneSnapshot(),
+      apply(snapshot){
+        if(!snapshot||snapshot===sceneSnapshot())return true;
+        paletteSyncApplying=true;
+        try{
+          restoreScene(snapshot);
+          lastPaletteSyncSnapshot=snapshot;
+          syncProperties();
+          requestRender({canvas:!isPaletteWindow,layers:true,preview:false});
+          updateActionState();
+          return true;
+        }finally{paletteSyncApplying=false;}
+      },
+    };
     function restoreScene(snapshot){
       const data=JSON.parse(snapshot);
       if(data.workspaces&&typeof data.workspaces==="object"){
@@ -2703,6 +2925,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
             height:Math.max(1,Math.round(Number(saved.height)||fallback.height)),
             backgroundVisible:saved.backgroundVisible!==false,
             elements:Array.isArray(saved.elements)?saved.elements:[],
+            view:normalizedWorkspaceView(saved.view)||normalizedWorkspaceView(storedWorkspaceViews()[name]),
           };
         }
         activeWorkspace=data.activeWorkspace==="comic"?"comic":"single";
@@ -2717,7 +2940,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       state.selection=Array.isArray(data.selection)?data.selection.filter(itemId=>state.elements.some(item=>item.id===itemId)):(state.selected?[state.selected]:[]);
       state.vectorEditId=null;state.vectorAnchorIndex=null;state.vectorAddMode=false;
       comicEditor?.restore(data.comic,{hydrate:false,keepMode:true});
-      fitView(false);
+      restoreWorkspaceView(workspaces[activeWorkspace],false);
     }
     function storeUndo(snapshot){if(!snapshot||state.undo[state.undo.length-1]===snapshot)return;state.undo.push(snapshot);if(state.undo.length>50)state.undo.shift();state.redo=[];}
     function pushUndo(){storeUndo(sceneSnapshot());}
@@ -2767,7 +2990,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       if(d.mode==="group-rotate")d.items.forEach(original=>{if(original.item.type==="emphasis_lines")original.item.fit_to_canvas=false;});
       syncProperties();requestRender({canvas:true});
     });
-    function endPointer(){if(comicEditor?.handlePointerEnd()){canvas.style.cursor=state.spaceDown?"grab":"default";viewport.style.cursor=state.spaceDown?"grab":"default";return;}const changed=Boolean(state.drag&&state.drag.mode!=="pan");state.drag=null;canvas.style.cursor=state.spaceDown?"grab":"default";viewport.style.cursor=state.spaceDown?"grab":"default";if(changed)requestRender({canvas:true,layers:true,preview:true});}
+    function endPointer(){if(comicEditor?.handlePointerEnd()){canvas.style.cursor=state.spaceDown?"grab":"default";viewport.style.cursor=state.spaceDown?"grab":"default";return;}const panned=state.drag?.mode==="pan",changed=Boolean(state.drag&&!panned);state.drag=null;if(panned)captureActiveWorkspace();canvas.style.cursor=state.spaceDown?"grab":"default";viewport.style.cursor=state.spaceDown?"grab":"default";if(changed)requestRender({canvas:true,layers:true,preview:true});}
     canvas.addEventListener("pointerup",endPointer); canvas.addEventListener("pointercancel",endPointer);
     viewport.addEventListener("pointerup",endPointer); viewport.addEventListener("pointercancel",endPointer);
     viewport.addEventListener("auxclick",event=>{if(event.button===1)event.preventDefault();});
@@ -2775,6 +2998,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       event.preventDefault();
       if(event.target===canvas&&comicEditor?.handleWheel(event,imagePoint(event)))return;
       state.zoom=Math.max(.25,Math.min(4,state.zoom*(event.deltaY<0?1.1:.9)));
+      captureActiveWorkspace();
       requestRender({canvas:true});
     },{passive:false});
     function isSupportedImageFile(file){return Boolean(file)&&(String(file.type||"").startsWith("image/")||/\.(?:png|jpe?g|webp)$/i.test(String(file.name||"")));}
@@ -2791,11 +3015,28 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     canvas.addEventListener("drop",event=>{if(imageFileFromTransfer(event.dataTransfer))return;canvas.classList.remove("drop-target");const point=imagePoint(event);if(comicEditor?.handleImageDrop(event.dataTransfer,point)){event.preventDefault();return;}const raw=event.dataTransfer.getData(EDITOR_DRAG_TYPE);if(!raw)return;event.preventDefault();let payload;try{payload=JSON.parse(raw);}catch{return;}if(payload.kind==="bubble")insertPreset(payload.id,point);else if(payload.kind==="user-bubble")insertUserPreset(payload.id,point);else if(payload.kind==="sfx")insertSfx(payload.id,point);else if(payload.kind==="frame")insertFrame(payload.id,point);else if(payload.kind==="emphasis-lines")insertEmphasisLines(payload.id,point);});
     window.addEventListener("dragend",()=>setBackgroundDropHighlight(false));
     document.addEventListener("paste",event=>{const editing=["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);if(editing)return;if(layerClipboard?.length){event.preventDefault();pasteLayers();return;}const item=Array.from(event.clipboardData?.items||[]).find(entry=>entry.kind==="file"&&String(entry.type||"").startsWith("image/"));const file=item?.getAsFile?.();if(file){event.preventDefault();if(comicEditor?.isActive())comicEditor.importFiles([file]);else requestBackgroundFile(file);}});
-     function addTextLayer(){pushUndo();const item=defaultText();item.x=Math.max(0,state.width/2-item.w/2);item.y=Math.max(0,state.height/2-item.h/2);state.elements.push(item);setSelection([item.id],item.id);syncProperties();render();}
+     function addTextLayer(){
+       pushUndo();
+       const item=defaultText(),selected=state.elements.find(element=>element.id===state.selected),selectedBubble=selected?.type==="bubble"?selected:null,explicitTarget=selectedBubble&&selectedBubble.comic_scope==="panel"?comicEditor?.panelInsertionTarget?.(selectedBubble.comic_panel_id):(comicEditor?.selectedInsertionTarget?.()||null),target=selectedBubble?.comic_scope==="panel"?explicitTarget:(explicitTarget?.scope==="panel"?explicitTarget:null);
+       if(target?.scope==="panel"){item.comic_scope="panel";item.comic_panel_id=target.panelId;item.comic_stack="above_image";}
+       const visible=visibleCanvasDocumentRect(),placementRect=target?.rect?intersectDocumentRects(visible,target.rect):visible;
+       if(selectedBubble){
+         const bubbleRect={x:selectedBubble.x,y:selectedBubble.y,w:selectedBubble.w,h:selectedBubble.h},visibleBubble=intersectDocumentRects(placementRect,bubbleRect);
+         item.x=visibleBubble.x+Math.min(48,visibleBubble.w*.16);
+         item.y=visibleBubble.y+Math.min(38,visibleBubble.h*.18);
+       }else{
+         item.x=placementRect.x+(placementRect.w-item.w)/2;
+         item.y=placementRect.y+(placementRect.h-item.h)/2;
+       }
+       clampItemToRect(item,placementRect,12);
+       const bubbleIndex=selectedBubble?state.elements.indexOf(selectedBubble):-1;
+       if(bubbleIndex>=0)state.elements.splice(bubbleIndex+1,0,item);else state.elements.push(item);
+       setSelection([item.id],item.id);syncProperties();render();
+     }
      document.getElementById("addText").onclick=addTextLayer;
      const editorSettingsButton=document.getElementById("openEditorSettings");
      if(hostMode==="desktop-file"){editorSettingsButton.disabled=true;editorSettingsButton.textContent="⚙ Settings（start.cmd版のみ）";editorSettingsButton.title="Desktop設定は start.cmd から起動すると利用できます";}
-     editorSettingsButton.onclick=()=>{if(hostMode==="desktop"){window.SpeechBubbleDesktopShell?.openSettings?.();setSaveState("Desktop設定を開きます","info");}else if(window.opener){postHost("speech_bubble:open_settings");setSaveState("ホスト側のSpeech Bubble Editor設定を開きます","info");}else setSaveState("この表示では設定を開けません","info");};
+     editorSettingsButton.onclick=()=>{if(hostMode==="desktop")window.SpeechBubbleDesktopShell?.openSettings?.();else if(window.opener){postHost("speech_bubble:open_settings");setSaveState("ホスト側のSpeech Bubble Editor設定を開きます","info");}else setSaveState("この表示では設定を開けません","info");};
     const emphasisCenterGapRange=document.getElementById("emphasisCenterGapRange"),emphasisCenterGapNumber=document.getElementById("emphasisCenterGapValue");
     let emphasisCenterGapEdit=null;
     function beginEmphasisCenterGapEdit(){const item=state.elements.find(element=>element.id===state.selected);if(!item||item.type!=="emphasis_lines"||item.locked||state.selection.length!==1)return null;if(!emphasisCenterGapEdit||emphasisCenterGapEdit.item!==item)emphasisCenterGapEdit={item,startX:item.inner_x,startY:item.inner_y};beginPropertyEdit();return emphasisCenterGapEdit;}
@@ -2838,11 +3079,11 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     document.getElementById("deleteVectorPoint").onclick=deleteVectorPoint;
     document.getElementById("randomizeShape").onclick=()=>{const item=state.elements.find(e=>e.id===state.selected);if(!item||!shapeTuningForItem(item)||item.locked)return;pushUndo();item.shape_seed=Math.floor(Math.random()*2147483647)+1;regenerateTunablePath(item);syncProperties();render();};
     document.getElementById("groupSelection").onclick=groupSelected;document.getElementById("ungroupSelection").onclick=ungroupSelected;
-    document.getElementById("plus").onclick=()=>{state.zoom=Math.min(4,state.zoom*1.2);requestRender({canvas:true});}; document.getElementById("minus").onclick=()=>{state.zoom=Math.max(.25,state.zoom/1.2);requestRender({canvas:true});}; document.getElementById("fit").onclick=fitView;
+    document.getElementById("plus").onclick=()=>{state.zoom=Math.min(4,state.zoom*1.2);captureActiveWorkspace();requestRender({canvas:true});}; document.getElementById("minus").onclick=()=>{state.zoom=Math.max(.25,state.zoom/1.2);captureActiveWorkspace();requestRender({canvas:true});}; document.getElementById("fit").onclick=fitView;
     document.getElementById("undo").onclick=undoAction; document.getElementById("redo").onclick=redoAction;
     function saveEditorWindowState(){const availableWidth=Number(screen.availWidth)||window.outerWidth||window.innerWidth,availableHeight=Number(screen.availHeight)||window.outerHeight||window.innerHeight,availableLeft=Number(screen.availLeft)||0,availableTop=Number(screen.availTop)||0,width=Math.round(window.outerWidth||window.innerWidth),height=Math.round(window.outerHeight||window.innerHeight),left=Math.round(Number.isFinite(window.screenX)?window.screenX:window.screenLeft||availableLeft),top=Math.round(Number.isFinite(window.screenY)?window.screenY:window.screenTop||availableTop),tolerance=32,maximized=Math.abs(width-availableWidth)<=tolerance&&Math.abs(height-availableHeight)<=tolerance&&Math.abs(left-availableLeft)<=tolerance&&Math.abs(top-availableTop)<=tolerance;try{localStorage.setItem(EDITOR_WINDOW_STATE_KEY,JSON.stringify({mode:maximized?"maximized":"windowed",width,height,left,top,updatedAt:Date.now()}));}catch{}}
     function cleanupTransientState(){clearTimeout(livePreviewTimer);livePreviewTimer=null;clearTimeout(autoSaveTimer);autoSaveTimer=null;try{localStorage.removeItem(jsonKey);}catch{}comicEditor?.dispose();if(sourceObjectUrl){URL.revokeObjectURL(sourceObjectUrl);sourceObjectUrl=null;}}
-    function closeEditor(){if(editorClosed)return;if(layoutDirty&&!autoSaveEnabled&&!confirm("未保存の変更があります。保存せずに閉じますか？"))return;if(layoutDirty&&autoSaveEnabled)persistDraftNow();saveEditorWindowState();postHost("speech_bubble:editor_closing",{...editorConnectionState(),image_hash:imageHash,document_id:documentId});editorClosed=true;cleanupTransientState();postHost("speech_bubble:editor_closed",{image_hash:imageHash,document_id:documentId});window.close();}
+    async function closeEditor(){if(editorClosed)return;if(layoutDirty&&!autoSaveEnabled&&!confirm("未保存の変更があります。保存せずに閉じますか？"))return;if(layoutDirty&&autoSaveEnabled){persistDraftNow();try{await persistDesktopRecovery(true);}catch(error){console.warn("Speech Bubble close checkpoint failed",error);}}saveEditorWindowState();postHost("speech_bubble:editor_closing",{...editorConnectionState(),image_hash:imageHash,document_id:documentId});editorClosed=true;cleanupTransientState();postHost("speech_bubble:editor_closed",{image_hash:imageHash,document_id:documentId});window.close();}
     document.getElementById("closeEditor").onclick=closeEditor;
     document.getElementById("discardChanges").onclick=discardChanges;
     document.getElementById("saveLayout").onclick=saveLayoutExplicit;
@@ -2883,7 +3124,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       }
     });
     window.addEventListener("beforeunload",event=>{if(editorClosed||autoSaveEnabled||!layoutDirty)return;event.preventDefault();event.returnValue="";});
-    window.addEventListener("pagehide",()=>{if(editorClosed)return;if(layoutDirty&&autoSaveEnabled)persistDraftNow();saveEditorWindowState();postHost("speech_bubble:editor_closing",{...editorConnectionState(),image_hash:imageHash,document_id:documentId});editorClosed=true;cleanupTransientState();postHost("speech_bubble:editor_closed",{image_hash:imageHash,document_id:documentId});});
+    window.addEventListener("pagehide",()=>{if(isPaletteWindow||editorClosed)return;if(layoutDirty&&autoSaveEnabled)persistDraftNow();saveEditorWindowState();postHost("speech_bubble:editor_closing",{...editorConnectionState(),image_hash:imageHash,document_id:documentId});editorClosed=true;cleanupTransientState();postHost("speech_bubble:editor_closed",{image_hash:imageHash,document_id:documentId});});
     const properties=document.getElementById("properties");
     const shapePropertyKeys=new Set(["shape_intensity","shape_asymmetry","shape_roundness","spike_count","valley_style","valley_concavity","lobe_count","lobe_depth","shape_softness"]);
     const textFitPropertyKeys=new Set(["text","writing","font_id","font_path","font_size","tracking","font_scale_x","font_scale_y","bold","italic","stroke_width","stroke_color","shadow_enabled","shadow_x","shadow_y","shadow_blur","auto_fit"]);
@@ -2921,6 +3162,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     viewport.addEventListener("pointerdown",event=>{if(event.button!==0||event.target===canvas)return;closePresetDrawers();},true);
     window.addEventListener("keydown",(event)=>{
       const modifier=event.ctrlKey||event.metaKey,key=event.key.toLowerCase(),editing=["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
+      if(!editing&&(event.key==="Delete"||event.key==="Backspace")&&state.selection.length){event.preventDefault();if(state.vectorEditId&&state.vectorAnchorIndex!==null)deleteVectorPoint();else deleteSelected();return;}
       if(!editing&&comicEditor?.handleKeyDown(event))return;
       if(!editing&&!modifier&&key==="t"){event.preventDefault();addTextLayer();return;}
       if(modifier&&key==="c"&&!editing){event.preventDefault();copySelected();return;}
@@ -2945,7 +3187,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     function deferEditorTask(task){if("requestIdleCallback" in window)requestIdleCallback(()=>task(),{timeout:1000});else setTimeout(task,0);}
     let firstPaintDone=false,deferredResourcesStarted=false;
     function startDeferredResources(){if(deferredResourcesStarted)return;deferredResourcesStarted=true;deferEditorTask(loadDeferredEditorResources);}
-    function firstPaint(){if(firstPaintDone)return;firstPaintDone=true;fitView(false);syncProperties();requestRender({canvas:true,layers:true,preview:false});dirtyTrackingEnabled=true;updateActionState();postHost("speech_bubble:editor_ready",{has_image:imageLoaded,document_id:documentId,mode:documentMode});requestAnimationFrame(()=>{if(imageLoaded)deferEditorTask(()=>scheduleLivePreview(renderRevision));startDeferredResources();});}
+    function firstPaint(){if(firstPaintDone)return;firstPaintDone=true;if(firstApplicationView)fitView(false);else restoreWorkspaceView(workspaces[activeWorkspace],false);syncProperties();requestRender({canvas:true,layers:true,preview:false});dirtyTrackingEnabled=true;updateActionState();postHost("speech_bubble:editor_ready",{has_image:imageLoaded,document_id:documentId,mode:documentMode});requestAnimationFrame(()=>{if(imageLoaded)deferEditorTask(()=>scheduleLivePreview(renderRevision));startDeferredResources();});}
     async function loadDeferredEditorResources(){const fontTask=loadSystemFonts(),assetTask=Promise.all([loadFrameManifest(),loadBubbleShapeManifest(),loadSfxAssetCatalog(),loadUserAssetCatalog()]);await assetTask;initializePresetUI();refreshQuickSfx();refreshQuickFrames();await fontTask;requestRender({canvas:true,layers:true,preview:false});}
     async function desktopBrowserCacheStatus(){
       let draftFiles=0,draftBytes=0,temporaryFiles=0,temporaryBytes=0;
@@ -2980,31 +3222,77 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       }catch(error){console.warn("Speech Bubble browser cache clear failed",error);}
       return{removed};
     }
+    const DESKTOP_SINGLE_BACKGROUND_ID="__single_background__";
+    async function desktopSnapshot(){
+      const images=await comicEditor?.exportProjectImages?.()||[];
+      if(imageLoaded&&(sourceBlob||imageUrl)){
+        const blob=await sourceImageBlob();
+        images.push({id:DESKTOP_SINGLE_BACKGROUND_ID,name:sourceName||"single-image",mime:blob.type||"image/png",data_url:await blobToDataUrl(blob)});
+      }
+      return{title:sourceName||"speech-bubble-project",layout:JSON.parse(currentLayoutJson()),images};
+    }
+    async function loadDesktopPayload(payload,{recovery=false}={}){
+      const nextId=`standalone:${createUuid()}`;setStandaloneContext(nextId);clearDocumentCanvas();sourceName=String(payload?.manifest?.title||"speech-bubble-project");dirtyTrackingEnabled=false;
+      const records=Array.isArray(payload?.images)?payload.images:[],single=records.find(record=>record?.id===DESKTOP_SINGLE_BACKGROUND_ID);
+      if(single?.data_url){
+        const blob=await fetch(single.data_url).then(response=>response.blob());
+        await displayImageBlob(blob,{name:single.name||sourceName});
+      }
+      loadState(JSON.stringify(payload?.layout||{}));await comicEditor?.importProjectImages?.(records.filter(record=>record?.id!==DESKTOP_SINGLE_BACKGROUND_ID));
+      lastSavedLayout=currentLayoutJson();hasExplicitSavedLayout=!recovery;layoutDirty=recovery;state.undo=[];state.redo=[];dirtyTrackingEnabled=true;
+      restoreWorkspaceView(workspaces[activeWorkspace],false);syncProperties();requestRender({canvas:true,layers:true,preview:false});updateActionState();
+    }
     window.SpeechBubbleDesktopEditor={
-      snapshot:async()=>({title:sourceName||"speech-bubble-project",layout:JSON.parse(currentLayoutJson()),images:await comicEditor?.exportProjectImages?.()||[]}),
-      loadProject:async payload=>{const nextId=`standalone:${createUuid()}`;setStandaloneContext(nextId);sourceName=String(payload?.manifest?.title||"speech-bubble-project");dirtyTrackingEnabled=false;loadState(JSON.stringify(payload?.layout||{}));await comicEditor?.importProjectImages?.(payload?.images||[]);lastSavedLayout=currentLayoutJson();hasExplicitSavedLayout=true;layoutDirty=false;state.undo=[];state.redo=[];dirtyTrackingEnabled=true;fitView(false);syncProperties();requestRender({canvas:true,layers:true,preview:false});updateActionState();},
+      snapshot:desktopSnapshot,
+      loadProject:async payload=>loadDesktopPayload(payload,{recovery:false}),
+      loadRecovery:async payload=>loadDesktopPayload(payload,{recovery:true}),
       setStatus:setSaveState,
       cacheStatus:desktopBrowserCacheStatus,
       clearCache:clearDesktopBrowserCache,
+      converterStatus:()=>comicConverter?.storageStatus?.()||{},
+      clearConversionHistory:()=>comicConverter?.clearHistory?.()||{removed:0},
+      comicStorageStatus:()=>comicEditor?.storageStatus?.()||{},
+      cleanupUnusedComicImages:()=>comicEditor?.cleanupUnusedImages?.()||{removed:0},
       refreshUserAssets:async()=>{await loadUserAssetCatalog();refreshQuickSfx();renderSfxDrawer();},
     };
     async function initializeEditor(){
       const initialTheme=params.get("theme");
       document.documentElement.dataset.theme=initialTheme==="light"?"light":initialTheme==="dark"?"dark":(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark");
       initializeComicEditor();
-      initializePresetUI();initializeSfxSwatches();initializeCompactColorSwatches();refreshQuickSfx();refreshQuickFrames();refreshQuickEmphasisLines();initializeDrawerResize();initializeAccordionState();initializeLeftSectionState();initializeRightDockDefault();initializeRightDockResize();initializeRightDockFloating();enhanceNumericInputs();initializeUserAssetBroadcast();loadUserPresets();
+      initializeComicConverter();
+      initializePresetUI();initializeSfxSwatches();initializeCompactColorSwatches();refreshQuickSfx();refreshQuickFrames();refreshQuickEmphasisLines();initializeDrawerResize();initializeAccordionState();initializeLeftSectionState();initializeRightDockFloating();enhanceNumericInputs();initializeUserAssetBroadcast();loadUserPresets();
       loadState("{}");lastSavedLayout=currentLayoutJson();hasExplicitSavedLayout=false;layoutDirty=false;imageLoaded=false;updateActionState();firstPaint();
+      if(isPaletteWindow&&hostMode==="desktop"){await window.pywebview?.api?.palette_ready?.();return;}
       deferEditorTask(()=>{pruneDraftCache();pruneDocumentBackgrounds();});
       let startupResult="new";
-      if(imageUrl){
+      const isDesktop=["desktop","desktop-file"].includes(hostMode);
+      if(hostMode==="desktop"&&!imageUrl){
+        try{
+          const recovery=await window.SpeechBubbleDesktopShell?.loadRecovery?.();
+          if(recovery?.layout){
+            let choice=startupBehavior;
+            if(choice==="ask")choice=await showStandaloneResumeChoice();
+            if(choice==="resume"){
+              await window.SpeechBubbleDesktopEditor.loadRecovery(recovery);startupResult="resume";
+              const fallback=Number(recovery.fallback_generation)||0;
+              setSaveState(fallback?uiText(`${fallback}世代前の下書きを復元しました`, `Restored a draft from ${fallback} generation(s) earlier`):uiText("前回の編集を復元しました","Restored the previous edit"),fallback?"error":"saved");
+            }
+          }
+        }catch(error){console.error("Speech Bubble desktop recovery load failed",error);setSaveState(uiText("復元キャッシュを読み込めませんでした。新規で開始します","Could not load recovery data. Starting a new edit"),"error");}
+      }
+      if(startupResult==="resume"){
+        startDeferredResources();
+      }else if(imageUrl){
         try{await loadRemoteImage(imageUrl,{name:sourceName,tab:sourceTab});}
         catch(error){console.error("Speech Bubble initial image load failed",error);imageLoaded=false;updateActionState();setSaveState(error?.message||"背景画像を読み込めませんでした","error");}
       }else if(documentMode==="standalone"){
-        const isDesktop=["desktop","desktop-file"].includes(hostMode);
-        startupResult=await startStandaloneDocument(standaloneId,{offerResume:!isDesktop||startupBehavior==="ask",behavior:isDesktop?startupBehavior:"ask"});
+        // Desktop recovery is authoritative. Do not immediately reopen the
+        // legacy browser/localStorage resume prompt after the user chose New.
+        startupResult=await startStandaloneDocument(standaloneId,{offerResume:!isDesktop,behavior:isDesktop?"new":"ask"});
       }
       if(["desktop","desktop-file"].includes(hostMode)&&startupResult!=="resume"&&(params.get("comic")==="1"||directFileMode)&&!comicEditor?.isActive())comicEditor?.setEditMode("comic");
     }
+    window.addEventListener("speech-bubble:language-change",()=>{refreshLayers();syncProperties();renderFontBrowser();comicEditor?.refreshLanguage?.();updateActionState();});
     initializeEditor();
   </script>
 </body>

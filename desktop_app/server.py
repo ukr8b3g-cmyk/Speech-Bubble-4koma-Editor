@@ -13,6 +13,7 @@ from speech_bubble_editor.api import register_routes
 from .paths import DesktopPaths
 from .project_store import ProjectStore
 from .recent_projects import RecentProjects
+from .recovery_store import RecoveryStore
 from .settings_store import SettingsStore
 
 
@@ -22,6 +23,7 @@ def create_app(paths: DesktopPaths, launch_token: str | None = None) -> FastAPI:
     settings = SettingsStore(paths.settings)
     recent = RecentProjects(paths.recent)
     projects = ProjectStore()
+    recovery = RecoveryStore(paths.recovery)
     app = FastAPI(title="Speech Bubble 4koma Editor", docs_url=None, redoc_url=None)
     app.state.desktop_launch_token = token
     register_routes(app)
@@ -110,25 +112,49 @@ def create_app(paths: DesktopPaths, launch_token: str | None = None) -> FastAPI:
         recovery_files = [path for path in paths.recovery.rglob("*") if path.is_file()]
         temporary_files = [path for path in paths.temp.rglob("*") if path.is_file()]
         size = sum(path.stat().st_size for path in [*recovery_files, *temporary_files])
+        recovery_status = recovery.status()
         return {
             "ok": True,
             "draft_files": len(recovery_files),
             "temporary_files": len(temporary_files),
             "total_size": size,
             "total_size_label": f"{size / (1024 * 1024):.1f} MB",
+            "recovery": recovery_status,
         }
 
     @app.post("/desktop/cache/clear")
     async def clear_cache(request: Request, x_sbe_token: str = Header(default="")):
         require_token(request, x_sbe_token)
-        removed = 0
-        for path in cache_files():
+        removed = recovery.clear()
+        for path in [path for path in paths.temp.rglob("*") if path.is_file()]:
             try:
                 path.unlink()
                 removed += 1
             except FileNotFoundError:
                 continue
         return {"ok": True, "removed": removed}
+
+    @app.post("/desktop/recovery/save")
+    async def save_recovery(request: Request, x_sbe_token: str = Header(default="")):
+        require_token(request, x_sbe_token)
+        payload = await request.json()
+        try:
+            return recovery.save(
+                payload if isinstance(payload, dict) else {},
+                checkpoint=bool(payload.get("checkpoint")) if isinstance(payload, dict) else False,
+            )
+        except (OSError, ValueError, TypeError) as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.get("/desktop/recovery/load")
+    async def load_recovery(request: Request, x_sbe_token: str = Header(default="")):
+        require_token(request, x_sbe_token)
+        return recovery.load()
+
+    @app.get("/desktop/recovery/status")
+    async def recovery_status(request: Request, x_sbe_token: str = Header(default="")):
+        require_token(request, x_sbe_token)
+        return {"ok": True, **recovery.status()}
 
     @app.get("/desktop/recent")
     async def get_recent(request: Request, x_sbe_token: str = Header(default="")):

@@ -5,7 +5,12 @@ const html = fs.readFileSync("web/speech-bubble-editor.html", "utf8");
 const editor = fs.readFileSync("web/comic-editor.js", "utf8");
 const css = fs.readFileSync("web/comic-editor.css", "utf8");
 const desktopShell = fs.readFileSync("web/desktop/desktop-shell.js", "utf8");
+const desktopMain = fs.readFileSync("desktop_app/main.py", "utf8");
+const renderer = fs.readFileSync("speech_bubble_editor/renderer.py", "utf8");
 const shapeManifest = JSON.parse(fs.readFileSync("web/assets/shapes/manifest.json", "utf8"));
+for (const match of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)) {
+  if (match[1].trim()) assert.doesNotThrow(() => new Function(match[1]), "Inline Editor script must parse");
+}
 
 for (const asset of ["comic-editor.css", "comic-panels.js", "comic-editor.js"]) {
   assert.ok(html.includes(`./${asset}?v=`), `${asset} must be loaded by the Editor with cache busting`);
@@ -21,6 +26,12 @@ for (const phase of ["base", "images", "borders"]) {
 assert.match(html, /comic_stack==="below_image"/);
 assert.match(html, /assignLayerComicTarget/);
 assert.match(html, /id:"center",label:"Center",line_count:180,inner_x:\.5,inner_y:\.5/);
+assert.match(html, /id:"wide",label:"Wide",line_count:210,inner_x:\.45,inner_y:\.45/);
+assert.match(html, /id:"tall",label:"Tall",line_count:190,inner_x:\.45,inner_y:\.45/);
+assert.match(html, /id:"side",label:"One Side",line_count:130,inner_x:\.45,inner_y:\.45/);
+for (const preset of ["wide", "tall", "side"]) {
+  assert.match(renderer, new RegExp(`"${preset}": \\{[\\s\\S]*?"inner_x": 0\\.45, "inner_y": 0\\.45`));
+}
 assert.match(html, /function refreshQuickEmphasisLines\(\)/);
 assert.match(html, /favoriteAssets\("emphasis",EMPHASIS_PRESETS,\["center","wide"\]\)/);
 assert.match(html, /id="openEmphasisDrawer"/);
@@ -48,7 +59,7 @@ assert.match(html, /comic_scope/);
 assert.match(html, /data-comic-target="emphasis"/);
 assert.match(html, /data-comic-target="asset"/);
 assert.match(html, /assignElementTarget/);
-assert.match(html, /text:"こんにちは"/);
+assert.match(html, /text:uiText\("こんにちは","Hello!"\)/);
 assert.match(html, /installBubbleFallbackAssets/);
 assert.match(html, /complete built-in fallback/);
 assert.match(html, /start\.cmd から起動すると利用できます/);
@@ -121,18 +132,30 @@ assert.match(css, /\.comic-context-menu/);
 assert.match(css, /\.comic-layer-nested/);
 assert.match(html, /dataset\.comicPanelTarget/);
 assert.match(html, /insertAdjacentElement\("afterend",row\)/);
-for (const dockControl of [
-  "propertiesDockFloat",
-  "propertiesDockReturn",
-  "layersDockFloat",
-  "layersDockReturn",
-]) {
-  assert.match(html, new RegExp(`id="${dockControl}"`));
+for (const removedDockControl of ["propertiesDockFloat", "propertiesDockReturn", "layersDockFloat", "layersDockReturn", "layersDockToggle", "rightDockDivider"]) {
+  assert.doesNotMatch(html, new RegExp(`id="${removedDockControl}"`));
 }
 assert.match(html, /function initializeRightDockFloating\(\)/);
-assert.match(html, /speech_bubble:right_floating_panels:v2/);
+assert.match(html, /speech_bubble:floating_panels:v4/);
+assert.match(html, /delete next\.leftRatio;delete next\.topRatio;applyGeometry\(entry,next\)/);
+assert.doesNotMatch(html, /const detachExternal=/);
+assert.match(html, /class="properties-dock floating-panel"/);
+assert.match(html, /class="layers-dock floating-panel"/);
+assert.match(html, /propertiesLeft=layersLeft-gap-width/);
+assert.match(html, /external-palette-active/);
+assert.match(editor, /if \(heading\) \{[\s\S]*if \(!comic\.page\.structure_locked\) \{/);
+assert.match(html, /modeKey=\(\)=>/);
+assert.match(html, /viewportWidth:innerWidth,viewportHeight:innerHeight/);
+assert.match(html, /speech_bubble:workspace_views:v1/);
+assert.match(html, /if\(firstApplicationView\)fitView\(false\);else restoreWorkspaceView/);
+assert.match(html, /SpeechBubbleWorkspaceLayout/);
+assert.match(html, /document\.getElementById\("emphasisDrawer"\)\.classList\.remove\("open"\)/);
 assert.match(html, /\.properties-dock\.floating-panel,\.layers-dock\.floating-panel/);
-assert.match(html, /\.font-browser \{ position:fixed; z-index:500/);
+assert.match(html, /\.font-browser \{ position:fixed; z-index:100000/);
+assert.match(html, /function hasSavedFontIdentity\(item\)/);
+assert.match(html, /matchingSavedFont\(item,catalog\)\|\|\(hasSavedFontIdentity\(item\)\?null:fallback\)/);
+assert.doesNotMatch(html, /if\(!font\)font=fallback/);
+assert.match(html, /const restoredFont=matchingSavedFont\(item\);if\(restoredFont\)\{applyResolvedFont\(item,restoredFont\);ensureFontLoaded\(restoredFont\)/);
 assert.match(html, /propertiesDock\?\.classList\.contains\("floating-panel"\)/);
 assert.ok(
   html.indexOf("selectedInteractionHit") < html.indexOf("!selectedInteractionHit&&comicEditor?.handlePointerDown"),
@@ -155,6 +178,7 @@ assert.ok(
 assert.doesNotMatch(html, /id="propertiesDockToggle"/);
 assert.match(html, /let autoSaveDelay = Math\.max\(5000, Math\.min\(3600000/);
 assert.match(html, /if\(layoutDirty&&autoSaveEnabled\)persistDraftNow\(\);\s*clearTimeout\(autoSaveTimer\)/);
+assert.match(css, /\.comic-tray-heading button[\s\S]*white-space: nowrap/);
 assert.match(html, /SpeechBubbleApplyRuntimeSettings/);
 assert.match(desktopShell, /SpeechBubbleApplyRuntimeSettings/);
 assert.match(html, /id="fitTextBoxNow"/);
@@ -165,6 +189,25 @@ assert.match(html, /const fontTask=loadSystemFonts\(\),assetTask=Promise\.all/);
 assert.match(css, /\.canvas-panel\.comic-tray-visible #viewport/);
 assert.match(css, /\.comic-page-checks/);
 assert.match(css, /\.comic-image-card\.selected/);
+assert.match(css, /\.comic-image-card\.selected::before/);
+assert.match(css, /content: "SELECTED"/);
+assert.match(css, /\.comic-image-card\.used::after/);
+assert.match(css, /content: "使用中"/);
+assert.match(editor, /selectedTrayImageId/);
+assert.match(editor, /function selectedInsertionTarget\(\)/);
+assert.match(editor, /function panelInsertionTarget\(panelId\)/);
+assert.match(editor, /function defaultPanelInsertionTarget\(\)/);
+assert.match(html, /id="comicInsertTargetStatus"/);
+assert.match(html, /function visibleCanvasDocumentRect\(\)/);
+assert.match(html, /function addTextLayer\(\)[\s\S]*bubbleIndex\+1/);
+assert.match(html, /item\.comic_scope="panel";item\.comic_panel_id=target\.panelId;item\.comic_stack="above_image"/);
+assert.ok(
+  html.indexOf('data-left-section="bubbles"') < html.indexOf('id="addText"') &&
+  html.indexOf('id="addText"') < html.indexOf('data-left-section="sfx"'),
+  "Add Text must appear between Speech Bubbles and SFX",
+);
+assert.match(html, /grid-template-columns:clamp\(150px,20vw,224px\) minmax\(220px,1fr\)/);
+assert.match(html, /\.right \{ position:fixed; inset:0;/);
 for (const setting of [
   "export_directory",
   "auto_export_to_directory",
@@ -182,11 +225,43 @@ assert.match(desktopShell, /data-desktop-action="user-preset-replace-image"/);
 assert.match(desktopShell, /data-desktop-action="user-preset-organize"/);
 assert.match(desktopShell, /function applyTheme/);
 assert.match(desktopShell, /function applyLanguage/);
+assert.match(desktopShell, /activeDesktopLanguage/);
+assert.match(desktopMain, /SetProcessDpiAwarenessContext/);
+assert.match(desktopMain, /maximized=True/);
+assert.match(desktopShell, /\["＋ 画像を追加", "＋ Add Images"\]/);
+assert.match(desktopMain, /ShowInTaskbar = False/);
+assert.match(desktopMain, /FormBorderStyle\.SizableToolWindow/);
+assert.match(desktopMain, /native\.Owner = self\._window\.native/);
+assert.doesNotMatch(desktopMain, /self\.(?:window|palette_window|webview)\s*=/);
+assert.match(desktopMain, /native\.BeginInvoke\(Action\(begin_drag\)\)/);
+assert.match(desktopMain, /palette=1/);
+assert.match(desktopMain, /SystemEvents\.DisplaySettingsChanged/);
+assert.match(desktopMain, /Screen\.AllScreens/);
+assert.match(desktopMain, /def begin_palette_drag\(self\)/);
+assert.match(html, /externalApi\(\)\?\.begin_palette_drag\?\.\(\)/);
+assert.match(html, /if\(isPaletteWindow&&hostMode==="desktop"\)\{await window\.pywebview\?\.api\?\.palette_ready\?\.\(\);return;\}/);
+assert.match(html, /if\(isPaletteWindow\|\|editorClosed\)return/);
+assert.match(html, /function insertEmphasisLines[\s\S]*item\.comic_scope="panel"[\s\S]*item\.comic_panel_id=resolved\.panelId/);
+assert.match(desktopShell, /async function saveRecovery\(checkpoint = false\)/);
+assert.match(desktopShell, /async function loadRecovery\(\)/);
+assert.match(html, /SpeechBubbleDesktopEditor\.loadRecovery\(recovery\)/);
+assert.match(html, /if\(standaloneResumePromise\)return standaloneResumePromise/);
+assert.match(html, /startStandaloneDocument\(standaloneId,\{offerResume:!isDesktop,behavior:isDesktop\?"new":"ask"\}\)/);
+assert.match(html, /event\.key==="Delete"\|\|event\.key==="Backspace"\)&&state\.selection\.length/);
+assert.match(html, /Date\.now\(\)-lastRecoveryCheckpoint>=600000/);
+assert.match(html, /DESKTOP_SINGLE_BACKGROUND_ID="__single_background__"/);
+assert.match(html, /snapshot:desktopSnapshot/);
+assert.match(desktopShell, /data-desktop-action="workspace-layout-reset"/);
+assert.match(desktopShell, /speech-bubble:language-change/);
+assert.match(desktopShell, /\["コマ", "Panel"\]/);
 assert.match(desktopShell, /function authenticatedMediaUrl\(value\)/);
 assert.match(desktopShell, /addEventListener\("input"/);
 assert.match(
   desktopShell,
   /data-desktop-setting="startup_behavior"[\s\S]*desktop-autosave-row[\s\S]*data-desktop-setting="auto_save"[\s\S]*data-desktop-setting="auto_save_interval_seconds"/,
 );
+assert.match(editor, /if \(!selectedTarget && !selectedTrayImageId\) return false/);
+assert.match(editor, /selectedTrayImageId = ""/);
+assert.match(editor, /Keep the blob alive while this deletion is present in the editor/);
 
 console.log("comic_editor_integration_test: OK");
