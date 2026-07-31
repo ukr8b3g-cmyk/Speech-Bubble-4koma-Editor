@@ -299,4 +299,21 @@ assert.match(editor, /if \(!selectedTarget && !selectedTrayImageId\) return fals
 assert.match(editor, /selectedTrayImageId = ""/);
 assert.match(editor, /Keep the blob alive while this deletion is present in the editor/);
 
+// Replacing a single-image background must not reset the independent comic workspace.
+assert.match(html, /function preserveComicWorkspace\(\)\s*\{\s*captureActiveWorkspace\(\)/);
+assert.match(html, /workspace: structuredClone\(workspaces\.comic\)/);
+assert.match(html, /comic: structuredClone\(comicEditor\?\.serialize\(\)\)/);
+assert.match(html, /workspaces\.comic = snapshot\.workspace/);
+assert.match(html, /comicEditor\?\.restore\(snapshot\.comic, \{\s*hydrate: true,\s*keepMode: true/);
+assert.match(html, /if \(activeWorkspace === "single"\) \{\s*state\.width = workspaces\.single\.width/);
+assert.match(html, /mode === "standalone" &&\s*!resume &&\s*imageLoaded &&\s*activeWorkspace === "single"/);
+assert.match(html, /const preservedComic = replacingStandaloneSingleImage\s*\? preserveComicWorkspace\(\)\s*: null/);
+assert.match(html, /const preservedSingle = replacingStandaloneSingleImage\s*\? structuredClone\(workspaces\.single\)\s*: null/);
+assert.match(html, /function restorePreservedSingleWorkspace\(snapshot\)/);
+assert.match(html, /if \(!copiedLayout\) \{\s*restorePreservedSingleWorkspace\(preservedSingle\)/);
+assert.match(html, /restorePreservedComicWorkspace\(preservedComic\)/);
+assert.match(html, /const next=copiedLayout\|\|"\{\}";applyLayoutForCurrentImage\(next,\{dirty:false\}\)/);
+assert.match(html, /layoutDirty = currentLayoutJson\(\) !== lastSavedLayout/);
+assert.match(html, /replaceDiscard"\)\.onclick=async\(\)=>\{[\s\S]*applyLayoutForCurrentImage\(lastSavedLayout,\{dirty:false\}\)[\s\S]*performPendingReplacement\(\)/);
+
 console.log("comic_editor_integration_test: OK");

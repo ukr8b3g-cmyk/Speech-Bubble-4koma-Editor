@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Speech Bubble 4koma Editor</title>
+  <link rel="icon" type="image/x-icon" href="./assets/speech-bubble-4koma.ico">
   <link rel="stylesheet" href="./comic-editor.css?v=0.5.0-desktop-5">
   <link rel="stylesheet" href="./comic-converter.css?v=0.5.0-desktop-2">
   <link rel="stylesheet" href="./desktop/desktop.css?v=0.5.0-desktop-5">
@@ -2330,6 +2331,45 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       updateActionState();
       return currentLayoutJson();
     }
+    function preserveComicWorkspace() {
+      captureActiveWorkspace();
+
+      return {
+        workspace: structuredClone(workspaces.comic),
+        comic: structuredClone(comicEditor?.serialize()),
+      };
+    }
+    function restorePreservedComicWorkspace(snapshot) {
+      if (!snapshot?.workspace) return;
+
+      workspaces.comic = snapshot.workspace;
+
+      if (snapshot.comic) {
+        comicEditor?.restore(snapshot.comic, {
+          hydrate: true,
+          keepMode: true,
+        });
+      }
+
+      // 一枚画像側を編集中なら、復元した4コマを表示状態にはしない。
+      if (activeWorkspace === "single") {
+        state.width = workspaces.single.width;
+        state.height = workspaces.single.height;
+        state.backgroundVisible = workspaces.single.backgroundVisible;
+        state.elements = workspaces.single.elements;
+      }
+    }
+    function restorePreservedSingleWorkspace(snapshot) {
+      if (!snapshot || activeWorkspace !== "single") return;
+
+      workspaces.single = snapshot;
+      state.width = snapshot.width;
+      state.height = snapshot.height;
+      state.backgroundVisible = snapshot.backgroundVisible;
+      state.elements = snapshot.elements;
+      scaleStateToImageSize(image.naturalWidth, image.naturalHeight);
+      captureActiveWorkspace();
+    }
     function refreshDirtyState(){
       if(!dirtyTrackingEnabled||!hasEditableDocument())return;
       layoutDirty=currentLayoutJson()!==lastSavedLayout;
@@ -2587,7 +2627,23 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       return "new";
     }
     async function loadImageBlob(blob,{name="speech_bubble",tab=sourceTab,mode=documentMode,resume=false}={}){
-      if(!blob||!String(blob.type||"").startsWith("image/")){setSaveState("PNG / JPEG / WebPを選択してください","error");return;}
+      if(!blob||!String(blob.type||"").startsWith("image/")){
+        setSaveState("PNG / JPEG / WebPを選択してください","error");
+        return;
+      }
+
+      const replacingStandaloneSingleImage =
+        mode === "standalone" &&
+        !resume &&
+        imageLoaded &&
+        activeWorkspace === "single";
+
+      const preservedComic = replacingStandaloneSingleImage
+        ? preserveComicWorkspace()
+        : null;
+      const preservedSingle = replacingStandaloneSingleImage
+        ? structuredClone(workspaces.single)
+        : null;
       if(layoutDirty&&autoSaveEnabled)persistDraftNow();
       clearTimeout(autoSaveTimer);autoSaveTimer=null;dirtyTrackingEnabled=false;setSaveState("画像を読み込んでいます…","info");
       const hash=await hashImageBlob(blob);
@@ -2605,11 +2661,22 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       lastSavedLayout=currentLayoutJson();
       let restored=layouts.hasSaved?"保存済みレイアウト":"新規レイアウト";
       if(standalone&&!resume){
-        const next=copiedLayout||"{}";applyLayoutForCurrentImage(next,{dirty:next!==lastSavedLayout});
+        const next=copiedLayout||"{}";applyLayoutForCurrentImage(next,{dirty:false});
         restored=copiedLayout?"画像側レイアウトをコピー":"新規レイアウト";
         await storeDocumentBackground(documentId,blob,sourceName);
       }else if(layouts.hasDraft){applyLayoutForCurrentImage(layouts.draft,{dirty:true});restored="自動保存下書き";}
       else{layoutDirty=false;updateActionState();}
+      if (preservedComic) {
+        if (!copiedLayout) {
+          restorePreservedSingleWorkspace(preservedSingle);
+        }
+        restorePreservedComicWorkspace(preservedComic);
+      }
+      // 正規化済みレイアウトで保存判定とUIを同期する。
+      layoutDirty = currentLayoutJson() !== lastSavedLayout;
+      syncProperties();
+      requestRender({canvas:true,layers:true,preview:false});
+      updateActionState();
       try{localStorage.setItem(jsonKey,currentLayoutJson());}catch{}
       postHost("speech_bubble:source_loaded",{image_hash:imageHash,document_id:documentId,source_name:sourceName,width:image.naturalWidth,height:image.naturalHeight,restored});
       startDeferredResources();
@@ -3092,7 +3159,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     document.getElementById("chooseBackgroundImage").onclick=chooseBackground;
     backgroundInput.addEventListener("change",()=>{const file=backgroundInput.files?.[0];if(file)requestBackgroundFile(file);backgroundInput.value="";});
     document.getElementById("replaceCancel").onclick=()=>{pendingReplacementSource=null;document.getElementById("replaceImageDialog").close();};
-    document.getElementById("replaceDiscard").onclick=async()=>{try{if(documentId)removeDraftCache();}catch{}document.getElementById("replaceImageDialog").close();await performPendingReplacement();};
+    document.getElementById("replaceDiscard").onclick=async()=>{try{if(documentId)removeDraftCache();}catch{}applyLayoutForCurrentImage(lastSavedLayout,{dirty:false});document.getElementById("replaceImageDialog").close();await performPendingReplacement();};
     document.getElementById("replaceSave").onclick=async()=>{if(!(await saveLayoutExplicit()))return;document.getElementById("replaceImageDialog").close();await performPendingReplacement();};
     document.getElementById("imageRestoreCancel").onclick=()=>finishDialogChoice("imageLayoutRestoreDialog","image","cancel");
     document.getElementById("imageRestoreNew").onclick=()=>finishDialogChoice("imageLayoutRestoreDialog","image","new");

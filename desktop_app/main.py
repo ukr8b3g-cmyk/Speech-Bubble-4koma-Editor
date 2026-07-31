@@ -9,7 +9,7 @@ import sys
 import threading
 import webbrowser
 
-from .paths import DesktopPaths
+from .paths import DesktopPaths, resource_root
 from .runtime import ServerRuntime, free_loopback_port
 from .server import create_app
 
@@ -159,6 +159,7 @@ class DesktopBridge:
         # here makes that reflection recurse through the native object graph.
         self._window = None
         self._palette_window = None
+        self._native_icon = None
         self._webview = None
         self.app_url = app_url
         self.initial_directory = initial_directory
@@ -348,11 +349,44 @@ class DesktopBridge:
             closing += self.handle_closing
         shown = getattr(events, "shown", None)
         if shown is not None:
+            shown += self._configure_native_icon
             shown += self._enable_window_state_tracking
         for name in ("resized", "moved", "maximized", "restored"):
             event = getattr(events, name, None)
             if event is not None:
                 event += lambda *_args: self._save_window_state_if_ready()
+
+    def _configure_native_icon(self, *_args) -> None:
+        """Apply the bundled koma mark to the Windows title bar and taskbar."""
+        if sys.platform != "win32" or not self._window:
+            return
+        icon_path = resource_root() / "web" / "assets" / "speech-bubble-4koma.ico"
+        if not icon_path.is_file():
+            logging.warning("Application icon is missing: %s", icon_path)
+            return
+        try:
+            import clr
+
+            clr.AddReference("System.Drawing")
+            from System import Action
+            from System.Drawing import Icon
+
+            native = getattr(self._window, "native", None)
+            if native is None:
+                return
+
+            def configure():
+                self._native_icon = Icon(str(icon_path))
+                native.Icon = self._native_icon
+                if hasattr(native, "ShowIcon"):
+                    native.ShowIcon = True
+
+            if getattr(native, "InvokeRequired", False):
+                native.Invoke(Action(configure))
+            else:
+                configure()
+        except Exception:
+            logging.exception("Could not apply the application icon")
 
     def _enable_window_state_tracking(self, *_args) -> None:
         self._window_state_tracking = True

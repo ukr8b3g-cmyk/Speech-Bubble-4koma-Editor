@@ -41,6 +41,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
+    icon=str(root / "web" / "assets" / "speech-bubble-4koma.ico"),
 )
 
 coll = COLLECT(

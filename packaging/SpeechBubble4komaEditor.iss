@@ -27,6 +27,7 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayIcon={app}\{#MyAppExeName}
+SetupIconFile=..\web\assets\speech-bubble-4koma.ico
 SetupLogging=yes
 
 [Languages]
