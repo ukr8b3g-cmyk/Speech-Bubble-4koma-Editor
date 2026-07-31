@@ -1241,11 +1241,14 @@
     const path = await api.choose_project_save();
     if (!path) return;
     const snapshot = await root.SpeechBubbleDesktopEditor.snapshot();
-    await desktopFetch("/desktop/project/save", {
+    const result = await desktopFetch("/desktop/project/save", {
       method: "POST",
       body: JSON.stringify({ path, ...snapshot }),
     });
+    const saved = await root.SpeechBubbleDesktopEditor.markProjectSaved?.(path, JSON.stringify(snapshot.layout));
+    if (saved === false) throw new Error("Project changed while it was being saved; save again.");
     root.SpeechBubbleDesktopEditor.setStatus(`${path} を保存しました`, "saved");
+    return result;
   }
 
   async function openProject() {
@@ -1258,7 +1261,19 @@
       body: JSON.stringify({ path }),
     });
     await root.SpeechBubbleDesktopEditor.loadProject(payload);
-    root.SpeechBubbleDesktopEditor.setStatus(`${path} を開きました`, "saved");
+    let recoveryUpdated = true;
+    try {
+      await root.SpeechBubbleDesktopShell.saveRecoveryCheckpoint?.();
+    } catch (error) {
+      recoveryUpdated = false;
+      console.warn("Speech Bubble project recovery checkpoint failed", error);
+    }
+    root.SpeechBubbleDesktopEditor.setStatus(
+      recoveryUpdated
+        ? `${path} を開きました`
+        : "プロジェクトは開きましたが、復元ポイントを更新できませんでした",
+      recoveryUpdated ? "saved" : "error",
+    );
   }
 
   let recoverySavePromise = null;
@@ -1273,6 +1288,10 @@
     };
     recoverySavePromise = (recoverySavePromise || Promise.resolve()).catch(() => null).then(run);
     return recoverySavePromise;
+  }
+
+  async function saveRecoveryCheckpoint() {
+    return saveRecovery(true);
   }
 
   async function loadRecovery() {
@@ -1438,7 +1457,7 @@
     });
   }
 
-  root.SpeechBubbleDesktopShell = { openSettings, prepareExportTarget, saveRecovery, loadRecovery };
+  root.SpeechBubbleDesktopShell = { openSettings, prepareExportTarget, saveRecovery, saveRecoveryCheckpoint, loadRecovery };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", install, { once: true });
   else install();
 })(globalThis);

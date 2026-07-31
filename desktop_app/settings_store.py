@@ -10,6 +10,9 @@ DEFAULTS = {
     "version": 1,
     "window_width": 1440,
     "window_height": 900,
+    "window_left": None,
+    "window_top": None,
+    "window_maximized": True,
     "theme": "system",
     "language": "auto",
     "last_project_directory": "",
@@ -31,6 +34,14 @@ DEFAULTS = {
     "backup_generations": 5,
     "save_overlay": False,
 }
+
+
+def _bounded_int(value, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(maximum, parsed))
 
 
 def _atomic_json_write(path: Path, value: dict) -> None:
@@ -57,8 +68,18 @@ class SettingsStore:
         except (OSError, ValueError, TypeError):
             value = {}
         merged = {**DEFAULTS, **(value if isinstance(value, dict) else {})}
-        merged["window_width"] = max(900, min(3840, int(merged["window_width"])))
-        merged["window_height"] = max(640, min(2160, int(merged["window_height"])))
+        merged["window_width"] = _bounded_int(merged.get("window_width"), 1440, 900, 3840)
+        merged["window_height"] = _bounded_int(merged.get("window_height"), 900, 640, 2160)
+        for key in ("window_left", "window_top"):
+            raw = merged.get(key)
+            try:
+                merged[key] = int(raw) if raw is not None else None
+            except (TypeError, ValueError):
+                merged[key] = None
+        maximized = merged.get("window_maximized", True)
+        if isinstance(maximized, str):
+            maximized = maximized.strip().lower() in {"1", "true", "yes", "on"}
+        merged["window_maximized"] = bool(maximized)
         merged["theme"] = merged["theme"] if merged["theme"] in {"system", "dark", "light"} else "system"
         merged["language"] = merged["language"] if merged["language"] in {"auto", "ja", "en"} else "auto"
         merged["export_directory"] = str(merged.get("export_directory", "") or "").strip()
@@ -71,18 +92,17 @@ class SettingsStore:
             else "ask"
         )
         merged["auto_save"] = bool(merged.get("auto_save", True))
-        merged["auto_save_interval_seconds"] = max(
-            5,
-            min(3600, int(merged.get("auto_save_interval_seconds", 30))),
+        merged["auto_save_interval_seconds"] = _bounded_int(
+            merged.get("auto_save_interval_seconds"), 30, 5, 3600
         )
         merged["output_format"] = (
             merged["output_format"]
             if merged.get("output_format") in {"png", "jpeg", "webp"}
             else "png"
         )
-        merged["png_compression"] = max(0, min(9, int(merged.get("png_compression", 6))))
-        merged["jpeg_quality"] = max(1, min(100, int(merged.get("jpeg_quality", 95))))
-        merged["webp_quality"] = max(1, min(100, int(merged.get("webp_quality", 90))))
+        merged["png_compression"] = _bounded_int(merged.get("png_compression"), 6, 0, 9)
+        merged["jpeg_quality"] = _bounded_int(merged.get("jpeg_quality"), 95, 1, 100)
+        merged["webp_quality"] = _bounded_int(merged.get("webp_quality"), 90, 1, 100)
         merged["webp_lossless"] = bool(merged.get("webp_lossless", False))
         merged["filename_format"] = (
             merged["filename_format"]
@@ -96,7 +116,7 @@ class SettingsStore:
             else "none"
         )
         merged["backup_enabled"] = bool(merged.get("backup_enabled", True))
-        merged["backup_generations"] = max(1, min(20, int(merged.get("backup_generations", 5))))
+        merged["backup_generations"] = _bounded_int(merged.get("backup_generations"), 5, 1, 20)
         merged["save_overlay"] = bool(merged.get("save_overlay", False))
         return merged
 

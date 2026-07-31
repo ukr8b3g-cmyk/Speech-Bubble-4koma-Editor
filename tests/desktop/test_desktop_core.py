@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from desktop_app.paths import DesktopPaths
-from desktop_app.main import DesktopBridge
+from desktop_app.main import DesktopBridge, normalized_window_geometry
 from desktop_app.project_store import ProjectStore
 from desktop_app.recent_projects import RecentProjects
 from desktop_app.recovery_store import RecoveryStore
@@ -62,6 +62,7 @@ class DesktopCoreTest(unittest.TestCase):
                 result = store.save(
                     {
                         "title": "autosave",
+                        "project_path": "C:/Projects/sample.sbeproj",
                         "layout": {"canvas": {"width": 720, "height": 2160}, "revision": index},
                         "images": [
                             {
@@ -85,8 +86,89 @@ class DesktopCoreTest(unittest.TestCase):
             fallback = store.load()
             self.assertEqual(fallback["fallback_generation"], 1)
             self.assertEqual(fallback["layout"]["revision"], 6)
+            self.assertEqual(fallback["manifest"]["project_path"], "C:/Projects/sample.sbeproj")
             self.assertGreater(store.clear(), 0)
             self.assertFalse(store.status()["available"])
+
+    def test_window_geometry_is_clamped_to_available_work_area(self) -> None:
+        with mock.patch(
+            "desktop_app.main._work_areas",
+            return_value=[(0, 0, 1920, 1080)],
+        ):
+            geometry = normalized_window_geometry(
+                {
+                    "window_width": 5000,
+                    "window_height": 5000,
+                    "window_left": 5000,
+                    "window_top": 5000,
+                    "window_maximized": False,
+                }
+            )
+        self.assertEqual(geometry, {"width": 1920, "height": 1080, "x": 0, "y": 0, "maximized": False})
+
+    def test_bridge_persists_native_window_state(self) -> None:
+        class FakeSettings:
+            def __init__(self):
+                self.patch = None
+
+            def save(self, patch):
+                self.patch = dict(patch)
+                return self.patch
+
+        settings = FakeSettings()
+        bridge = DesktopBridge(settings_store=settings)
+        self.assertTrue(
+            bridge.save_window_state(
+                {
+                    "window_width": 1280,
+                    "window_height": 720,
+                    "window_left": 10,
+                    "window_top": 20,
+                    "window_maximized": False,
+                    "unexpected": "ignored",
+                }
+            )
+        )
+        self.assertEqual(
+            settings.patch,
+            {
+                "window_width": 1280,
+                "window_height": 720,
+                "window_left": 10,
+                "window_top": 20,
+                "window_maximized": False,
+            },
+        )
+
+    def test_native_close_requires_webview_acknowledgement(self) -> None:
+        class FakeWindow:
+            def __init__(self):
+                self.evaluated = []
+                self.destroyed = 0
+
+            def evaluate_js(self, script):
+                self.evaluated.append(script)
+
+            def destroy(self):
+                self.destroyed += 1
+
+        bridge = DesktopBridge()
+        window = FakeWindow()
+        bridge._window = window
+        bridge._run_async = lambda callback: callback()
+        self.assertFalse(bridge.handle_closing())
+        self.assertEqual(len(window.evaluated), 1)
+        self.assertFalse(bridge.handle_closing())
+        self.assertEqual(len(window.evaluated), 1)
+        self.assertTrue(bridge.native_close_ready(True))
+        self.assertEqual(window.destroyed, 1)
+        self.assertTrue(bridge.handle_closing())
+
+        cancelled = DesktopBridge()
+        cancelled._window = FakeWindow()
+        cancelled._close_in_progress = True
+        self.assertFalse(cancelled.native_close_ready(False, "", True))
+        self.assertEqual(cancelled._window.destroyed, 0)
 
     def test_recovery_preserves_duplicate_logical_image_references(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -138,6 +220,13 @@ class DesktopCoreTest(unittest.TestCase):
             self.assertEqual(settings.load()["theme"], "system")
             self.assertEqual(settings.load()["language"], "auto")
             self.assertEqual(settings.load()["auto_save_interval_seconds"], 30)
+            settings.path.write_text(
+                json.dumps({"window_width": "invalid", "window_height": "invalid"}),
+                encoding="utf-8",
+            )
+            self.assertEqual(settings.load()["window_width"], 1440)
+            self.assertEqual(settings.load()["window_height"], 900)
+            settings.save({"window_width": 1440, "window_height": 900})
             self.assertEqual(settings.save({"theme": "dark"})["theme"], "dark")
             self.assertEqual(
                 settings.save({"auto_save_interval_seconds": 90})[
@@ -207,6 +296,22 @@ class DesktopCoreTest(unittest.TestCase):
                     len([name for name in archive.namelist() if name.startswith("images/")]),
                     1,
                 )
+
+            missing_path = root / "missing-image.sbeproj"
+            valid_missing_target = ProjectStore().save(missing_path, payload)
+            self.assertTrue(valid_missing_target["ok"])
+            before_missing = missing_path.read_bytes()
+            with self.assertRaisesRegex(ValueError, "Project image blob is missing"):
+                ProjectStore().save(
+                    missing_path,
+                    {
+                        **payload,
+                        "layout": {
+                            "comic": {"panels": [{"id": "panel-2", "image_id": "missing-image"}]}
+                        },
+                    },
+                )
+            self.assertEqual(missing_path.read_bytes(), before_missing)
 
             recent = RecentProjects(paths.recent)
             recent.touch(project_path)

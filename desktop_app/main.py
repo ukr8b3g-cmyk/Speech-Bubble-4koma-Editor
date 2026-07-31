@@ -14,7 +14,10 @@ from .runtime import ServerRuntime, free_loopback_port
 from .server import create_app
 
 _INSTANCE_MUTEX = None
+_ACTIVATE_EVENT = None
 APP_NAME = "Speech Bubble 4koma Editor"
+_INSTANCE_MUTEX_NAME = "Local\\SpeechBubbleEditorDesktop"
+_ACTIVATE_EVENT_NAME = "Local\\SpeechBubbleEditorDesktop.Activate"
 
 
 def enable_windows_high_dpi() -> None:
@@ -38,15 +41,109 @@ def enable_windows_high_dpi() -> None:
 
 
 def acquire_single_instance() -> bool:
-    global _INSTANCE_MUTEX
+    global _INSTANCE_MUTEX, _ACTIVATE_EVENT
     if sys.platform != "win32":
         return True
     kernel32 = ctypes.windll.kernel32
-    handle = kernel32.CreateMutexW(None, False, "Local\\SpeechBubbleEditorDesktop")
+    handle = kernel32.CreateMutexW(None, False, _INSTANCE_MUTEX_NAME)
     if not handle:
         return True
+    if kernel32.GetLastError() == 183:
+        kernel32.CloseHandle(handle)
+        event = kernel32.OpenEventW(0x0002, False, _ACTIVATE_EVENT_NAME)
+        if event:
+            kernel32.SetEvent(event)
+            kernel32.CloseHandle(event)
+        return False
     _INSTANCE_MUTEX = handle
-    return kernel32.GetLastError() != 183
+    _ACTIVATE_EVENT = kernel32.CreateEventW(None, False, False, _ACTIVATE_EVENT_NAME)
+    return True
+
+
+def release_single_instance() -> None:
+    global _INSTANCE_MUTEX, _ACTIVATE_EVENT
+    if sys.platform != "win32":
+        return
+    kernel32 = ctypes.windll.kernel32
+    for name in ("_ACTIVATE_EVENT", "_INSTANCE_MUTEX"):
+        handle = globals().get(name)
+        if handle:
+            kernel32.CloseHandle(handle)
+            globals()[name] = None
+
+
+def _work_areas() -> list[tuple[int, int, int, int]]:
+    if sys.platform != "win32":
+        return []
+    user32 = ctypes.windll.user32
+    class Rect(ctypes.Structure):
+        _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long), ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+    class MonitorInfo(ctypes.Structure):
+        _fields_ = [("cbSize", ctypes.c_ulong), ("rcMonitor", Rect), ("rcWork", Rect), ("dwFlags", ctypes.c_ulong)]
+    areas: list[tuple[int, int, int, int]] = []
+    callback_type = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(Rect), ctypes.c_long)
+
+    def callback(monitor, _dc, _rect, _data):
+        info = MonitorInfo()
+        info.cbSize = ctypes.sizeof(MonitorInfo)
+        if user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+            work = info.rcWork
+            areas.append((int(work.left), int(work.top), int(work.right), int(work.bottom)))
+        return 1
+
+    try:
+        user32.EnumDisplayMonitors(None, None, callback_type(callback), 0)
+    except (AttributeError, OSError):
+        areas = []
+    if areas:
+        return areas
+    try:
+        rect = Rect()
+        if user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0):
+            return [(int(rect.left), int(rect.top), int(rect.right), int(rect.bottom))]
+    except (AttributeError, OSError):
+        pass
+    return []
+
+
+def normalized_window_geometry(settings: dict) -> dict:
+    settings = settings if isinstance(settings, dict) else {}
+    try:
+        width = int(settings.get("window_width", 1440))
+    except (TypeError, ValueError):
+        width = 1440
+    try:
+        height = int(settings.get("window_height", 900))
+    except (TypeError, ValueError):
+        height = 900
+    width = max(900, min(3840, width))
+    height = max(640, min(2160, height))
+    maximized_value = settings.get("window_maximized", True)
+    if isinstance(maximized_value, str):
+        maximized = maximized_value.strip().lower() not in {"", "0", "false", "no", "off"}
+    else:
+        maximized = bool(maximized_value)
+    areas = _work_areas()
+    if not areas:
+        return {"width": width, "height": height, "x": None, "y": None, "maximized": maximized}
+    left = settings.get("window_left")
+    top = settings.get("window_top")
+    try:
+        left = int(left) if left is not None else None
+        top = int(top) if top is not None else None
+    except (TypeError, ValueError):
+        left = top = None
+    area = next((candidate for candidate in areas if left is not None and top is not None and candidate[0] <= left < candidate[2] and candidate[1] <= top < candidate[3]), areas[0])
+    area_left, area_top, area_right, area_bottom = area
+    width = min(width, max(900, area_right - area_left))
+    height = min(height, max(640, area_bottom - area_top))
+    if left is None or top is None:
+        left = area_left + max(0, (area_right - area_left - width) // 2)
+        top = area_top + max(0, (area_bottom - area_top - height) // 2)
+    else:
+        left = max(area_left, min(area_right - width, left))
+        top = max(area_top, min(area_bottom - height, top))
+    return {"width": width, "height": height, "x": left, "y": top, "maximized": maximized}
 
 
 class DesktopBridge:
@@ -55,6 +152,7 @@ class DesktopBridge:
         initial_directory: str = "",
         export_directory: str = "",
         app_url: str = "",
+        settings_store=None,
     ):
         # Native window objects must remain private. pywebview reflects public
         # bridge attributes into JavaScript; exposing WinForms/WebView2 objects
@@ -69,6 +167,10 @@ class DesktopBridge:
         self.folder_dialog = 20
         self.save_dialog = 30
         self._palette_closing = False
+        self._settings_store = settings_store
+        self._close_approved = False
+        self._close_in_progress = False
+        self._window_state_tracking = False
 
     @staticmethod
     def _first_path(value) -> str:
@@ -111,6 +213,154 @@ class DesktopBridge:
         if selected:
             self.export_directory = selected
         return selected
+
+    def _read_window_state(self) -> dict:
+        window = self._window
+        if not window:
+            return {}
+        state = {}
+        for key in ("width", "height", "x", "y"):
+            try:
+                value = getattr(window, key)
+                if value is not None:
+                    state[f"window_{'left' if key == 'x' else 'top' if key == 'y' else key}"] = int(value)
+            except (AttributeError, TypeError, ValueError):
+                continue
+        try:
+            state["window_maximized"] = bool(getattr(window, "maximized"))
+        except (AttributeError, TypeError, ValueError):
+            pass
+        return state
+
+    def save_window_state(self, state=None) -> bool:
+        if not self._settings_store:
+            return False
+        patch = state if isinstance(state, dict) else self._read_window_state()
+        allowed = {"window_width", "window_height", "window_left", "window_top", "window_maximized"}
+        patch = {key: value for key, value in patch.items() if key in allowed}
+        if not patch:
+            return False
+        try:
+            self._settings_store.save(patch)
+            return True
+        except (OSError, TypeError, ValueError):
+            logging.exception("Could not save native window state")
+            return False
+
+    def _restore_window(self) -> bool:
+        window = self._window
+        if not window:
+            return False
+        geometry = normalized_window_geometry(self._settings_store.load() if self._settings_store else {})
+        try:
+            if geometry["x"] is not None and geometry["y"] is not None:
+                window.move(geometry["x"], geometry["y"])
+            window.resize(geometry["width"], geometry["height"])
+            if geometry["maximized"]:
+                maximize = getattr(window, "maximize", None)
+                if callable(maximize):
+                    maximize()
+            else:
+                restore = getattr(window, "restore", None)
+                if callable(restore):
+                    restore()
+            show = getattr(window, "show", None)
+            if callable(show):
+                show()
+            for method_name in ("bring_to_front", "focus"):
+                method = getattr(window, method_name, None)
+                if callable(method):
+                    method()
+            return True
+        except Exception:
+            logging.exception("Could not restore the native editor window")
+            return False
+
+    def _activate_listener(self) -> None:
+        if sys.platform != "win32" or not _ACTIVATE_EVENT:
+            return
+        try:
+            kernel32 = ctypes.windll.kernel32
+            while _ACTIVATE_EVENT:
+                result = kernel32.WaitForSingleObject(_ACTIVATE_EVENT, 0xFFFFFFFF)
+                if result != 0:
+                    break
+                self._restore_window()
+        except (AttributeError, OSError):
+            logging.exception("Could not listen for second-launch activation")
+
+    def start_activation_listener(self) -> None:
+        if sys.platform == "win32" and _ACTIVATE_EVENT:
+            threading.Thread(target=self._activate_listener, name="sbe-activate", daemon=True).start()
+
+    def _native_close_error(self, message: str) -> None:
+        logging.error("Native close was not completed: %s", message)
+        if sys.platform == "win32":
+            try:
+                ctypes.windll.user32.MessageBoxW(None, str(message), APP_NAME, 0x10)
+            except (AttributeError, OSError):
+                pass
+
+    def _request_native_close(self) -> None:
+        try:
+            if not self._window:
+                raise RuntimeError("Editor window is not available")
+            self._window.evaluate_js(
+                "window.SpeechBubbleDesktopEditor?.prepareNativeClose?.({fromNative:true});"
+            )
+        except Exception as error:
+            self._close_in_progress = False
+            self._native_close_error(str(error))
+
+    def handle_closing(self, *_args) -> bool:
+        if self._close_approved:
+            return True
+        if self._close_in_progress:
+            return False
+        self._close_in_progress = True
+        self._run_async(self._request_native_close)
+        return False
+
+    def native_close_ready(self, ok=True, message="", cancelled=False) -> bool:
+        self._close_in_progress = False
+        if bool(cancelled):
+            return False
+        if not bool(ok):
+            self._native_close_error(str(message or "終了前の保存に失敗しました。"))
+            return False
+        self.save_window_state()
+        self._close_approved = True
+        try:
+            if self._window:
+                self._window.destroy()
+        except Exception as error:
+            self._close_approved = False
+            self._native_close_error(str(error))
+            return False
+        return True
+
+    def _bind_window_events(self, window) -> None:
+        events = getattr(window, "events", None)
+        if not events:
+            return
+        closing = getattr(events, "closing", None)
+        if closing is not None:
+            closing += self.handle_closing
+        shown = getattr(events, "shown", None)
+        if shown is not None:
+            shown += self._enable_window_state_tracking
+        for name in ("resized", "moved", "maximized", "restored"):
+            event = getattr(events, name, None)
+            if event is not None:
+                event += lambda *_args: self._save_window_state_if_ready()
+
+    def _enable_window_state_tracking(self, *_args) -> None:
+        self._window_state_tracking = True
+        self.save_window_state()
+
+    def _save_window_state_if_ready(self) -> None:
+        if self._window_state_tracking:
+            self.save_window_state()
 
     @staticmethod
     def _run_async(callback) -> None:
@@ -275,7 +525,10 @@ def run() -> int:
                 0x40,
             )
         return 0
-    settings = __import__("desktop_app.settings_store", fromlist=["SettingsStore"]).SettingsStore(paths.settings).load()
+    from .settings_store import SettingsStore
+
+    settings_store = SettingsStore(paths.settings)
+    settings = settings_store.load()
     token = secrets.token_urlsafe(32)
     port = free_loopback_port()
     runtime = ServerRuntime(create_app(paths, token), port)
@@ -294,10 +547,12 @@ def run() -> int:
                 "pywebview is required for the desktop window. "
                 "Install requirements-desktop.txt or use --browser for development."
             ) from error
+        geometry = normalized_window_geometry(settings)
         bridge = DesktopBridge(
             settings.get("last_project_directory", ""),
             settings.get("last_export_directory", "") or settings.get("export_directory", ""),
             url,
+            settings_store,
         )
         bridge._webview = webview
         bridge.open_dialog = webview.OPEN_DIALOG
@@ -307,12 +562,16 @@ def run() -> int:
             APP_NAME,
             url=url,
             js_api=bridge,
-            width=settings["window_width"],
-            height=settings["window_height"],
+            width=geometry["width"],
+            height=geometry["height"],
+            x=geometry["x"],
+            y=geometry["y"],
             min_size=(900, 640),
-            maximized=True,
+            maximized=geometry["maximized"],
         )
         bridge._window = window
+        bridge._bind_window_events(window)
+        bridge.start_activation_listener()
         # Force the WebView2 renderer on Windows. Letting pywebview auto-select
         # a legacy renderer can produce an unusable window on some machines.
         logging.info("Starting pywebview with the Edge Chromium renderer")
@@ -328,6 +587,7 @@ def run() -> int:
         raise
     finally:
         runtime.stop()
+        release_single_instance()
 
 
 if __name__ == "__main__":

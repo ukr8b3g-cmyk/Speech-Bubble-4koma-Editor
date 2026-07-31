@@ -1342,7 +1342,14 @@
       for (const metadata of comic.images) {
         if (metadata.source === "document") continue;
         const blob = await loadImageBlob(documentId(), metadata.id);
-        if (!blob) continue;
+        if (!blob) {
+          const locations = layout().panels
+            .filter((item) => item.node?.image_id === metadata.id)
+            .map((item) => item.node?.id || item.id)
+            .filter(Boolean);
+          const location = locations.length ? ` (panel: ${locations.join(", ")})` : "";
+          throw new Error(`Project image blob is missing: ${metadata.name || metadata.id}${location}`);
+        }
         records.push({
           id: metadata.id,
           name: metadata.name,

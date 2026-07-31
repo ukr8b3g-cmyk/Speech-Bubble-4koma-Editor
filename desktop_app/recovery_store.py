@@ -87,9 +87,10 @@ class RecoveryStore:
         return records
 
     @staticmethod
-    def _state_hash(layout: dict, images: list[dict]) -> str:
+    def _state_hash(layout: dict, images: list[dict], project_path: str = "") -> str:
         value = {
             "layout": layout,
+            "project_path": project_path,
             "images": [
                 {"id": item["id"], "sha256": item["sha256"], "name": item["name"]}
                 for item in images
@@ -107,10 +108,11 @@ class RecoveryStore:
             "version": 1,
             "updated_at": now.isoformat(),
             "title": str(payload.get("title") or "speech-bubble-project")[:260],
+            "project_path": str(payload.get("project_path") or "")[:1024],
             "layout": layout,
             "images": images,
         }
-        record["state_hash"] = self._state_hash(layout, images)
+        record["state_hash"] = self._state_hash(layout, images, record["project_path"])
         previous = self._read_record(self.current, validate_assets=False)
         changed = previous.get("state_hash") != record["state_hash"]
         _atomic_json_write(self.current, record)
@@ -159,6 +161,7 @@ class RecoveryStore:
             "manifest": {
                 "title": record.get("title", "speech-bubble-project"),
                 "updated_at": record.get("updated_at", ""),
+                "project_path": record.get("project_path", ""),
                 "recovery": True,
             },
             "layout": record["layout"],

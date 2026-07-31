@@ -78,6 +78,24 @@ def _decode_project_image(record: dict) -> tuple[str, bytes, dict]:
     return metadata["path"], data, metadata
 
 
+_LAYOUT_IMAGE_KEYS = {"image_id", "imageId", "background_image_id", "backgroundImageId"}
+
+
+def _referenced_image_ids(value, path: str = "layout") -> list[tuple[str, str]]:
+    """Return logical image references while retaining a useful layout path."""
+    references: list[tuple[str, str]] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}"
+            if key in _LAYOUT_IMAGE_KEYS and isinstance(child, str) and child and child != "source":
+                references.append((child, child_path))
+            references.extend(_referenced_image_ids(child, child_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            references.extend(_referenced_image_ids(child, f"{path}[{index}]"))
+    return references
+
+
 class ProjectStore:
     def save(self, path: Path, payload: dict) -> dict:
         target = path.with_suffix(".sbeproj")
@@ -94,6 +112,12 @@ class ProjectStore:
             entry_path, data, metadata = _decode_project_image(record)
             images.append(metadata)
             image_files.setdefault(entry_path, data)
+        image_ids = {str(item["id"]) for item in images}
+        missing = [(image_id, location) for image_id, location in _referenced_image_ids(layout) if image_id not in image_ids]
+        if missing:
+            details = ", ".join(f"{image_id} ({location})" for image_id, location in missing[:8])
+            suffix = "" if len(missing) <= 8 else f" (+{len(missing) - 8} more)"
+            raise ValueError(f"Project image blob is missing: {details}{suffix}")
         now = datetime.now(timezone.utc).isoformat()
         manifest = {
             "format": "speech-bubble-editor-project",
