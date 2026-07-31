@@ -12,9 +12,9 @@
 
 ## ダウンロード
 
-- [インストーラー版（Windows x64）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.0/SpeechBubble4komaEditor-v0.1.0-win-x64-setup.exe)
-- [ポータブル版（Windows x64 ZIP）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.0/SpeechBubble4komaEditor-v0.1.0-win-x64-portable.zip)
-- [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.0/SHA256SUMS.txt)
+- [インストーラー版（Windows x64）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.1/SpeechBubble4komaEditor-v0.1.1-win-x64-setup.exe)
+- [ポータブル版（Windows x64 ZIP）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.1/SpeechBubble4komaEditor-v0.1.1-win-x64-portable.zip)
+- [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.1/SHA256SUMS.txt)
 
 - GitHub: https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor
 - 対応OS: Windows

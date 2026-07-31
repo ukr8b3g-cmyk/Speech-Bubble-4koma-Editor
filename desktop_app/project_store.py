@@ -122,7 +122,7 @@ class ProjectStore:
         manifest = {
             "format": "speech-bubble-editor-project",
             "version": 1,
-            "app_version": "0.1.0",
+            "app_version": "0.1.1",
             "created_at": str(payload.get("created_at") or now),
             "updated_at": now,
             "project_id": str(payload.get("project_id") or uuid.uuid4()),
