@@ -12,9 +12,10 @@
 
 ## ダウンロード
 
-- [インストーラー版（Windows x64）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.1/SpeechBubble4komaEditor-v0.1.1-win-x64-setup.exe)
-- [ポータブル版（Windows x64 ZIP）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.1/SpeechBubble4komaEditor-v0.1.1-win-x64-portable.zip)
-- [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.1/SHA256SUMS.txt)
+- [インストーラー版（Windows x64）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.2/SpeechBubble4komaEditor-v0.1.2-win-x64-setup.exe)
+- [ポータブル版（Windows x64 ZIP）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.2/SpeechBubble4komaEditor-v0.1.2-win-x64-portable.zip)
+- [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.2/SHA256SUMS.txt)
+- [過去のリリース](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases)
 
 - GitHub: https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor
 - 対応OS: Windows
@@ -61,6 +62,8 @@
 ### 一枚画像
 
 一枚の背景画像にSpeech Bubbles、Text、SFX、Stamps、Frames、Emphasis Linesを配置するモードです。4コマ専用のページ画像トレイは表示されません。
+
+背景画像を別の画像へ差し替えても、保存済みの吹き出し、Text、SFX、Stamps、Frames、Emphasis Linesは維持されます。`Save Layout & Replace`は現在のレイアウトを保存してから差し替え、`Discard & Replace`は未保存の変更を破棄して最後に保存したレイアウトを維持します。どちらの場合も、4コマ漫画側のページ画像、コマ配置、素材レイヤーには影響しません。
 
 ### 4コマ漫画
 
