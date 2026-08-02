@@ -252,7 +252,12 @@ def get_sfx_asset_catalog():
                 "src": f"./assets/{public_path}", "format": "WebP Mask" if asset_path.suffix.lower() in {".webp", ".png"} else "Raster",
                 "mask": bool(entry.get("mask", True)), "category": str(entry.get("category") or manifest.get("category") or "japanese").lower(),
                 "fill": merged.get("fillColor"), "stroke": merged.get("outlineColor"), "outlineWidth": merged.get("outlineWidth"),
-                "w": merged.get("w"), "h": merged.get("h"),
+                # Per-item geometry belongs to the manifest item, rather than
+                # its optional style-defaults object.  Preserve it so tall and
+                # wide mask assets are not normalized to the editor's 360px
+                # square fallback on insertion.
+                "w": entry.get("w", merged.get("w")), "h": entry.get("h", merged.get("h")),
+                "sortGroup": entry.get("sortGroup"), "sortRank": entry.get("sortRank"),
                 "opacity": merged.get("opacity", 1), "keywords": " ".join([display_label, *map(str, aliases), *map(str, tags)]),
             }
             items.append(item)

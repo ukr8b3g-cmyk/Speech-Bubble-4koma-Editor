@@ -4,6 +4,7 @@ import base64
 import io
 import json
 import tempfile
+import time
 import unittest
 import zipfile
 from pathlib import Path
@@ -21,6 +22,7 @@ from desktop_app.recovery_store import RecoveryStore
 from desktop_app.server import create_app
 from desktop_app.settings_store import SettingsStore
 from speech_bubble_editor.font_catalog import _font_cmap_is_browser_safe, _font_display_names
+from speech_bubble_editor.renderer import get_sfx_asset_catalog
 
 
 def make_paths(root: Path) -> DesktopPaths:
@@ -32,8 +34,9 @@ def make_paths(root: Path) -> DesktopPaths:
         cache=root / "cache",
         logs=root / "logs",
         temp=root / "temp",
+        models=root / "models",
     )
-    for directory in (paths.root, paths.recovery, paths.cache, paths.logs, paths.temp):
+    for directory in (paths.root, paths.recovery, paths.cache, paths.logs, paths.temp, paths.models):
         directory.mkdir(parents=True, exist_ok=True)
     return paths
 
@@ -46,6 +49,23 @@ def png_data_url() -> str:
 
 
 class DesktopCoreTest(unittest.TestCase):
+    def test_dynamic_sfx_catalog_keeps_manifest_geometry(self) -> None:
+        get_sfx_asset_catalog.cache_clear()
+        items = {item["id"]: item for item in get_sfx_asset_catalog()["items"]}
+        self.assertEqual((items["jupu-mask"]["w"], items["jupu-mask"]["h"]), (406, 614))
+        self.assertEqual(
+            (items["sfx-builtin-papu-small-tsu"]["sortGroup"], items["sfx-builtin-papu-small-tsu"]["sortRank"]),
+            (50, 4),
+        )
+        self.assertEqual(
+            (
+                items["sfx-builtin-papu-small-tsu"]["fill"],
+                items["sfx-builtin-papu-small-tsu"]["stroke"],
+                items["sfx-builtin-papu-small-tsu"]["outlineWidth"],
+            ),
+            ("#EC407A", "#111111", 3),
+        )
+
     def test_desktop_bridge_keeps_native_objects_private(self) -> None:
         bridge = DesktopBridge()
         self.assertNotIn("window", bridge.__dict__)
@@ -161,6 +181,7 @@ class DesktopCoreTest(unittest.TestCase):
         self.assertFalse(bridge.handle_closing())
         self.assertEqual(len(window.evaluated), 1)
         self.assertTrue(bridge.native_close_ready(True))
+        time.sleep(0.1)
         self.assertEqual(window.destroyed, 1)
         self.assertTrue(bridge.handle_closing())
 
@@ -219,7 +240,9 @@ class DesktopCoreTest(unittest.TestCase):
             settings = SettingsStore(paths.settings)
             self.assertEqual(settings.load()["theme"], "system")
             self.assertEqual(settings.load()["language"], "auto")
+            self.assertTrue(settings.load()["show_empty_canvas_guide"])
             self.assertEqual(settings.load()["auto_save_interval_seconds"], 30)
+            self.assertNotIn("background_removal_history_limit", settings.load())
             settings.path.write_text(
                 json.dumps({"window_width": "invalid", "window_height": "invalid"}),
                 encoding="utf-8",
@@ -239,6 +262,10 @@ class DesktopCoreTest(unittest.TestCase):
                     "auto_save_interval_seconds"
                 ],
                 3600,
+            )
+            self.assertNotIn(
+                "background_removal_history_limit",
+                settings.save({"background_removal_history_limit": 999}),
             )
 
             project_path = root / "sample.sbeproj"
@@ -353,6 +380,39 @@ class DesktopCoreTest(unittest.TestCase):
                 403,
             )
 
+    def test_background_removal_model_status_is_token_protected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            paths = make_paths(Path(temporary) / "app")
+            client = TestClient(create_app(paths, "desktop-test-token"))
+            self.assertEqual(client.get("/desktop/background-removal/model").status_code, 403)
+            response = client.get(
+                "/desktop/background-removal/model",
+                headers={"X-SBE-Token": "desktop-test-token"},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["model"], "isnet-anime")
+            self.assertFalse(response.json()["ready"])
+
+    def test_background_removal_inference_returns_png_mask(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            paths = make_paths(Path(temporary) / "app")
+            client = TestClient(create_app(paths, "desktop-test-token"))
+            output = io.BytesIO()
+            Image.new("L", (2, 2), 255).save(output, format="PNG")
+            with mock.patch(
+                "desktop_app.background_removal.BackgroundRemovalService.infer_mask",
+                return_value=(output.getvalue(), 2, 2),
+            ):
+                response = client.post(
+                    "/desktop/background-removal/infer",
+                    headers={"X-SBE-Token": "desktop-test-token", "Content-Type": "image/png"},
+                    content=base64.b64decode(png_data_url().split(",", 1)[1]),
+                )
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.headers["content-type"], "image/png")
+            self.assertEqual(response.headers["x-sbe-image-width"], "2")
+            self.assertEqual(response.headers["x-sbe-image-height"], "2")
+
     def test_desktop_redirect_uses_saved_runtime_settings(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             paths = make_paths(Path(temporary) / "app")
@@ -363,6 +423,7 @@ class DesktopCoreTest(unittest.TestCase):
                     "auto_save": False,
                     "auto_save_interval_seconds": 90,
                     "startup_behavior": "resume",
+                    "show_empty_canvas_guide": False,
                 }
             )
             client = TestClient(create_app(paths, "desktop-test-token"))
@@ -372,7 +433,9 @@ class DesktopCoreTest(unittest.TestCase):
             self.assertEqual(query["language"], ["en"])
             self.assertEqual(query["autoSave"], ["0"])
             self.assertEqual(query["autoSaveDelay"], ["90000"])
+            self.assertNotIn("backgroundRemovalHistoryLimit", query)
             self.assertEqual(query["startupBehavior"], ["resume"])
+            self.assertEqual(query["showEmptyCanvasGuide"], ["0"])
 
     def test_desktop_recovery_routes_survive_app_restart(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

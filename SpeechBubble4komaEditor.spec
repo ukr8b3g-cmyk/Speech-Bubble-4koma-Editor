@@ -20,6 +20,7 @@ a = Analysis(
     hiddenimports=[
         *collect_submodules("uvicorn"),
         *collect_submodules("webview"),
+        *collect_submodules("onnxruntime"),
         "webview.platforms.edgechromium",
     ],
     hookspath=[],

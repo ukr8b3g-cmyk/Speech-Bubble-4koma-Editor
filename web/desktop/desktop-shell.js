@@ -69,6 +69,7 @@
               </select>
             </label>
           </div>
+          <label class="desktop-check desktop-empty-guide-check"><input data-desktop-setting="show_empty_canvas_guide" type="checkbox"><span>画像未読込時に「画像をドロップ」を表示</span></label>
         </details>
         <details open>
           <summary>Export</summary>
@@ -126,7 +127,7 @@
           </label>
         </details>
         <details>
-          <summary>ユーザープリセット</summary>
+          <summary>SFX／スタンプ画像プリセット</summary>
           <div class="desktop-user-preset-overview">
             <div class="desktop-user-preset-counts">
               <button type="button" data-user-preset-target="sfx"><strong>Onomatopoeia / SFX</strong><span data-user-preset-count="sfx">0件</span></button>
@@ -145,6 +146,16 @@
             <button type="button" class="desktop-preset-manage" data-desktop-action="user-presets-open">プリセット管理</button>
           </div>
           <p class="hint">追加・変更・削除は即時保存されます。Apply settingsは不要です。</p>
+        </details>
+        <details>
+          <summary>吹き出しプリセット管理</summary>
+          <p class="hint">作成は吹き出しのPropertiesから行います。Built-inは上書きされません。</p>
+          <div data-bubble-preset-list><output>確認待ち</output></div>
+          <div class="desktop-cache-row">
+            <button type="button" data-desktop-action="bubble-presets-refresh">更新</button>
+            <button type="button" data-desktop-action="bubble-presets-import">JSONを読み込む</button>
+            <button type="button" data-desktop-action="bubble-presets-export">JSONを書き出す</button>
+          </div>
         </details>
         <details>
           <summary>Editor・復元</summary>
@@ -169,6 +180,17 @@
             <button type="button" data-desktop-action="cache-clear">下書きキャッシュを削除</button>
           </div>
           <p class="hint">プロジェクト、ユーザープリセット、設定、書き出し画像は削除しません。</p>
+        </details>
+        <details>
+          <summary>AI背景削除モデル</summary>
+          <div class="desktop-cache-row">
+            <output data-desktop-background-model-status>確認待ち</output>
+            <button type="button" data-desktop-action="background-model-refresh">更新</button>
+            <button type="button" data-desktop-action="background-model-download">モデルを取得</button>
+            <button type="button" data-desktop-action="background-model-delete">モデルを削除</button>
+          </div>
+          <progress data-desktop-background-model-progress max="1" value="0" style="width:100%"></progress>
+          <p class="hint">isnet-anime（約168 MB、Apache-2.0）。モデルは初回利用時にユーザーデータへ保存され、プロジェクトや画像には含まれません。</p>
         </details>
         <details>
           <summary>ページ画像・変換履歴</summary>
@@ -735,7 +757,7 @@
       });
       applyTheme(payload.settings?.theme);
       applyLanguage(payload.settings?.language);
-      await Promise.all([refreshCacheStatus(dialog), refreshImageStorageStatus(dialog), refreshUserPresetOverview(dialog)]);
+      await Promise.all([refreshCacheStatus(dialog), refreshImageStorageStatus(dialog), refreshUserPresetOverview(dialog), refreshBubblePresetManager(dialog), refreshBackgroundModelStatus(dialog)]);
     } catch (error) {
       console.warn("Desktop settings could not be loaded", error);
     }
@@ -838,6 +860,77 @@
     await refreshCacheStatus(dialog);
   }
 
+  async function refreshBubblePresetManager(dialog) {
+    const list = dialog.querySelector("[data-bubble-preset-list]");
+    if (!list) return;
+    const presets = root.SpeechBubbleDesktopEditor?.bubblePresets?.() || [];
+    list.replaceChildren();
+    if (!presets.length) {
+      const output = document.createElement("output");
+      output.textContent = desktopText("保存した吹き出しプリセットはありません。", "No saved bubble presets.");
+      list.append(output);
+      return;
+    }
+    for (const preset of presets) {
+      const row = document.createElement("div");
+      row.className = "desktop-cache-row desktop-image-storage-row";
+      const name = document.createElement("input");
+      name.value = preset.name || "";
+      name.setAttribute("aria-label", desktopText("プリセット名", "Preset name"));
+      const addAction = (label, action, handler) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.onclick = handler;
+        row.append(button);
+      };
+      row.append(name);
+      addAction(desktopText("名前を変更", "Rename"), "rename", async () => { await root.SpeechBubbleDesktopEditor?.manageBubblePreset?.("rename", preset.id, name.value); await refreshBubblePresetManager(dialog); });
+      addAction(desktopText("複製", "Duplicate"), "duplicate", async () => { await root.SpeechBubbleDesktopEditor?.manageBubblePreset?.("duplicate", preset.id, name.value ? `${name.value} Copy` : ""); await refreshBubblePresetManager(dialog); });
+      addAction(desktopText("削除", "Delete"), "delete", async () => { if (!confirm(desktopText(`「${preset.name}」を削除しますか？`, `Delete “${preset.name}”?`))) return; await root.SpeechBubbleDesktopEditor?.manageBubblePreset?.("delete", preset.id); await refreshBubblePresetManager(dialog); });
+      list.append(row);
+    }
+  }
+
+  async function refreshBackgroundModelStatus(dialog) {
+    const output = dialog.querySelector("[data-desktop-background-model-status]");
+    const progress = dialog.querySelector("[data-desktop-background-model-progress]");
+    if (!output || !progress) return null;
+    output.textContent = desktopText("確認中…", "Checking…");
+    try {
+      const payload = await desktopFetch("/desktop/background-removal/model");
+      progress.value = Number(payload.progress || 0);
+      output.textContent = payload.ready
+        ? desktopText(`準備完了・${(Number(payload.size || 0) / (1024 * 1024)).toFixed(1)} MB`, `Ready · ${(Number(payload.size || 0) / (1024 * 1024)).toFixed(1)} MB`)
+        : payload.state === "downloading"
+          ? desktopText(`取得中 ${Math.round(Number(payload.progress || 0) * 100)}%`, `Downloading ${Math.round(Number(payload.progress || 0) * 100)}%`)
+          : payload.error || desktopText("未取得", "Not downloaded");
+      return payload;
+    } catch (error) {
+      output.textContent = error?.message || desktopText("取得できませんでした", "Could not retrieve status");
+      return null;
+    }
+  }
+
+  async function downloadBackgroundModel(dialog) {
+    if (!confirm(desktopText(
+      "isnet-anime背景削除モデル（約168 MB）を取得しますか？\nモデル: Apache-2.0",
+      "Download the isnet-anime background-removal model (about 168 MB)?\nModel: Apache-2.0",
+    ))) return;
+    await desktopFetch("/desktop/background-removal/model/download", { method: "POST", body: "{}" });
+    while (dialog.open) {
+      const model = await refreshBackgroundModelStatus(dialog);
+      if (!model || model.ready || model.state === "error" || model.state === "missing") break;
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    }
+  }
+
+  async function deleteBackgroundModel(dialog) {
+    if (!confirm(desktopText("背景削除モデルを削除しますか？", "Delete the background-removal model?"))) return;
+    await desktopFetch("/desktop/background-removal/model", { method: "DELETE" });
+    await refreshBackgroundModelStatus(dialog);
+  }
+
   async function refreshImageStorageStatus(dialog) {
     const output = dialog.querySelector("[data-desktop-image-storage-status]");
     if (!output) return;
@@ -889,6 +982,7 @@
     ["ダーク", "Dark"],
     ["ライト", "Light"],
     ["言語", "Language"],
+    ["画像未読込時に「画像をドロップ」を表示", "Show ‘Drop an image here’ when no image is loaded"],
     ["出力フォルダー", "Output folder"],
     ["参照…", "Browse…"],
     ["指定フォルダーへ自動保存する", "Save directly to the selected folder"],
@@ -911,7 +1005,47 @@
     ["Overlay PNGも保存", "Also save Overlay PNG"],
     ["同名ファイルを世代バックアップ", "Create versioned backups for duplicate names"],
     ["バックアップ世代数", "Backup generations"],
-    ["ユーザープリセット", "User Presets"],
+    ["背景画像", "Background Image"],
+    ["ページ設定", "Page Settings"],
+    ["キャンバス背景色", "Canvas Background Color"],
+    ["背景色", "Background Color"],
+    ["背景の種類", "Background Type"],
+    ["内蔵プリセット", "Built-in Preset"],
+    ["パターン色", "Pattern Color"],
+    ["終了色", "End Color"],
+    ["スウォッチ", "Swatches"],
+    ["背景", "Background"],
+    ["パターン", "Pattern"],
+    ["ランダム化", "Randomize"],
+    ["透明背景を使用する", "Use Transparent Background"],
+    ["＋ 画像レイヤーを追加", "+ Add Image Layer"],
+    ["画像レイヤー", "Image Layer"],
+    ["画像を変更", "Replace Image"],
+    ["画像を削除", "Delete Image"],
+    ["画像倍率", "Image Scale"],
+    ["位置 X", "Position X"],
+    ["位置 Y", "Position Y"],
+    ["回転角度", "Rotation"],
+    ["不透明度", "Opacity"],
+    ["中央へ戻す", "Reset to Center"],
+    ["背景に合わせる", "Cover Canvas"],
+    ["キャンバスに収める", "Fit in Canvas"],
+    ["この画像を背景削除", "Remove Background from This Image"],
+    ["この画像をコミック変換", "Convert This Image to Comic"],
+    ["Canvas上でドラッグして移動、Ctrl+ホイールで拡大・縮小できます。ロック中も画像処理には利用できます。", "Drag on the canvas to move; use Ctrl+Wheel to scale. Locked images can still be processed."],
+    ["キャンバス背景", "Canvas Background"],
+    ["Ctrl：個別選択／Shift：範囲選択", "Ctrl: toggle selection / Shift: range selection"],
+    ["元画像を表示", "Show Original Image"],
+    ["画像位置を中央へ戻す", "Reset Image Position"],
+    ["Canvas上でドラッグして移動・Ctrl+ホイールで拡大・縮小できます。", "Drag on canvas to move; use Ctrl+Wheel to scale."],
+    ["ユーザープリセットとして保存…", "Save as User Preset…"],
+    ["変更を保存…", "Save Changes…"],
+    ["別名で保存…", "Save As…"],
+    ["SFX／スタンプ画像プリセット", "SFX / Stamp Image Presets"],
+    ["吹き出しプリセット管理", "Bubble Preset Manager"],
+    ["作成は吹き出しのPropertiesから行います。Built-inは上書きされません。", "Create presets from bubble Properties. Built-in presets are never overwritten."],
+    ["JSONを読み込む", "Import JSON"],
+    ["JSONを書き出す", "Export JSON"],
     ["登録先", "Register as"],
     ["PNG / WebPをここへドロップ", "Drop PNG / WebP here"],
     ["または", "or"],
@@ -943,6 +1077,7 @@
     ["画像を変更", "Change Image"],
     ["画像をドロップ", "Drop an image"],
     ["PNG / JPEG / WebP・Ctrl+V", "PNG / JPEG / WebP or Ctrl+V"],
+    ["PNG / JPEG / WebPをドロップ・Ctrl+V", "Drop PNG / JPEG / WebP or press Ctrl+V"],
     ["カラー原本", "Color Original"],
     ["変換結果", "Result"],
     ["明るさ", "Brightness"],
@@ -1002,6 +1137,15 @@
     ["ページ画像", "Page Images"],
     ["画像を追加", "Add Images"],
     ["＋ 画像を追加", "＋ Add Images"],
+    ["背景削除", "Background Removal"],
+    ["選択中の画像をAIで透過", "Make the selected image transparent with AI"],
+    ["背景削除を開く", "Open Background Removal"],
+    ["AI背景削除モデル", "AI Background Removal Model"],
+    ["背景削除の履歴上限", "Background removal history limit"],
+    ["マスク編集のUndo履歴数です。大きい画像では値を増やすほどメモリを使用します。", "Number of mask-edit Undo states. Higher values use more memory with large images."],
+    ["モデルを取得", "Download Model"],
+    ["モデルを削除", "Delete Model"],
+    ["isnet-anime（約168 MB、Apache-2.0）。モデルは初回利用時にユーザーデータへ保存され、プロジェクトや画像には含まれません。", "isnet-anime (about 168 MB, Apache-2.0). The model is stored in user data on first use and is not embedded in projects or images."],
     ["縦4コマ", "Vertical 4-panel Comic"],
     ["標準4コマ", "Standard 4-panel"],
     ["キャンバス幅", "Canvas Width"],
@@ -1014,7 +1158,6 @@
     ["コマ間隔", "Panel Gap"],
     ["ページ背景", "Page Background"],
     ["枠線色", "Border Color"],
-    ["＋ 見出しBoxを追加", "+ Add Header Box"],
     ["連動", "Linked"],
     ["上", "Top"],
     ["右", "Right"],
@@ -1199,6 +1342,9 @@
     document.querySelectorAll("[data-desktop-action='project-open']").forEach((button) => {
       button.textContent = selected === "en" ? "Open Project" : "プロジェクトを開く";
     });
+    document.querySelectorAll("[data-desktop-action='project-new']").forEach((button) => {
+      button.textContent = selected === "en" ? "New Project" : "新規プロジェクト";
+    });
     document.querySelectorAll("[data-desktop-action='project-save']").forEach((button) => {
       button.textContent = selected === "en" ? "Save Project" : "プロジェクトを保存";
     });
@@ -1213,6 +1359,10 @@
     };
     if (converterSummary) converterSummary.textContent = selected === "en" ? "Comic Conversion" : "コミック変換";
     if (converterOpen) converterOpen.textContent = selected === "en" ? "Open Comic Conversion" : "コミック変換を開く";
+    const backgroundSummary = document.querySelector(".background-removal-launcher > summary");
+    const backgroundOpen = document.querySelector("[data-background-removal-open]");
+    if (backgroundSummary) backgroundSummary.textContent = selected === "en" ? "Background Removal" : "背景削除";
+    if (backgroundOpen) backgroundOpen.textContent = selected === "en" ? "Open Background Removal" : "背景削除を開く";
     const converterLabels = selected === "en"
       ? { comic: "Black & White Comic", grayscale: "Simple Grayscale", monochrome: "Simple Monochrome", xdog100: "XDoG 100", custom: "Custom" }
       : { comic: "白黒コミック", grayscale: "単純グレースケール", monochrome: "単純モノクロ", xdog100: "XDoG 100", custom: "カスタム" };
@@ -1239,7 +1389,7 @@
     const api = nativeApi();
     if (!api?.choose_project_save) throw new Error("プロジェクト保存はDesktopウィンドウから実行してください。");
     const path = await api.choose_project_save();
-    if (!path) return;
+    if (!path) return false;
     const snapshot = await root.SpeechBubbleDesktopEditor.snapshot();
     const result = await desktopFetch("/desktop/project/save", {
       method: "POST",
@@ -1248,7 +1398,32 @@
     const saved = await root.SpeechBubbleDesktopEditor.markProjectSaved?.(path, JSON.stringify(snapshot.layout));
     if (saved === false) throw new Error("Project changed while it was being saved; save again.");
     root.SpeechBubbleDesktopEditor.setStatus(`${path} を保存しました`, "saved");
-    return result;
+    return Boolean(result !== false);
+  }
+
+  function confirmUnsavedChanges(purpose = "close") {
+    return new Promise((resolve) => {
+      const dialog = document.createElement("dialog");
+      dialog.className = "document-dialog";
+      const creating = purpose === "new";
+      dialog.innerHTML = `<form method="dialog"><h3>${creating ? "新規プロジェクトを作成しますか？" : "アプリを終了しますか？"}</h3><p>未保存の変更があります。</p><div class="replace-dialog-actions"><button value="cancel">キャンセル</button><button value="discard">${creating ? "保存せず作成" : "保存せず終了"}</button><button class="primary" value="save">${creating ? "保存して作成" : "保存して終了"}</button></div></form>`;
+      document.body.append(dialog);
+      dialog.addEventListener("close", () => { const value = dialog.returnValue || "cancel"; dialog.remove(); resolve(value); }, { once: true });
+      dialog.addEventListener("cancel", (event) => { event.preventDefault(); dialog.close("cancel"); });
+      dialog.showModal();
+    });
+  }
+
+  async function requestNewProject() {
+    if (!root.SpeechBubbleDesktopEditor?.newProject) return false;
+    if (root.SpeechBubbleDesktopEditor.hasUnsavedChanges?.()) {
+      const action = await confirmUnsavedChanges("new");
+      if (action === "cancel") return false;
+      if (action === "save" && !(await saveProject())) return false;
+    }
+    await root.SpeechBubbleDesktopEditor.newProject();
+    await saveRecoveryCheckpoint();
+    return true;
   }
 
   async function openProject() {
@@ -1302,10 +1477,11 @@
     document.documentElement.dataset.host = "desktop";
     const header = document.querySelector("body > header");
     const spacer = header?.querySelector(".spacer");
-    if (header && spacer) {
+    if (header && spacer && !header.querySelector('[data-desktop-action="project-open"]')) {
       const projectActions = document.createElement("div");
       projectActions.className = "desktop-project-actions";
       projectActions.innerHTML = `
+        <button type="button" data-desktop-action="project-new">新規プロジェクト</button>
         <button type="button" data-desktop-action="project-open">プロジェクトを開く</button>
         <button type="button" data-desktop-action="project-save">プロジェクトを保存</button>
       `;
@@ -1411,13 +1587,17 @@
       const action = event.target.closest("[data-desktop-action]")?.dataset.desktopAction;
       if (!action) return;
       try {
-        if (action === "project-open") await openProject();
+        if (action === "project-new") await requestNewProject();
+        else if (action === "project-open") await openProject();
         else if (action === "project-save") await saveProject();
         else if (action === "settings-close") settings.close();
         else if (action === "settings-save") await saveSettings(settings);
         else if (action === "export-directory-browse") await browseExportDirectory(settings);
         else if (action === "cache-refresh") await refreshCacheStatus(settings);
         else if (action === "cache-clear") await clearDraftCache(settings);
+        else if (action === "background-model-refresh") await refreshBackgroundModelStatus(settings);
+        else if (action === "background-model-download") await downloadBackgroundModel(settings);
+        else if (action === "background-model-delete") await deleteBackgroundModel(settings);
         else if (action === "workspace-layout-reset") {
           root.SpeechBubbleWorkspaceLayout?.reset?.();
           root.SpeechBubbleDesktopEditor?.setStatus(
@@ -1428,6 +1608,9 @@
         else if (action === "image-storage-refresh") await refreshImageStorageStatus(settings);
         else if (action === "comic-unused-cleanup") await cleanupUnusedComicImages(settings);
         else if (action === "conversion-history-clear") await clearConversionHistory(settings);
+        else if (action === "bubble-presets-refresh") await refreshBubblePresetManager(settings);
+        else if (action === "bubble-presets-import") root.SpeechBubbleDesktopEditor?.importBubblePresets?.();
+        else if (action === "bubble-presets-export") root.SpeechBubbleDesktopEditor?.exportBubblePresets?.();
         else if (action === "user-presets-open") {
           settings.close();
           await openUserPresets();
@@ -1455,9 +1638,17 @@
         root.SpeechBubbleDesktopEditor?.setStatus(error?.message || "Desktop操作に失敗しました", "error");
       }
     });
+    document.addEventListener("keydown", (event) => {
+      const active = document.activeElement;
+      if (!event.ctrlKey || event.altKey || event.metaKey || event.key.toLowerCase() !== "n") return;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(active?.tagName) || active?.isContentEditable) return;
+      event.preventDefault();
+      requestNewProject().catch((error) => root.SpeechBubbleDesktopEditor?.setStatus(error?.message || "新規プロジェクトを作成できませんでした", "error"));
+    });
+    window.addEventListener("speech-bubble:bubble-presets-change", () => refreshBubblePresetManager(settings));
   }
 
-  root.SpeechBubbleDesktopShell = { openSettings, prepareExportTarget, saveRecovery, saveRecoveryCheckpoint, loadRecovery };
+  root.SpeechBubbleDesktopShell = { openSettings, prepareExportTarget, saveProject, confirmUnsavedChanges, requestNewProject, saveRecovery, saveRecoveryCheckpoint, loadRecovery };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", install, { once: true });
   else install();
 })(globalThis);

@@ -71,6 +71,12 @@ html[data-host="desktop"] .desktop-project-actions button {
   gap: 6px;
 }
 
+.desktop-empty-guide-check {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+
 .desktop-check input {
   width: 14px;
   height: 14px;

@@ -331,13 +331,15 @@ class DesktopBridge:
             return False
         self.save_window_state()
         self._close_approved = True
-        try:
-            if self._window:
-                self._window.destroy()
-        except Exception as error:
-            self._close_approved = False
-            self._native_close_error(str(error))
-            return False
+        def destroy_after_api_response():
+            try:
+                if self._window:
+                    self._window.destroy()
+            except Exception as error:
+                self._close_approved = False
+                self._native_close_error(str(error))
+
+        threading.Timer(0.05, destroy_after_api_response).start()
         return True
 
     def _bind_window_events(self, window) -> None:

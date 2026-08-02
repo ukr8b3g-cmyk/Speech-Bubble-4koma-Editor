@@ -11,7 +11,7 @@
   const SETTINGS_KEY = "speech-bubble-editor:comic-converter-settings:v1";
   const tr = (japanese, english) => document.documentElement.lang === "en" ? english : japanese;
   const DEFAULTS = Object.freeze({
-    mode: "comic",
+    mode: "grayscale",
     brightness: 0,
     contrast: 1.04,
     gamma: 1,
@@ -74,7 +74,9 @@
       const contrast = params.contrast;
       const invGamma = 1 / Math.max(0.01, params.gamma);
       for (let p = 0, i = 0; p < out.length; p++, i += 4) {
+        const alpha = src[i + 3] / 255;
         let y = (0.2126 * src[i] + 0.7152 * src[i + 1] + 0.0722 * src[i + 2]) / 255;
+        y = y * alpha + (1 - alpha);
         y = clamp((y - 0.5) * contrast + 0.5 + brightness, 0, 1);
         out[p] = Math.pow(y, invGamma);
       }
@@ -154,7 +156,7 @@
       for (let p = 0, i = 0; p < values.length; p++, i += 4) {
         const value = Math.round(clamp(values[p], 0, 1) * 255);
         rgba[i] = rgba[i + 1] = rgba[i + 2] = value;
-        rgba[i + 3] = 255;
+        rgba[i + 3] = image.data[i + 3];
       }
       return rgba;
     }
@@ -368,7 +370,7 @@
           <button type="button" data-converter-action="maximize" title="最大化／元に戻す">□</button>
           <button type="button" data-converter-action="close" aria-label="閉じる">×</button>
         </header>
-        <div class="comic-converter-source-bar">
+        <div class="comic-converter-source-bar" data-converter-action="change-source" title="画像候補を開く／閉じる">
           <div data-converter-source-thumb class="comic-converter-source-thumb"></div>
           <div><strong data-converter-source-name>画像を選択してください</strong><small data-converter-source-info></small></div>
           <button type="button" data-converter-action="change-source">画像を変更</button>
@@ -376,7 +378,7 @@
         <section class="comic-converter-source-picker" data-converter-source-picker hidden>
           <div class="comic-converter-candidates" data-converter-candidates></div>
           <div class="comic-converter-drop" data-converter-drop>
-            <strong>画像をドロップ</strong><span>PNG / JPEG / WebP・Ctrl+V</span>
+            <span>PNG / JPEG / WebPをドロップ・Ctrl+V</span>
             <button type="button" data-converter-action="choose-file">ファイルを選択</button>
           </div>
           <input data-converter-file type="file" accept="image/png,image/jpeg,image/webp" hidden>
@@ -387,7 +389,7 @@
             <figure><figcaption>変換結果 <small data-converter-timing></small></figcaption><canvas data-converter-result-canvas></canvas></figure>
           </section>
           <aside class="comic-converter-settings">
-            <label>変換モード<select data-converter-preset><option value="comic">白黒コミック</option><option value="grayscale">単純グレースケール</option><option value="monochrome">単純モノクロ</option><option value="xdog100">XDoG 100</option><option value="custom">カスタム</option></select></label>
+            <label>変換モード<select data-converter-preset><option value="grayscale">単純グレースケール</option><option value="comic">白黒コミック</option><option value="monochrome">単純モノクロ</option><option value="xdog100">XDoG 100</option><option value="custom">カスタム</option></select></label>
             ${CONTROL_DEFS.map(fieldMarkup).join("")}
             <div class="comic-converter-checks">
               <label><input data-converter-check="preserveTones" type="checkbox">階調を残す</label>
@@ -399,8 +401,10 @@
         </div>
         <footer class="comic-converter-footer">
           <span data-converter-status>変換元画像を選択してください</span>
-          <button type="button" data-converter-action="cancel">キャンセル</button>
-          <button type="button" class="primary" data-converter-action="apply" disabled>ページ画像へ追加</button>
+          <div class="comic-converter-footer-actions">
+            <button type="button" data-converter-action="cancel">キャンセル</button>
+            <button type="button" class="primary" data-converter-action="apply" disabled>ページ画像へ追加</button>
+          </div>
         </footer>
       </div>`;
     document.body.append(dialog);
@@ -422,7 +426,7 @@
     let latestPreviewId = 0;
     let candidateUrls = [];
     let settings = { ...DEFAULTS };
-    let currentPreset = "comic";
+    let currentPreset = "grayscale";
     try {
       const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
       settings = { ...settings, ...saved };
@@ -523,7 +527,7 @@
       const thumbUrl = URL.createObjectURL(next.blob);
       candidateUrls.push(thumbUrl);
       thumb.style.backgroundImage = `url("${thumbUrl}")`;
-      sourceSummary.textContent = `${source.name} / ${source.width}×${source.height}`;
+      if (sourceSummary) sourceSummary.textContent = `${source.name} / ${source.width}×${source.height}`;
       picker.hidden = true;
       applyButton.disabled = true;
       drawSourcePreview();
@@ -641,8 +645,9 @@
       candidateUrls = [];
     }
 
-    async function showSourcePicker(candidates = null) {
-      picker.hidden = false;
+    async function showSourcePicker(candidates = null, forceOpen = false) {
+      picker.hidden = forceOpen ? false : !picker.hidden;
+      if (picker.hidden) return;
       const host = dialog.querySelector("[data-converter-candidates]");
       host.replaceChildren();
       const items = candidates || (await sourceCandidates());
@@ -678,8 +683,8 @@
       else {
         source = null;
         closeBitmap();
-        sourceSummary.textContent = tr("画像を選択してください", "Select an image");
-        await showSourcePicker(candidates);
+        if (sourceSummary) sourceSummary.textContent = tr("画像を選択してください", "Select an image");
+        await showSourcePicker(candidates, true);
       }
     }
 
@@ -741,7 +746,7 @@
     }
 
     function resetSettings() {
-      currentPreset = "comic";
+      currentPreset = "grayscale";
       settings = { ...PRESET_SETTINGS.comic };
       syncControls();
       try {
@@ -911,6 +916,7 @@
       },
       clearHistory,
       open: () => launcher.click(),
+      close: closeDialog,
       dispose() {
         worker.terminate();
         URL.revokeObjectURL(workerUrl);

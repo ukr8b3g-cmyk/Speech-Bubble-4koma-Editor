@@ -1,14 +1,12 @@
 param(
-    [string]$Version = "0.1.1",
-    [string]$IsccPath = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+    [string]$Version = "0.1.4",
+    [string]$IsccPath = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+    [switch]$InstallerOnly
 )
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $python = Join-Path $root ".venv\Scripts\python.exe"
-$stageRoot = Join-Path $root "dist\release-stage"
-$workRoot = Join-Path $root "build\release"
-$portableDir = Join-Path $stageRoot "SpeechBubble4komaEditor"
 $releaseDir = Join-Path $root "dist\release"
 $portableZip = Join-Path $releaseDir "SpeechBubble4komaEditor-v$Version-win-x64-portable.zip"
 $installer = Join-Path $releaseDir "SpeechBubble4komaEditor-v$Version-win-x64-setup.exe"
@@ -17,6 +15,15 @@ $checksums = Join-Path $releaseDir "SHA256SUMS.txt"
 if ($Version -notmatch '^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') {
     throw "Version must use semantic version format, for example 0.1.0."
 }
+$tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+$shortBuildRoot = Join-Path $tempRoot "SBE-v$Version-build"
+$shortBuildRoot = [IO.Path]::GetFullPath($shortBuildRoot)
+if (-not $shortBuildRoot.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Temporary build path must remain inside Windows Temp."
+}
+$stageRoot = Join-Path $shortBuildRoot "stage"
+$workRoot = Join-Path $shortBuildRoot "work"
+$portableDir = Join-Path $stageRoot "SpeechBubble4komaEditor"
 if (-not (Test-Path -LiteralPath $IsccPath -PathType Leaf)) {
     throw "Inno Setup 6 was not found: $IsccPath"
 }
@@ -45,10 +52,12 @@ try {
     }
 
     New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
-    if (Test-Path -LiteralPath $portableZip) {
-        Remove-Item -LiteralPath $portableZip -Force
+    if (-not $InstallerOnly) {
+        if (Test-Path -LiteralPath $portableZip) {
+            Remove-Item -LiteralPath $portableZip -Force
+        }
+        Compress-Archive -LiteralPath $portableDir -DestinationPath $portableZip -CompressionLevel Optimal
     }
-    Compress-Archive -LiteralPath $portableDir -DestinationPath $portableZip -CompressionLevel Optimal
 
     & $IsccPath "/DMyAppVersion=$Version" "/DMySourceDir=$portableDir" (Join-Path $root "packaging\SpeechBubble4komaEditor.iss")
     if ($LASTEXITCODE -ne 0) {
@@ -58,7 +67,8 @@ try {
         throw "Installer output was not created: $installer"
     }
 
-    $lines = foreach ($path in @($installer, $portableZip)) {
+    $artifacts = if ($InstallerOnly) { @($installer) } else { @($installer, $portableZip) }
+    $lines = foreach ($path in $artifacts) {
         $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $path
         "$($hash.Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($path))"
     }
@@ -67,9 +77,14 @@ try {
     Write-Output ""
     Write-Output "Release artifacts:"
     Write-Output $installer
-    Write-Output $portableZip
+    if (-not $InstallerOnly) {
+        Write-Output $portableZip
+    }
     Write-Output $checksums
 }
 finally {
     Pop-Location
+    if (Test-Path -LiteralPath $shortBuildRoot) {
+        Remove-Item -LiteralPath $shortBuildRoot -Recurse -Force
+    }
 }

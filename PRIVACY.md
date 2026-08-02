@@ -9,9 +9,12 @@ Speech Bubble 4koma EditorはWindows PC内でローカル動作します。本�
 - ホストの`config/speech-bubble-editor/`: レイアウト、User Presets、アセット、サムネイル、アーカイブ、プリセット設定、保存先記憶用情報
 - ローカル設定ファイル: Speech Bubble 4koma Editorの設定値
 - ブラウザーのlocalStorage／IndexedDB: 下書き、単体画像、再表示用画像、UI状態、お気に入り、使用回数、診断結果
+- ローカルのモデル保存先: ユーザーが取得を許可したAI背景削除モデル
 - ユーザーが選択した出力先: 書き出した画像と任意のOverlay
 
-ユーザー操作によりGitHubや文書リンクを開く場合があります。ホストアプリ、ブラウザー、インストーラー、Git、GitHub自体が行う通信は本方針の対象外です。
+AI背景削除は画像をWindows PC内で処理し、画像を外部へ送信しません。初回にユーザーが確認画面で許可した場合だけ、isnet-animeモデル（約168MB）をGitHub Releaseから取得します。Settingsからモデルを削除できます。
+
+ユーザー操作によりGitHubや文書リンクを開く場合があります。ホストアプリ、ブラウザー、インストーラー、Git、GitHub自体が行うその他の通信は本方針の対象外です。
 
 ## English
 
@@ -22,6 +25,9 @@ The following data is stored locally:
 - Host `config/speech-bubble-editor/`: layouts, user presets, assets, thumbnails, archives, preset settings, and export-directory memory
 - Local settings file: Speech Bubble 4koma Editor settings
 - Browser localStorage/IndexedDB: drafts, standalone and retained images, UI state, favorites, usage counts, and diagnostic results
+- Local model storage: the AI background-removal model downloaded after user consent
 - User-selected output location: exported images and optional overlays
 
-GitHub or documentation links may open only after a user action. Network activity performed by the host application, browser, installer, Git, or GitHub itself is outside this policy.
+AI background removal processes images locally on the Windows PC and does not upload them. Only after the user confirms the first-use prompt, the app downloads the isnet-anime model (about 168 MB) from a GitHub Release. The model can be removed from Settings.
+
+GitHub or documentation links may open only after a user action. Other network activity performed by the host application, browser, installer, Git, or GitHub itself is outside this policy.

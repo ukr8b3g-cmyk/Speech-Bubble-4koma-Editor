@@ -21,6 +21,7 @@ class DesktopPaths:
     cache: Path
     logs: Path
     temp: Path
+    models: Path
 
     @classmethod
     def create(cls, portable: bool = False) -> "DesktopPaths":
@@ -37,7 +38,8 @@ class DesktopPaths:
             cache=root / "cache",
             logs=root / "logs",
             temp=root / "temp",
+            models=root / "models",
         )
-        for directory in (value.root, value.recovery, value.cache, value.logs, value.temp):
+        for directory in (value.root, value.recovery, value.cache, value.logs, value.temp, value.models):
             directory.mkdir(parents=True, exist_ok=True)
         return value

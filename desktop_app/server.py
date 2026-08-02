@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import secrets
 from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 from speech_bubble_editor.api import register_routes
 
+from .background_removal import BackgroundRemovalService, MAX_IMAGE_BYTES
 from .paths import DesktopPaths
 from .project_store import ProjectStore
 from .recent_projects import RecentProjects
@@ -24,8 +26,10 @@ def create_app(paths: DesktopPaths, launch_token: str | None = None) -> FastAPI:
     recent = RecentProjects(paths.recent)
     projects = ProjectStore()
     recovery = RecoveryStore(paths.recovery)
+    background_removal = BackgroundRemovalService(paths.models / "isnet-anime")
     app = FastAPI(title="Speech Bubble 4koma Editor", docs_url=None, redoc_url=None)
     app.state.desktop_launch_token = token
+    app.state.background_removal = background_removal
     register_routes(app)
 
     @app.middleware("http")
@@ -59,6 +63,7 @@ def create_app(paths: DesktopPaths, launch_token: str | None = None) -> FastAPI:
                     int(configured.get("auto_save_interval_seconds", 30)) * 1000
                 ),
                 "startupBehavior": configured.get("startup_behavior", "ask"),
+                "showEmptyCanvasGuide": "1" if configured.get("show_empty_canvas_guide", True) else "0",
                 "theme": configured.get("theme", "system"),
                 "language": configured.get("language", "auto"),
             }
@@ -69,6 +74,48 @@ def create_app(paths: DesktopPaths, launch_token: str | None = None) -> FastAPI:
     async def health(request: Request, x_sbe_token: str = Header(default="")):
         require_token(request, x_sbe_token)
         return {"ok": True, "host": "desktop"}
+
+    @app.get("/desktop/background-removal/model")
+    async def background_removal_model_status(request: Request, x_sbe_token: str = Header(default="")):
+        require_token(request, x_sbe_token)
+        return background_removal.status()
+
+    @app.post("/desktop/background-removal/model/download")
+    async def background_removal_model_download(request: Request, x_sbe_token: str = Header(default="")):
+        require_token(request, x_sbe_token)
+        return background_removal.start_download()
+
+    @app.post("/desktop/background-removal/model/cancel")
+    async def background_removal_model_cancel(request: Request, x_sbe_token: str = Header(default="")):
+        require_token(request, x_sbe_token)
+        return background_removal.cancel_download()
+
+    @app.delete("/desktop/background-removal/model")
+    async def background_removal_model_delete(request: Request, x_sbe_token: str = Header(default="")):
+        require_token(request, x_sbe_token)
+        try:
+            return background_removal.remove_model()
+        except RuntimeError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post("/desktop/background-removal/infer")
+    async def background_removal_infer(request: Request, x_sbe_token: str = Header(default="")):
+        require_token(request, x_sbe_token)
+        content_length = int(request.headers.get("content-length") or 0)
+        if content_length > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="画像サイズが大きすぎます。")
+        raw = await request.body()
+        try:
+            mask, width, height = await asyncio.to_thread(background_removal.infer_mask, raw)
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        except (RuntimeError, ValueError, OSError) as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return Response(
+            content=mask,
+            media_type="image/png",
+            headers={"X-SBE-Image-Width": str(width), "X-SBE-Image-Height": str(height)},
+        )
 
     @app.get("/desktop/config")
     async def config(request: Request, x_sbe_token: str = Header(default="")):

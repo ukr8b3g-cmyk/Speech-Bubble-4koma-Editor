@@ -136,6 +136,8 @@
     let selectedPanelId = null;
     let selectedHeadingId = null;
     let selectedTarget = null;
+    const selectedPanelImageIds = new Set();
+    let panelImageSelectionAnchorId = null;
     let selectedTrayImageId = "";
     let drag = null;
     let pendingAssignPanelId = null;
@@ -262,8 +264,9 @@
 
     function installUi() {
       const header = document.querySelector("body > header");
+      const modeHost = header?.querySelector("[data-toolbar-mode-host]");
       const spacer = header?.querySelector(".spacer");
-      if (header && spacer) {
+      if (header && (modeHost || spacer)) {
         const toggle = document.createElement("div");
         toggle.className = "comic-mode-toggle segmented";
         toggle.setAttribute("role", "group");
@@ -271,7 +274,8 @@
         toggle.innerHTML =
           '<button type="button" data-comic-mode="single" class="active">一枚画像</button>' +
           '<button type="button" data-comic-mode="comic">4コマ漫画</button>';
-        spacer.before(toggle);
+        if (modeHost) modeHost.append(toggle);
+        else spacer.before(toggle);
         elements.modeToggle = toggle;
       }
 
@@ -283,9 +287,9 @@
         tray.hidden = true;
         tray.innerHTML = `
           <div class="comic-tray-heading">
-            <button type="button" data-comic-action="tray-toggle" aria-expanded="false">ページ画像</button>
-            <span data-comic-image-count>0枚</span>
-            <span class="spacer"></span>
+            <button class="comic-tray-toggle" type="button" data-comic-action="tray-toggle" aria-expanded="false">
+              <span>ページ画像</span><span data-comic-image-count>0枚</span>
+            </button>
             <button type="button" data-comic-action="add-images">＋ 画像を追加</button>
           </div>
           <div class="comic-tray-list"></div>
@@ -307,7 +311,12 @@
         properties.hidden = true;
         properties.innerHTML = `
           <div class="comic-properties-title">
-            <strong data-comic-selection-name>漫画ページ</strong>
+            <div class="comic-properties-title-main">
+              <strong data-comic-selection-name>漫画ページ</strong>
+              <label class="comic-heading-title-toggle" data-comic-heading-title-toggle hidden>
+                <input data-comic-heading="visible" type="checkbox"><span>見出しを表示</span>
+              </label>
+            </div>
             <span data-comic-selection-kind>ページ</span>
           </div>
           <section data-comic-properties="page">
@@ -341,7 +350,6 @@
             ${colorSwatchesMarkup("page", "background")}
             <label>枠線色<input data-comic-page="border_color" type="color"></label>
             ${colorSwatchesMarkup("page", "border_color")}
-            <button type="button" data-comic-action="add-heading">＋ 見出しBoxを追加</button>
             <div class="comic-margin-row">
               <label class="comic-check"><input data-comic-page="margin_linked" type="checkbox">連動</label>
               <label>上<input data-comic-page="margin_top" type="number" min="0" max="480" step="1"></label>
@@ -372,7 +380,6 @@
               <label>位置 Y<input data-comic-heading="y" type="number" step="1"></label>
             </div>
             <div class="comic-heading-visibility-row">
-              <label class="comic-check"><input data-comic-heading="visible" type="checkbox">見出しを表示</label>
               <span class="comic-property-hint">キャンバス上で移動・リサイズ</span>
             </div>
             <button type="button" data-comic-action="reset-heading">位置・サイズを標準へ戻す</button>
@@ -418,11 +425,12 @@
         setEditMode(button.dataset.comicMode);
       });
       elements.tray?.addEventListener("click", (event) => {
-        const action = event.target.closest("[data-comic-action]")?.dataset.comicAction;
+        const actionButton = event.target.closest("[data-comic-action]");
+        const action = actionButton?.dataset.comicAction;
         const card = event.target.closest("[data-comic-image-id]");
         if (action === "tray-toggle") {
           const collapsed = elements.tray.classList.toggle("collapsed");
-          event.target.setAttribute("aria-expanded", String(!collapsed));
+          actionButton.setAttribute("aria-expanded", String(!collapsed));
           syncTrayViewport();
         } else if (action === "add-images") {
           elements.imageInput.click();
@@ -609,14 +617,6 @@
           }
           updateUi();
           changed();
-        } else if (action === "add-heading") {
-          if (comic.headings.length >= 1) return;
-          options.pushUndo();
-          comic.headings.push(core.createHeadings("vertical_four", canvasState().width, uuid)[0]);
-          selectedHeadingId = comic.headings.at(-1).id;
-          selectedTarget = "heading";
-          updateUi();
-          changed();
         } else if (action === "reset-heading") {
           const heading = selectedHeading();
           if (!heading) return;
@@ -645,6 +645,7 @@
         } else if (action === "remove-panel-image" && panel?.image_id) {
           options.pushUndo();
           panel.image_id = null;
+          selectedPanelImageIds.delete(panel.id);
           selectedTarget = "panel";
           updateUi();
           renderTray();
@@ -666,6 +667,7 @@
         } else if (action === "remove-image" && panel.image_id) {
           options.pushUndo();
           panel.image_id = null;
+          selectedPanelImageIds.delete(panel.id);
           selectedTarget = "panel";
           updateUi();
           changed();
@@ -733,6 +735,7 @@
 
     function syncProperties() {
       const panel = selectedPanel();
+      const imagePanels = selectedImagePanels();
       const heading = selectedHeading();
       const active = comic.enabled && Boolean(selectedTarget) && !options.hasLayerSelection?.();
       if (elements.properties) elements.properties.hidden = !active;
@@ -753,10 +756,15 @@
           : target === "heading"
             ? tr("見出し", "Header Box")
             : target === "image"
-              ? tr(`コマ ${panelIndex}の画像`, `Panel ${panelIndex} Image`)
+              ? imagePanels.length > 1
+                ? tr(`${imagePanels.length}個のコマ画像を選択中`, `${imagePanels.length} panel images selected`)
+                : tr(`コマ ${panelIndex}の画像`, `Panel ${panelIndex} Image`)
               : tr(`コマ ${panelIndex}`, `Panel ${panelIndex}`);
-      elements.properties.querySelector("[data-comic-selection-kind]").textContent =
+      const selectionKind = elements.properties.querySelector("[data-comic-selection-kind]");
+      selectionKind.textContent =
         target === "page" ? tr("ページ", "Page") : target === "heading" ? tr("見出し", "Header") : target === "image" ? tr("画像", "Image") : tr("コマ", "Panel");
+      selectionKind.hidden = target === "heading";
+      elements.properties.querySelector("[data-comic-heading-title-toggle]").hidden = target !== "heading";
       elements.properties.querySelectorAll("[data-comic-properties]").forEach((section) => {
         section.hidden = section.dataset.comicProperties !== target;
       });
@@ -783,6 +791,9 @@
         if (input.type === "checkbox") input.checked = Boolean(value);
         else input.value = key === "image_offset_x" || key === "image_offset_y" ? Math.round(Number(value) || 0) : value ?? "";
       }
+      elements.properties.querySelectorAll('[data-comic-properties="image"] [data-comic-property]').forEach((input) => {
+        input.disabled = imagePanels.length > 1;
+      });
       for (const input of elements.properties.querySelectorAll("[data-comic-heading]")) {
         const key = input.dataset.comicHeading;
         if (input.type === "checkbox") input.checked = Boolean(heading?.[key]);
@@ -827,7 +838,40 @@
       return true;
     }
 
+    function selectedImagePanels() {
+      const ids = selectedPanelImageIds.size ? selectedPanelImageIds : new Set(selectedTarget === "image" && selectedPanelId ? [selectedPanelId] : []);
+      return layout().panels.filter((entry) => ids.has(entry.id) && entry.node.image_id).map((entry) => entry.node);
+    }
+
+    function setPanelImageSelection(panelIds, primaryId = null) {
+      const available = new Set(layout().panels.filter((entry) => entry.node.image_id).map((entry) => entry.id));
+      selectedPanelImageIds.clear();
+      for (const panelId of panelIds) if (available.has(panelId)) selectedPanelImageIds.add(panelId);
+      selectedPanelId = primaryId && selectedPanelImageIds.has(primaryId) ? primaryId : [...selectedPanelImageIds].at(-1) || null;
+      selectedTarget = selectedPanelId ? "image" : null;
+      selectedHeadingId = null;
+      options.clearLayerSelection?.();
+    }
+
+    function selectPanelImage(panelId, event = {}) {
+      const imageIds = layout().panels.filter((entry) => entry.node.image_id).map((entry) => entry.id);
+      if (event.shiftKey && imageIds.includes(panelImageSelectionAnchorId)) {
+        const start = imageIds.indexOf(panelImageSelectionAnchorId), end = imageIds.indexOf(panelId), range = imageIds.slice(Math.min(start, end), Math.max(start, end) + 1);
+        setPanelImageSelection(event.ctrlKey || event.metaKey ? [...new Set([...selectedPanelImageIds, ...range])] : range, panelId);
+      } else if (event.ctrlKey || event.metaKey) {
+        const next = new Set(selectedPanelImageIds);
+        next.has(panelId) ? next.delete(panelId) : next.add(panelId);
+        setPanelImageSelection([...next], next.has(panelId) ? panelId : [...next].at(-1));
+        panelImageSelectionAnchorId = panelId;
+      } else {
+        setPanelImageSelection([panelId], panelId);
+        panelImageSelectionAnchorId = panelId;
+      }
+    }
+
     function selectComicTarget(target, panelId = null) {
+      if (target === "image" && panelId) setPanelImageSelection([panelId], panelId);
+      else selectedPanelImageIds.clear();
       selectedTarget = target;
       if (panelId) selectedPanelId = panelId;
       if (target !== "heading") selectedHeadingId = null;
@@ -840,11 +884,11 @@
     function comicLayerRow({ target, panelId = null, name, kind, visible = true, locked = null, nested = false }) {
       const row = document.createElement("div");
       row.className = `layer comic-layer${nested ? " comic-layer-nested" : ""}${
-        selectedTarget === target && (!panelId || panelId === selectedPanelId) ? " selected" : ""
+        target === "image" ? selectedPanelImageIds.has(panelId) || (selectedTarget === "image" && panelId === selectedPanelId) ? " selected" : "" : selectedTarget === target && (!panelId || panelId === selectedPanelId) ? " selected" : ""
       }`;
       row.dataset.comicLayer = target;
       if (panelId) row.dataset.comicPanelId = panelId;
-      row.onclick = () => selectComicTarget(target, panelId);
+      row.onclick = (event) => target === "image" ? (selectPanelImage(panelId, event), updateUi(), options.syncInsertTargetStatus?.(), options.requestRender({ canvas: true, layers: true })) : selectComicTarget(target, panelId);
       if (target === "page" || target === "panel" || target === "image") {
         row.title =
           target === "page"
@@ -879,7 +923,10 @@
         if (target === "page") comic.page.visible = !visible;
         else {
           const panel = core.findNode(comic.tree, panelId);
-          if (target === "image") panel.image_visible = !visible;
+          if (target === "image") {
+            const targets = selectedPanelImageIds.size > 1 && selectedPanelImageIds.has(panelId) ? selectedImagePanels() : [panel];
+            targets.forEach((targetPanel) => targetPanel.image_visible = !visible);
+          }
           else panel.visible = !visible;
         }
         updateUi();
@@ -909,7 +956,10 @@
           options.pushUndo();
           if (target === "image") {
             const panel = core.findNode(comic.tree, panelId);
-            if (panel) panel.image_locked = !panel.image_locked;
+            if (panel) {
+              const targets = selectedPanelImageIds.size > 1 && selectedPanelImageIds.has(panelId) ? selectedImagePanels() : [panel];
+              targets.forEach((targetPanel) => targetPanel.image_locked = !panel.image_locked);
+            }
           } else {
             comic.page.structure_locked = !comic.page.structure_locked;
           }
@@ -989,6 +1039,8 @@
     function clearSelection() {
       if (!selectedTarget && !selectedTrayImageId) return false;
       selectedTarget = null;
+      selectedPanelImageIds.clear();
+      panelImageSelectionAnchorId = null;
       selectedTrayImageId = "";
       drag = null;
       renderTray();
@@ -1064,6 +1116,8 @@
       comic.headings = core.createHeadings(templateId, canvasState().width, uuid);
       used = true;
       selectedPanelId = layout().panels[0]?.id || null;
+      selectedPanelImageIds.clear();
+      panelImageSelectionAnchorId = null;
       selectedTarget = selectedPanelId ? "panel" : "page";
       const size = [720, 2200];
       if (size) options.resizeCanvas?.(...size);
@@ -1082,6 +1136,8 @@
       if (!result.changed) return;
       comic.tree = result.tree;
       selectedPanelId = result.panelId;
+      selectedPanelImageIds.clear();
+      panelImageSelectionAnchorId = null;
       selectedTarget = "panel";
       used = true;
       updateUi();
@@ -1104,6 +1160,8 @@
       if (!result.changed) return;
       comic.tree = result.tree;
       selectedPanelId = result.panelId;
+      selectedPanelImageIds.clear();
+      panelImageSelectionAnchorId = null;
       selectedTarget = "panel";
       updateUi();
       changed();
@@ -1117,8 +1175,8 @@
       panel.image_scale = 1;
       panel.image_offset_x = 0;
       panel.image_offset_y = 0;
-      selectedPanelId = panel.id;
-      selectedTarget = "image";
+      setPanelImageSelection([panel.id], panel.id);
+      panelImageSelectionAnchorId = panel.id;
       used = true;
       updateUi();
       changed();
@@ -1174,8 +1232,8 @@
           droppedPanel.node.image_scale = 1;
           droppedPanel.node.image_offset_x = 0;
           droppedPanel.node.image_offset_y = 0;
-          selectedPanelId = droppedPanel.id;
-          selectedTarget = "image";
+          setPanelImageSelection([droppedPanel.id], droppedPanel.id);
+          panelImageSelectionAnchorId = droppedPanel.id;
         }
         used = true;
         elements.tray?.classList.remove("collapsed");
@@ -1613,7 +1671,7 @@
       }
       for (const item of computed.panels) {
         if (item.node.visible === false) continue;
-        if (item.id === selectedPanelId && selectedTarget !== "page") {
+        if ((item.id === selectedPanelId || (selectedTarget === "image" && selectedPanelImageIds.has(item.id))) && selectedTarget !== "page") {
           target.strokeStyle = "#4fa3ff";
           target.setLineDash([8, 5]);
           target.strokeRect(item.rect.x, item.rect.y, item.rect.w, item.rect.h);
@@ -1828,25 +1886,34 @@
       const hit = core.panelAt(computed, point);
       if (!hit) {
         selectedTarget = "page";
+        selectedPanelImageIds.clear();
+        panelImageSelectionAnchorId = null;
         drag = null;
         options.clearLayerSelection?.();
         updateUi();
         options.requestRender({ canvas: true, layers: true });
         return true;
       }
-      selectedPanelId = hit.id;
       selectedHeadingId = null;
-      selectedTarget = hit.node.image_id ? "image" : "panel";
+      if (hit.node.image_id) {
+        const preserve = selectedPanelImageIds.size > 1 && selectedPanelImageIds.has(hit.id) && !event.shiftKey && !event.ctrlKey && !event.metaKey;
+        if (!preserve) selectPanelImage(hit.id, event);
+        else { selectedPanelId = hit.id; selectedTarget = "image"; }
+      } else {
+        selectedPanelImageIds.clear();
+        panelImageSelectionAnchorId = null;
+        selectedPanelId = hit.id;
+        selectedTarget = "panel";
+      }
       options.clearLayerSelection?.();
-      if (hit.node.image_id && !hit.node.image_locked) {
+      const movablePanels = selectedImagePanels().filter((panel) => !panel.image_locked);
+      if (hit.node.image_id && movablePanels.length && !(event.shiftKey || event.ctrlKey || event.metaKey)) {
         options.pushUndo();
         drag = {
           type: "image",
-          panel: hit.node,
+          panels: movablePanels.map((panel) => ({ panel, offsetX: panel.image_offset_x, offsetY: panel.image_offset_y })),
           startX: point.x,
           startY: point.y,
-          offsetX: hit.node.image_offset_x,
-          offsetY: hit.node.image_offset_y,
           changed: false,
         };
       } else {
@@ -1880,8 +1947,10 @@
         divider.node.ratio = core.clamp(ratio, divider.range.minimum, divider.range.maximum);
         drag.changed = true;
       } else if (drag.type === "image") {
-        drag.panel.image_offset_x = Math.round(drag.offsetX + point.x - drag.startX);
-        drag.panel.image_offset_y = Math.round(drag.offsetY + point.y - drag.startY);
+        for (const entry of drag.panels) {
+          entry.panel.image_offset_x = Math.round(entry.offsetX + point.x - drag.startX);
+          entry.panel.image_offset_y = Math.round(entry.offsetY + point.y - drag.startY);
+        }
         drag.changed = true;
       } else if (drag.type === "heading") {
         drag.heading.x = Math.round(drag.x + point.x - drag.startX);
@@ -1907,14 +1976,15 @@
 
     function handleWheel(event, point = null) {
       if (!comic.enabled || !(event.ctrlKey || event.metaKey) || selectedTarget !== "image") return false;
-      const panel = selectedPanel();
-      if (!panel?.image_id || panel.image_locked) return false;
+      const panels = selectedImagePanels().filter((panel) => !panel.image_locked);
+      if (!panels.length) return false;
       if (point) {
         const hit = core.panelAt(layout(), point);
-        if (!hit || hit.id !== selectedPanelId) return false;
+        if (!hit || !selectedPanelImageIds.has(hit.id) && hit.id !== selectedPanelId) return false;
       }
       options.pushUndo();
-      panel.image_scale = core.clamp(panel.image_scale * (event.deltaY < 0 ? 1.08 : 0.92), 0.05, 5);
+      const factor = event.deltaY < 0 ? 1.08 : 0.92;
+      panels.forEach((panel) => panel.image_scale = core.clamp(panel.image_scale * factor, 0.05, 5));
       syncProperties();
       changed();
       return true;
@@ -1937,8 +2007,15 @@
       if (!comic.enabled) return false;
       const panel = core.panelAt(layout(), point);
       if (!panel) return false;
-      selectedPanelId = panel.id;
-      selectedTarget = panel.node.image_id ? "image" : "panel";
+      if (panel.node.image_id) {
+        setPanelImageSelection([panel.id], panel.id);
+        panelImageSelectionAnchorId = panel.id;
+      } else {
+        selectedPanelImageIds.clear();
+        panelImageSelectionAnchorId = null;
+        selectedPanelId = panel.id;
+        selectedTarget = "panel";
+      }
       options.clearLayerSelection?.();
       updateUi();
       const menu = elements.contextMenu;
@@ -1978,6 +2055,8 @@
         selectedTarget = null;
         selectedPanelId = null;
         selectedHeadingId = null;
+        selectedPanelImageIds.clear();
+        panelImageSelectionAnchorId = null;
         updateUi();
         options.requestRender({ canvas: true, layers: true });
         return true;
@@ -1987,12 +2066,14 @@
         selectedTarget === "image" &&
         (event.key === "Delete" || event.key === "Backspace")
       ) {
-        const panel = selectedPanel();
-        if (!panel?.image_id || panel.image_locked) return true;
+        const panels = selectedImagePanels().filter((panel) => !panel.image_locked);
+        if (!panels.length) return true;
         event.preventDefault();
         options.pushUndo();
-        panel.image_id = null;
-        selectedTarget = "panel";
+        panels.forEach((panel) => panel.image_id = null);
+        selectedPanelImageIds.clear();
+        panelImageSelectionAnchorId = null;
+        selectedTarget = selectedPanelId ? "panel" : "page";
         updateUi();
         changed();
         return true;
@@ -2033,6 +2114,8 @@
       });
       selectedPanelId = comic.enabled ? layout().panels[0]?.id || null : null;
       selectedHeadingId = null;
+      selectedPanelImageIds.clear();
+      panelImageSelectionAnchorId = null;
       selectedTarget = comic.enabled && restoreOptions.keepMode ? selectedTarget || "page" : comic.enabled ? "page" : null;
       ensureSourceMetadata();
       updateUi();

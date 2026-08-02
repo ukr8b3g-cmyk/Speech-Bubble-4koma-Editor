@@ -6,9 +6,14 @@ const editor = fs.readFileSync("web/comic-editor.js", "utf8");
 const converter = fs.readFileSync("web/comic-converter.js", "utf8");
 const css = fs.readFileSync("web/comic-editor.css", "utf8");
 const desktopShell = fs.readFileSync("web/desktop/desktop-shell.js", "utf8");
+const desktopCss = fs.readFileSync("web/desktop/desktop.css", "utf8");
+const canvasBackgroundPatterns = fs.readFileSync("web/canvas-background-patterns.js", "utf8");
 const desktopMain = fs.readFileSync("desktop_app/main.py", "utf8");
 const renderer = fs.readFileSync("speech_bubble_editor/renderer.py", "utf8");
+const readme = fs.readFileSync("README.md", "utf8");
 const shapeManifest = JSON.parse(fs.readFileSync("web/assets/shapes/manifest.json", "utf8"));
+const correctedSfxManifestPath = "web/assets/sfx/sfx-png-corrected-list-v2/manifest.json";
+const correctedSfxManifest = JSON.parse(fs.readFileSync(correctedSfxManifestPath, "utf8"));
 for (const match of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)) {
   if (match[1].trim()) assert.doesNotThrow(() => new Function(match[1]), "Inline Editor script must parse");
 }
@@ -18,6 +23,35 @@ for (const asset of ["comic-editor.css", "comic-panels.js", "comic-editor.js"]) 
 }
 
 assert.match(html, /comicEditor=window\.SpeechBubbleComicEditor\.create/);
+const newBuiltInSfx = correctedSfxManifest.items.filter((item) => item.id.startsWith("sfx-builtin-"));
+assert.equal(newBuiltInSfx.length, 15, "15 source crops must be built-in SFX, not user presets");
+for (const item of newBuiltInSfx) {
+  assert.ok(item.mask, `${item.id} must remain a recolorable alpha mask`);
+  assert.ok(item.w > 0 && item.w <= 512 && item.h > 0 && item.h <= 512, `${item.id} must retain bounded geometry`);
+  assert.ok(Number.isFinite(item.sortGroup) && Number.isFinite(item.sortRank), `${item.id} must have recommended-order placement`);
+  assert.deepEqual(item.defaults, { fillColor: "#EC407A", outlineColor: "#111111", outlineWidth: 3 }, `${item.id} must use the requested pink and black style`);
+  assert.ok(fs.existsSync(`web/assets/sfx/sfx-png-corrected-list-v2/${item.asset}`), `${item.id} asset must exist`);
+}
+assert.match(html, /sortGroup:Number\.isFinite\(Number\(raw\.sortGroup\)\)/);
+for (const [id, width, height] of [
+  ["n-small-tsu-ellipsis-mask", 380, 181],
+  ["dokun-small-tsu-mask", 115, 480],
+  ["chuu-vertical-uniform-mask", 134, 500],
+  ["nyuru-mask", 129, 340],
+  ["boto-small-tsu-vertical-uniform-mask", 140, 500],
+  ["dochu-exclamation-angular-vertical-mask", 143, 500],
+  ["dokkunn-vertical-gpt-v1", 181, 560],
+  ["kunekune-mask", 152, 360],
+  ["uguuu-ellipsis-mask", 142, 480],
+  ["dochu-vertical-uniform-mask", 152, 500],
+  ["biku-hiragana-mask-original-01", 164, 300],
+  ["giu-long-angular-vertical-mask", 158, 500],
+]) {
+  const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  assert.match(html, new RegExp(`id:\"${escapedId}\"[^\\n]*w:${width},h:${height}`), `${id} must preserve its source aspect ratio`);
+}
+assert.match(desktopShell, /class="desktop-check desktop-empty-guide-check"[^>]*><input data-desktop-setting="show_empty_canvas_guide"/);
+assert.match(desktopCss, /\.desktop-empty-guide-check\s*\{[^}]*width:\s*100%;[^}]*justify-content:\s*flex-start;[^}]*text-align:\s*left;/);
 assert.match(html, /comicEditor\?\.restore\(comicLayout\)/);
 assert.match(html, /payload\.comic=comic/);
 assert.match(html, /comic:comicEditor\?\.serialize\(\)/);
@@ -168,6 +202,12 @@ assert.match(html, /findRotationHandle\(item,point\)\{const handle=rotationHandl
 assert.match(html, /findTailHandle\(item,point\).*radius=28\/state\.zoom/);
 assert.match(editor, /const resizeHeading =[\s\S]*headingResizeHandleRect\(activeHeading\)/);
 assert.match(editor, /data-comic-action="reset-heading"/);
+assert.match(editor, /data-comic-heading-title-toggle/);
+assert.match(editor, /comic-heading-title-toggle[\s\S]*data-comic-heading="visible"/);
+assert.doesNotMatch(editor, /data-comic-action="add-heading"/);
+assert.equal((editor.match(/data-comic-heading="visible"/g) || []).length, 1);
+assert.match(editor, /selectionKind\.hidden = target === "heading"/);
+assert.match(editor, /comic-property-hint">キャンバス上で移動・リサイズ/);
 assert.match(editor, /const trayImages = comic\.images\.filter\(\(metadata\) => metadata\.id !== "source"\)/);
 assert.match(editor, /event\.dataTransfer\.setData\("text\/plain", metadata\.id\)/);
 assert.match(editor, /event\.dataTransfer\.setDragImage\(ghost, 18, 18\)/);
@@ -182,8 +222,13 @@ assert.doesNotMatch(html, /id="propertiesDockToggle"/);
 assert.match(html, /let autoSaveDelay = Math\.max\(5000, Math\.min\(3600000/);
 assert.match(html, /if\(layoutDirty&&autoSaveEnabled\)persistDraftNow\(\);\s*clearTimeout\(autoSaveTimer\)/);
 assert.match(css, /\.comic-tray-heading button[\s\S]*white-space: nowrap/);
+assert.match(css, /\.comic-tray-heading \.comic-tray-toggle[\s\S]*flex: 1 1 auto/);
+assert.match(editor, /comic-tray-toggle[\s\S]*data-comic-image-count/);
 assert.match(html, /SpeechBubbleApplyRuntimeSettings/);
 assert.match(desktopShell, /SpeechBubbleApplyRuntimeSettings/);
+assert.match(html, /let showEmptyCanvasGuide = params\.get\("showEmptyCanvasGuide"\) !== "0"/);
+assert.match(html, /emptyCanvasState"\)\.hidden=hasDocument\|\|!showEmptyCanvasGuide/);
+assert.match(html, /showEmptyCanvasGuide=settings\?\.show_empty_canvas_guide!==false/);
 assert.match(html, /id="fitTextBoxNow"/);
 assert.match(html, /fitTextBox\(current,true,false\)/);
 assert.match(html, /const preserveManualBox=!item\.auto_fit/);
@@ -244,6 +289,7 @@ for (const setting of [
   "auto_save",
   "auto_save_interval_seconds",
   "startup_behavior",
+  "show_empty_canvas_guide",
 ]) {
   assert.ok(desktopShell.includes(`data-desktop-setting="${setting}"`), `Desktop settings must include ${setting}`);
 }
@@ -277,6 +323,12 @@ assert.match(desktopShell, /saveRecoveryCheckpoint/);
 assert.match(desktopShell, /async function loadRecovery\(\)/);
 assert.match(html, /SpeechBubbleDesktopEditor\.loadRecovery\(recovery\)/);
 assert.match(html, /prepareNativeClose/);
+assert.match(html, /nativeClosePrepared\|\|autoSaveEnabled/);
+assert.match(html, /createNewDesktopProject/);
+assert.match(html, /BACKGROUND_LAYER_ID/);
+assert.match(desktopShell, /data-desktop-action="project-new"/);
+assert.match(desktopShell, /confirmUnsavedChanges/);
+assert.match(desktopShell, /event\.key\.toLowerCase\(\) !== "n"/);
 assert.match(html, /project_path:currentProjectPath/);
 assert.match(html, /Project saved, but recovery cache sync failed/);
 assert.match(editor, /Project image blob is missing/);
@@ -315,5 +367,115 @@ assert.match(html, /restorePreservedComicWorkspace\(preservedComic\)/);
 assert.match(html, /const next=copiedLayout\|\|"\{\}";applyLayoutForCurrentImage\(next,\{dirty:false\}\)/);
 assert.match(html, /layoutDirty = currentLayoutJson\(\) !== lastSavedLayout/);
 assert.match(html, /replaceDiscard"\)\.onclick=async\(\)=>\{[\s\S]*applyLayoutForCurrentImage\(lastSavedLayout,\{dirty:false\}\)[\s\S]*performPendingReplacement\(\)/);
+
+// Desktop follow-up UI: no duplicate Close button, slider-based background scale,
+// and separate reusable bubble preset management.
+assert.doesNotMatch(html, /<button id="closeEditor"/);
+assert.match(html, /id="backgroundScaleRange" type="range" min="10" max="800"/);
+assert.match(html, /id="backgroundScaleOutput">100%/);
+assert.match(html, /id="saveUserPresetAs"[\s\S]*別名で保存/);
+assert.match(html, /makeBubblePresetSection\("My Presets"/);
+assert.match(html, /makeBubblePresetSection\("Built-in"/);
+assert.match(html, /manageBubblePreset/);
+assert.match(desktopShell, /SFX／スタンプ画像プリセット/);
+assert.match(desktopShell, /吹き出しプリセット管理/);
+assert.match(desktopShell, /data-desktop-action="bubble-presets-import"/);
+
+// Single Image v0.1.4: canvas background plus non-destructive image layers.
+for (const feature of [
+  "canvasBackgroundColorSwatches",
+  "initializeCanvasBackgroundSwatches",
+  "addSingleImageLayerFromLayers",
+  "createSingleImageLayer",
+  "singleImageAssets",
+  "selectedSingleImageSource",
+  "applyProcessedSingleImage",
+  "processImageBackgroundRemoval",
+  "processImageComicConversion",
+  "showOriginalImageLayer",
+]) {
+  assert.ok(html.includes(feature), `Single Image layer implementation must include ${feature}`);
+}
+assert.doesNotMatch(html, /id="singlePageSettings"/);
+assert.doesNotMatch(html, /id="singleCanvasBackgroundColor"/);
+assert.doesNotMatch(html, /id="singleCanvasTransparent"/);
+assert.doesNotMatch(html, /id="addSingleImageLayer"/);
+assert.match(html, /\.compact-check input\[type="checkbox"\][^{]*\{[^}]*width:16px;[^}]*height:16px/);
+assert.match(html, /#allSfx \.sfx-library-empty,\.user-preset-section \.sfx-library-empty \{[^}]*grid-column:1 \/ -1;[^}]*width:100%/);
+assert.match(html, /Register PNG \/ WebP files in Settings\./);
+assert.match(html, /\.shape-card \{[^}]*aspect-ratio:1/);
+assert.match(html, /#allSfx \.sfx-library-section > \.palette \{[^}]*grid-template-columns:repeat\(auto-fill,minmax\(82px,1fr\)\)/);
+assert.match(html, /header \.comic-mode-toggle \{[^}]*align-items:center;[^}]*margin:0/);
+assert.match(html, /state\.selected===BACKGROUND_LAYER_ID[\s\S]*transformDetails"\)\.hidden=true[\s\S]*shadowEffects"\)\.hidden=true/);
+assert.match(html, /version:4/);
+assert.match(html, /canvas_background:active\.canvasBackground/);
+assert.match(html, /SINGLE_IMAGE_ASSET_PREFIX="single-image:"/);
+assert.match(html, /createSingleImageLayer\(asset,\{role:"original"/);
+assert.match(html, /applyProcessedSingleImage\(blob,[^\n]+,"background-removal"\)/);
+assert.match(html, /applyProcessedSingleImage\(blob,[^\n]+,"comic-conversion"\)/);
+assert.match(html, /if\(hideSource&&inherit\)inherit\.visible=false/);
+assert.match(html, /rotation:Number\(inherit\?\.rotation\)\|\|0/);
+assert.match(html, /locked:inherit\?inherit\.locked===true:locked/);
+assert.match(html, /candidates\.filter\(e=>e\.type!=="image"\),candidates\.filter\(e=>e\.type==="image"\)/);
+assert.match(desktopShell, /\["キャンバス背景", "Canvas Background"\]/);
+assert.match(readme, /複数の画像レイヤー/);
+assert.match(readme, /新しい画像レイヤーとして追加/);
+assert.match(desktopShell, /data-desktop-action="bubble-presets-export"/);
+assert.match(desktopShell, /function refreshBubblePresetManager/);
+assert.match(readme, /吹き出しユーザープリセット/);
+assert.match(readme, /Built-inは読み取り専用で上書きされません/);
+
+// Single Image procedural canvas backgrounds use one renderer for preview/export.
+assert.match(html, /canvas-background-patterns\.js/);
+assert.match(html, /canvasBackgroundPatterns\?\.draw\(ctx,state\.canvasBackground,state\.width,state\.height\)/);
+assert.match(html, /id="canvasBackgroundType"/);
+assert.match(html, /id="canvasBackgroundPreset"/);
+assert.match(html, /id="canvasBackgroundFields"/);
+assert.match(html, /version:4/);
+assert.match(html, /state\.canvasBackground=normalizedCanvasBackground/);
+assert.match(desktopShell, /\["背景の種類", "Background Type"\]/);
+assert.match(desktopShell, /\["内蔵プリセット", "Built-in Preset"\]/);
+for (const id of ["solid","linear-gradient","radial-gradient","halftone","parallel-lines","crosshatch","checker","flowers","pixel","tile","scanline","clouds","marble","cellular","turbulence","fractal","wood","wave3d","brick","weave","hexagon","focus-lines","digital-camouflage"]) {
+  assert.ok(canvasBackgroundPatterns.includes(`type("${id}"`), `Missing procedural background: ${id}`);
+}
+assert.match(canvasBackgroundPatterns, /window\.SpeechBubbleCanvasBackgroundPatterns/);
+assert.match(canvasBackgroundPatterns, /function draw\(ctx,input,width,height\)/);
+assert.doesNotMatch(canvasBackgroundPatterns, /https?:\/\//);
+assert.match(html, /function enableRealtimeSelectWheel\(control\)/);
+assert.match(html, /control\.addEventListener\("wheel"[\s\S]*\{passive:false\}/);
+assert.match(html, /control\.dispatchEvent\(new Event\("change",\{bubbles:true\}\)\)/);
+assert.match(html, /enableRealtimeSelectWheel\(type\);enableRealtimeSelectWheel\(preset\)/);
+assert.match(html, /realtimeSelectWheelCommitTimer=setTimeout\(commitPropertyEdit,300\)/);
+assert.match(html, /recordSelectUndo=\(\)=>\{if\(!state\.propertyEditSnapshot\)pushUndo\(\);\}/);
+
+// Layer multi-selection: Shift range, bulk visibility/lock, and locked-layer exclusion.
+assert.match(html, /let layerSelectionAnchorId=""/);
+assert.match(html, /function selectLayerRow\(item,event\)/);
+assert.match(html, /event\.shiftKey&&displayedIds\.includes\(layerSelectionAnchorId\)/);
+assert.match(html, /displayed\.slice\(Math\.min\(start,end\),Math\.max\(start,end\)\+1\)/);
+assert.match(html, /row\.onclick=event=>\{if\(event\.altKey\)/);
+assert.match(html, /state\.selection\.length>1&&state\.selection\.includes\(item\.id\)\?selectedItems\(\):\[item\]/);
+assert.match(html, /targets\.forEach\(layer=>layer\.visible=visible\)/);
+assert.match(html, /targets\.forEach\(layer=>layer\.locked=locked\)/);
+assert.match(html, /editableItems=items\.filter\(canvasItemEditable\)/);
+assert.match(html, /selectionBounds\(editableItems\)/);
+assert.match(html, /locked layer\$\{lockedCount===1\?"":"s"\} excluded from transforms/);
+assert.match(desktopShell, /Ctrl: toggle selection \/ Shift: range selection/);
+
+// Comic panel images have an independent, ephemeral multi-selection.
+assert.match(editor, /const selectedPanelImageIds = new Set\(\)/);
+assert.match(editor, /function selectedImagePanels\(\)/);
+assert.match(editor, /function setPanelImageSelection\(panelIds, primaryId = null\)/);
+assert.match(editor, /function selectPanelImage\(panelId, event = \{\}\)/);
+assert.match(editor, /event\.shiftKey && imageIds\.includes\(panelImageSelectionAnchorId\)/);
+assert.match(editor, /imageIds\.slice\(Math\.min\(start, end\), Math\.max\(start, end\) \+ 1\)/);
+assert.match(editor, /targets\.forEach\(\(targetPanel\) => targetPanel\.image_visible = !visible\)/);
+assert.match(editor, /targets\.forEach\(\(targetPanel\) => targetPanel\.image_locked = !panel\.image_locked\)/);
+assert.match(editor, /panels: movablePanels\.map\(\(panel\) => \(\{ panel, offsetX: panel\.image_offset_x, offsetY: panel\.image_offset_y \}\)\)/);
+assert.match(editor, /for \(const entry of drag\.panels\)/);
+assert.match(editor, /panels\.forEach\(\(panel\) => panel\.image_scale = core\.clamp\(panel\.image_scale \* factor/);
+assert.match(editor, /panels\.forEach\(\(panel\) => panel\.image_id = null\)/);
+assert.match(editor, /selectedPanelImageIds\.clear\(\);\s*panelImageSelectionAnchorId = null;\s*selectedTarget = selectedPanelId \? "panel" : "page"/);
+assert.doesNotMatch(editor, /image_rotation/);
 
 console.log("comic_editor_integration_test: OK");

@@ -15,6 +15,7 @@ DEFAULTS = {
     "window_maximized": True,
     "theme": "system",
     "language": "auto",
+    "show_empty_canvas_guide": True,
     "last_project_directory": "",
     "export_directory": "",
     "last_export_directory": "",
@@ -68,6 +69,7 @@ class SettingsStore:
         except (OSError, ValueError, TypeError):
             value = {}
         merged = {**DEFAULTS, **(value if isinstance(value, dict) else {})}
+        merged.pop("background_removal_history_limit", None)
         merged["window_width"] = _bounded_int(merged.get("window_width"), 1440, 900, 3840)
         merged["window_height"] = _bounded_int(merged.get("window_height"), 900, 640, 2160)
         for key in ("window_left", "window_top"):
@@ -82,6 +84,7 @@ class SettingsStore:
         merged["window_maximized"] = bool(maximized)
         merged["theme"] = merged["theme"] if merged["theme"] in {"system", "dark", "light"} else "system"
         merged["language"] = merged["language"] if merged["language"] in {"auto", "ja", "en"} else "auto"
+        merged["show_empty_canvas_guide"] = bool(merged.get("show_empty_canvas_guide", True))
         merged["export_directory"] = str(merged.get("export_directory", "") or "").strip()
         merged["last_export_directory"] = str(merged.get("last_export_directory", "") or "").strip()
         merged["auto_export_to_directory"] = bool(merged.get("auto_export_to_directory", False))

@@ -49,6 +49,12 @@ for (const value of [
 }
 
 assert.match(converter, /new Worker/);
+assert.match(converter, /mode: "grayscale"/);
+assert.match(converter, /let currentPreset = "grayscale"/);
+assert.ok(
+  converter.indexOf('<option value="grayscale">') < converter.indexOf('<option value="comic">'),
+  "Simple Grayscale must be the first conversion preset",
+);
 assert.match(converter, /edgePreservingSmooth/);
 assert.match(converter, /comicRender/);
 assert.match(converter, /full\.width = source\.width/);
@@ -82,13 +88,20 @@ for (const feature of [
 
 assert.match(converterCss, /resize: both/);
 assert.match(converterCss, /\.comic-converter-dialog\.maximized/);
-assert.match(converterCss, /grid-template-rows:\s*42px auto minmax\(0,\s*1fr\) 52px/);
-assert.doesNotMatch(converterCss, /grid-template-rows:\s*42px auto auto minmax\(0,\s*1fr\) 52px/);
+assert.match(converterCss, /grid-template-rows:\s*42px auto auto minmax\(0,\s*1fr\) 52px/);
+assert.match(converter, /rgba\[i \+ 3\] = image\.data\[i \+ 3\]/);
+assert.match(converter, /y = y \* alpha \+ \(1 - alpha\)/);
+assert.match(converter, /forceOpen \? false : !picker\.hidden/);
 assert.match(converterCss, /grid-template-columns: 1fr 1fr/);
+assert.match(converterCss, /\.comic-converter-source-picker[\s\S]*grid-template-columns: minmax\(0, 1fr\) 250px/);
+assert.match(converterCss, /\.comic-converter-source-picker\[hidden\]/);
 assert.match(converterCss, /min-width: min\(720px, calc\(100vw - 16px\)\)/);
 assert.match(converterCss, /@media \(max-width: 680px\)/);
 assert.match(converterCss, /grid-template-rows: minmax\(180px, 1fr\) minmax\(150px, 42%\)/);
 assert.match(converterCss, /@media \(max-height: 620px\)/);
+assert.match(converter, /class="comic-converter-footer-actions"/);
+assert.match(converterCss, /\.comic-converter-footer\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto/);
+assert.match(converterCss, /\.comic-converter-footer-actions\s*\{[\s\S]*justify-content: flex-end/);
 
 for (const feature of [
   "ページ画像・変換履歴",
@@ -103,6 +116,6 @@ for (const feature of [
 assert.match(readme, /## コミック変換/);
 assert.match(readme, /長辺768px/);
 assert.match(readme, /文書ごとに最大5件、全体512MB、30日/);
-assert.match(readme, /白黒コミック（初期値）、単純グレースケール、単純モノクロ、XDoG 100/);
+assert.match(readme, /単純グレースケール（初期値）、白黒コミック、単純モノクロ、XDoG 100/);
 
 console.log("comic converter integration tests passed");
