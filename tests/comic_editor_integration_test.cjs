@@ -140,6 +140,11 @@ for (const feature of [
   "assignElementTarget",
   "effectTargetRect",
   "panelContentRect",
+  "toggle-panel-collapse",
+  "shouldSkipPanelScopedItem",
+  "countExpandedPanels",
+  "is-collapsed",
+  "comic-panel-collapse-action",
 ]) {
   assert.ok(editor.includes(feature), `comic editor must include ${feature}`);
 }
@@ -158,7 +163,6 @@ assert.doesNotMatch(editor, /空きコマへ順番に配置/);
 assert.doesNotMatch(editor, /heading\.text/);
 assert.match(editor, /青いコマ境界を上下にドラッグして高さを変更できます/);
 assert.doesNotMatch(editor, /data-comic-page="visible"/);
-assert.doesNotMatch(editor, /data-comic-page="structure_locked"/);
 assert.doesNotMatch(editor, /data-comic-property="image_locked"/);
 assert.match(editor, /target\.strokeRect\(\s*item\.rect\.x \+ inset/);
 assert.match(editor, /Ctrl＋ホイールで拡大・縮小/);
@@ -172,6 +176,8 @@ assert.match(editor, /options\.switchWorkspace\?\.\(enableComic \? "comic" : "si
 assert.match(css, /\.comic-image-tray/);
 assert.match(css, /\.comic-context-menu/);
 assert.match(css, /\.comic-layer-nested/);
+assert.match(css, /\.comic-panel-collapse-action:not\(:disabled\)[\s\S]*background: #b96f24/);
+assert.match(css, /\.comic-panel-collapse-action\.is-restoring:not\(:disabled\)[\s\S]*background: #2f8654/);
 assert.match(html, /dataset\.comicPanelTarget/);
 assert.match(html, /insertAdjacentElement\("afterend",row\)/);
 for (const removedDockControl of ["propertiesDockFloat", "propertiesDockReturn", "layersDockFloat", "layersDockReturn", "layersDockToggle", "rightDockDivider"]) {
@@ -211,6 +217,9 @@ assert.match(editor, /const resizeHeading =[\s\S]*headingResizeHandleRect\(activ
 assert.match(editor, /data-comic-action="reset-heading"/);
 assert.match(editor, /data-comic-action="reset-panel-heights"/);
 assert.match(editor, /data-comic-action="fit-heading-to-panel-width"/);
+assert.match(editor, /data-comic-page-title-lock/);
+assert.match(editor, /data-comic-page="structure_locked" type="checkbox"/);
+assert.match(editor, /selectionKind\.hidden = target === "heading" \|\| target === "page"/);
 assert.match(editor, /function snapHeadingToPanelEdges\(heading\)/);
 assert.match(editor, /function pageResizeHandleRect\(\)/);
 assert.match(editor, /function pointerCursorAt\(point\)/);

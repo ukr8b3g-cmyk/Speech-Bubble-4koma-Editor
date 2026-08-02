@@ -401,6 +401,14 @@
       dialog.querySelector('[data-br-action="reset-mask"]').disabled = maskMode === "auto" ? !aiMask : !sourcePixels;
     }
 
+    function resetMaskCorrections() {
+      thresholdInput.value = thresholdNumber.value = "1";
+      morphInput.value = morphNumber.value = "0";
+      featherInput.value = featherNumber.value = "0";
+      fillHolesInput.checked = false;
+      removeSmallInput.checked = false;
+    }
+
     function copyMask(mask) {
       return mask ? new Uint8ClampedArray(mask) : null;
     }
@@ -1061,6 +1069,8 @@
         if (maskMode === "auto" && aiMask) {
           pushHistory();
           editedMask = new Uint8ClampedArray(aiMask);
+          resetMaskCorrections();
+          updateMaskModeUi();
           scheduleRender();
           setStatus(tr("自動マスクを初期状態に戻しました。", "Automatic mask reset to its initial state."), "ready");
         } else if (maskMode === "guided" && sourcePixels) {
@@ -1070,6 +1080,7 @@
           guidedProcessed = false;
           guidedDirty = false;
           initializeGuideMasks();
+          resetMaskCorrections();
           applyButton.disabled = true;
           updateMaskModeUi();
           scheduleRender();

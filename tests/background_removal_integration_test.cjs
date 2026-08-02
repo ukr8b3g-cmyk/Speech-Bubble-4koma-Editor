@@ -69,9 +69,15 @@ assert.match(script, /editedMask\[index\] = Math\.min\(editedMask\[index\], 255 
 assert.match(script, /requestRevision !== inferenceRevision[\s\S]*maskMode !== targetMode/);
 assert.match(script, /自動マスクを初期状態に戻す/);
 assert.match(script, /範囲指定をリセット/);
+assert.match(script, /function resetMaskCorrections\(\)/);
+assert.match(script, /thresholdInput\.value = thresholdNumber\.value = "1"/);
+assert.match(script, /morphInput\.value = morphNumber\.value = "0"/);
+assert.match(script, /featherInput\.value = featherNumber\.value = "0"/);
+assert.match(script, /fillHolesInput\.checked = false/);
+assert.match(script, /removeSmallInput\.checked = false/);
 assert.match(script, /範囲指定（緑：残す／赤：消す）/);
 assert.match(css, /\.background-removal-mask-mode[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
-assert.match(css, /data-br-mask-mode="auto"[\s\S]*background: #343b45/);
+assert.match(css, /data-br-mask-mode="auto"[\s\S]*background: #2d78cb/);
 assert.match(css, /data-br-mask-mode="guided"[\s\S]*background: #b96f24/);
 assert.match(css, /\.background-removal-run-mask\.guided[\s\S]*background: #2f8654/);
 assert.match(css, /data-mask-mode="guided"[\s\S]*data-br-tool="keep"[\s\S]*background: #2f8654/);

@@ -53,6 +53,7 @@
       id: String(values.id || `panel-${makeId()}`),
       image_id: values.image_id ? String(values.image_id) : null,
       visible: values.visible !== false,
+      collapsed: values.collapsed === true,
       image_visible: values.image_visible !== false,
       image_locked: values.image_locked === true,
       fit: values.fit === "contain" ? "contain" : "cover",
@@ -319,9 +320,12 @@
   }
 
   function minimumSize(node, gutter = 0) {
-    if (!node || node.kind !== "split") return { width: MIN_PANEL_SIZE, height: MIN_PANEL_SIZE };
+    if (!node) return null;
+    if (node.kind !== "split") return node.collapsed === true ? null : { width: MIN_PANEL_SIZE, height: MIN_PANEL_SIZE };
     const first = minimumSize(node.first, gutter);
     const second = minimumSize(node.second, gutter);
+    if (!first) return second;
+    if (!second) return first;
     if (node.axis === "x") {
       return {
         width: first.width + gutter + second.width,
@@ -335,10 +339,11 @@
   }
 
   function ratioRange(node, rect, gutter = 0) {
-    const total = node.axis === "x" ? rect.w : rect.h;
-    const usable = Math.max(1, total - gutter);
     const first = minimumSize(node.first, gutter);
     const second = minimumSize(node.second, gutter);
+    if (!first || !second) return { minimum: 0.01, maximum: 0.99 };
+    const total = node.axis === "x" ? rect.w : rect.h;
+    const usable = Math.max(1, total - gutter);
     const firstMinimum = node.axis === "x" ? first.width : first.height;
     const secondMinimum = node.axis === "x" ? second.width : second.height;
     let minimum = firstMinimum / usable;
@@ -354,10 +359,17 @@
     const panels = [];
     const dividers = [];
     function visit(node, rect) {
-      if (!node || node.kind !== "split") {
+      if (!node) return false;
+      if (node.kind !== "split") {
+        if (node.collapsed === true) return false;
         panels.push({ id: node.id, node, rect: { ...rect } });
-        return;
+        return true;
       }
+      const firstExpanded = hasExpandedPanel(node.first);
+      const secondExpanded = hasExpandedPanel(node.second);
+      if (!firstExpanded && !secondExpanded) return false;
+      if (!firstExpanded) return visit(node.second, rect);
+      if (!secondExpanded) return visit(node.first, rect);
       const usable = Math.max(1, (node.axis === "x" ? rect.w : rect.h) - gutter);
       const range = ratioRange(node, rect, gutter);
       const ratio = clamp(node.ratio, range.minimum, range.maximum);
@@ -400,6 +412,7 @@
         visit(node.first, firstRect);
         visit(node.second, secondRect);
       }
+      return true;
     }
     visit(tree, pageRect);
     return { panels, dividers };
@@ -410,6 +423,29 @@
     if (tree.id === requestedId) return tree;
     if (tree.kind !== "split") return null;
     return findNode(tree.first, requestedId) || findNode(tree.second, requestedId);
+  }
+
+  function hasExpandedPanel(node) {
+    if (!node) return false;
+    if (node.kind !== "split") return node.collapsed !== true;
+    return hasExpandedPanel(node.first) || hasExpandedPanel(node.second);
+  }
+
+  function countExpandedPanels(node) {
+    if (!node) return 0;
+    if (node.kind !== "split") return node.collapsed === true ? 0 : 1;
+    return countExpandedPanels(node.first) + countExpandedPanels(node.second);
+  }
+
+  function collectPanels(node, result = []) {
+    if (!node) return result;
+    if (node.kind !== "split") {
+      result.push(node);
+      return result;
+    }
+    collectPanels(node.first, result);
+    collectPanels(node.second, result);
+    return result;
   }
 
   function findParent(tree, requestedId, parent = null) {
@@ -536,6 +572,9 @@
     minimumSize,
     ratioRange,
     computeLayout,
+    hasExpandedPanel,
+    countExpandedPanels,
+    collectPanels,
     findNode,
     findParent,
     replaceNode,

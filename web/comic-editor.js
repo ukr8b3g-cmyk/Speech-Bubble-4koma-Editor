@@ -392,6 +392,9 @@
           <div class="comic-properties-title">
             <div class="comic-properties-title-main">
               <strong data-comic-selection-name>漫画ページ</strong>
+              <label class="comic-heading-title-toggle comic-page-title-lock" data-comic-page-title-lock hidden>
+                <input data-comic-page="structure_locked" type="checkbox"><span data-comic-page-lock-label>コマ割りをロック</span>
+              </label>
               <label class="comic-heading-title-toggle" data-comic-heading-title-toggle hidden>
                 <input data-comic-heading="visible" type="checkbox"><span>見出しを表示</span>
               </label>
@@ -441,6 +444,8 @@
           </section>
           <section data-comic-properties="panel" hidden>
             <button type="button" data-comic-action="select-page">ページ設定</button>
+            <button type="button" class="comic-panel-collapse-action" data-comic-action="toggle-panel-collapse"></button>
+            <p class="hint" data-comic-panel-collapse-hint></p>
             <label>背景の種類<select data-comic-panel-pattern-select="type"></select></label>
             <label>内蔵プリセット<select data-comic-panel-pattern-select="preset"></select></label>
             <div data-comic-panel-pattern-colors>
@@ -761,6 +766,18 @@
           core.resetVerticalFourRatios(comic.tree);
           updateUi();
           changed();
+        } else if (action === "toggle-panel-collapse" && panel) {
+          if (comic.page.structure_locked !== false || drag) return;
+          const collapsing = panel.collapsed !== true;
+          if (collapsing && core.countExpandedPanels(comic.tree) <= 1) return;
+          options.pushUndo();
+          panel.collapsed = collapsing;
+          selectedPanelImageIds.delete(panel.id);
+          if (panelImageSelectionAnchorId === panel.id) panelImageSelectionAnchorId = null;
+          selectedPanelId = panel.id;
+          selectedTarget = "panel";
+          updateUi();
+          changed();
         } else if (action === "reset-heading") {
           const heading = selectedHeading();
           if (!heading) return;
@@ -954,7 +971,7 @@
         if (normalProperties) normalProperties.hidden = false;
       }
       if (!active) return false;
-      const panelIndex = panel ? layout().panels.findIndex((item) => item.id === panel.id) + 1 : 0;
+      const panelIndex = panel ? core.collectPanels(comic.tree).findIndex((item) => item.id === panel.id) + 1 : 0;
       const target = selectedTarget === "image" && !panel?.image_id ? "panel" : selectedTarget;
       elements.properties.querySelector("[data-comic-selection-name]").textContent =
         target === "page"
@@ -969,12 +986,33 @@
       const selectionKind = elements.properties.querySelector("[data-comic-selection-kind]");
       selectionKind.textContent =
         target === "page" ? tr("ページ", "Page") : target === "heading" ? tr("見出し", "Header") : target === "image" ? tr("画像", "Image") : tr("コマ", "Panel");
-      selectionKind.hidden = target === "heading";
+      selectionKind.hidden = target === "heading" || target === "page";
       elements.properties.querySelector("[data-comic-heading-title-toggle]").hidden = target !== "heading";
+      const pageTitleLock = elements.properties.querySelector("[data-comic-page-title-lock]");
+      if (pageTitleLock) pageTitleLock.hidden = target !== "page";
+      const pageLockLabel = elements.properties.querySelector("[data-comic-page-lock-label]");
+      if (pageLockLabel) pageLockLabel.textContent = tr("コマ割りをロック", "Lock Panel Layout");
       elements.properties.querySelectorAll("[data-comic-properties]").forEach((section) => {
         section.hidden = section.dataset.comicProperties !== target;
       });
       const structureLocked = comic.page.structure_locked !== false;
+      const collapsePanel = elements.properties.querySelector('[data-comic-action="toggle-panel-collapse"]');
+      const collapseHint = elements.properties.querySelector("[data-comic-panel-collapse-hint]");
+      if (collapsePanel) {
+        const collapsed = panel?.collapsed === true;
+        collapsePanel.textContent = collapsed ? tr("コマを再表示", "Restore Panel") : tr("コマを折りたたむ", "Collapse Panel");
+        collapsePanel.classList.toggle("is-restoring", collapsed);
+        collapsePanel.disabled = !panel || structureLocked || Boolean(drag) || (!collapsed && core.countExpandedPanels(comic.tree) <= 1);
+        collapsePanel.title = structureLocked
+          ? tr("漫画ページのロックを解除してください", "Unlock the comic page to change panel visibility.")
+          : !collapsed && core.countExpandedPanels(comic.tree) <= 1
+            ? tr("少なくとも1つのコマを表示したままにしてください", "Keep at least one panel visible.")
+            : "";
+      }
+      if (collapseHint) collapseHint.textContent = tr(
+        "内容を保持したままコマと間隔を折りたたみ、残りのコマを自動的に詰めます。",
+        "Temporarily hides the panel and its gutter while preserving its content. The remaining panels reflow automatically.",
+      );
       const resetPanelHeights = elements.properties.querySelector('[data-comic-action="reset-panel-heights"]');
       if (resetPanelHeights) {
         resetPanelHeights.disabled = structureLocked;
@@ -1109,12 +1147,13 @@
       options.requestRender({ canvas: true, layers: true });
     }
 
-    function comicLayerRow({ target, panelId = null, name, kind, visible = true, locked = null, nested = false }) {
+    function comicLayerRow({ target, panelId = null, name, kind, visible = true, locked = null, nested = false, collapsed = false }) {
       const row = document.createElement("div");
       row.className = `layer comic-layer${nested ? " comic-layer-nested" : ""}${
         target === "image" ? selectedPanelImageIds.has(panelId) || (selectedTarget === "image" && panelId === selectedPanelId) ? " selected" : "" : selectedTarget === target && (!panelId || panelId === selectedPanelId) ? " selected" : ""
       }`;
       row.dataset.comicLayer = target;
+      row.classList.toggle("is-collapsed", collapsed);
       if (panelId) row.dataset.comicPanelId = panelId;
       row.onclick = (event) => target === "image" ? (selectPanelImage(panelId, event), updateUi(), options.syncInsertTargetStatus?.(), options.requestRender({ canvas: true, layers: true })) : selectComicTarget(target, panelId);
       if (target === "page" || target === "panel" || target === "image") {
@@ -1234,16 +1273,17 @@
         };
         host.append(row);
       });
-      layout().panels.forEach((item, index) => {
-        const panel = item.node;
+      core.collectPanels(comic.tree).forEach((panel, index) => {
+        const collapsed = panel.collapsed === true;
         host.append(
           comicLayerRow({
             target: "panel",
             panelId: panel.id,
-            name: tr(`コマ ${index + 1}`, `Panel ${index + 1}`),
+            name: collapsed ? tr(`コマ ${index + 1}（折りたたみ）`, `Panel ${index + 1} (Collapsed)`) : tr(`コマ ${index + 1}`, `Panel ${index + 1}`),
             kind: "frame",
             visible: panel.visible !== false,
             nested: true,
+            collapsed,
           }),
         );
         if (panel.image_id) {
@@ -1257,6 +1297,7 @@
               visible: panel.image_visible !== false,
               locked: panel.image_locked === true,
               nested: true,
+              collapsed,
             }),
           );
         }
@@ -1955,19 +1996,20 @@
     function emphasisClipRect(item) {
       if (!comic.enabled || item?.type !== "emphasis_lines") return null;
       if (item.comic_scope === "panel") {
-        const panelId = item.comic_panel_id || selectedPanelId || layout().panels[0]?.id;
+        const panelId = item.comic_panel_id;
         const panel = layout().panels.find((entry) => entry.id === panelId);
         if (panel) {
           item.comic_panel_id = panel.id;
           return panelContentRect(panel);
         }
+        return null;
       }
       return pageRect();
     }
 
     function assetClipRect(item) {
       if (!comic.enabled || !item || item.type === "frame" || item.comic_scope !== "panel") return null;
-      const panelId = item.comic_panel_id || selectedPanelId || layout().panels[0]?.id;
+      const panelId = item.comic_panel_id;
       const panel = layout().panels.find((entry) => entry.id === panelId);
       if (!panel) return null;
       item.comic_panel_id = panel.id;
@@ -2034,8 +2076,8 @@
     function elementTargetValue(item) {
       if (!item || item.comic_scope !== "panel") return item?.type === "emphasis_lines" ? "page" : "free";
       const panels = layout().panels;
-      const panel = panels.find((entry) => entry.id === item.comic_panel_id) || panels[0];
-      return panel ? `panel:${panel.id}` : item?.type === "emphasis_lines" ? "page" : "free";
+      const panel = panels.find((entry) => entry.id === item.comic_panel_id);
+      return panel ? `panel:${panel.id}` : "";
     }
 
     function assignElementTarget(item, value) {
@@ -2059,9 +2101,16 @@
       if (!comic.enabled || item?.type !== "emphasis_lines") return null;
       if (item.comic_scope === "panel") {
         const panel = layout().panels.find((entry) => entry.id === item.comic_panel_id);
-        if (panel) return panelContentRect(panel);
+        return panel ? panelContentRect(panel) : null;
       }
       return pageRect();
+    }
+
+    function shouldSkipPanelScopedItem(item) {
+      if (!comic.enabled || item?.comic_scope !== "panel") return false;
+      const panelId = String(item.comic_panel_id || "");
+      const panel = panelId ? core.findNode(comic.tree, panelId) : null;
+      return !panel || panel.kind !== "panel" || panel.collapsed === true;
     }
 
     function pointInRect(point, rect) {
@@ -2497,6 +2546,7 @@
       drawOverlay,
       emphasisClipRect,
       assetClipRect,
+      shouldSkipPanelScopedItem,
       selectedPanelForEffects,
       selectedInsertionTarget,
       panelInsertionTarget,

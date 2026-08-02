@@ -407,6 +407,27 @@
   display: none;
 }
 
+.comic-panel-collapse-action:not(:disabled) {
+  border-color: #f1ad68;
+  background: #b96f24;
+  color: #fff;
+}
+
+.comic-panel-collapse-action:not(:disabled):hover {
+  border-color: #ffd09c;
+  background: #cf7c2b;
+}
+
+.comic-panel-collapse-action.is-restoring:not(:disabled) {
+  border-color: #70cf91;
+  background: #2f8654;
+}
+
+.comic-panel-collapse-action.is-restoring:not(:disabled):hover {
+  border-color: #a2e6b5;
+  background: #389b63;
+}
+
 .comic-properties output {
   min-width: 42px;
   color: var(--muted);

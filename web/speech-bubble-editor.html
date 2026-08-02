@@ -198,6 +198,7 @@
     html[data-palette-window="1"] .layers-dock.floating-panel { position:relative !important; inset:auto !important; width:auto !important; height:100% !important; max-width:none; max-height:none; resize:none; z-index:auto !important; }
     .layer { display:flex; align-items:center; gap:5px; padding:5px; border:1px solid var(--line); border-radius:4px; background:var(--layer); cursor:pointer; }
     .layer[data-comic-layer="page"] { border-color:#3c7379; border-left:4px solid #4fb7bd; background:#19383d; }
+    .layer.comic-layer.is-collapsed { opacity:.68; }
     .layer.selected { border-color:var(--accent); background:#263b50; }
     .layer[data-comic-layer="page"].selected { border-color:var(--accent); border-left-color:#4fb7bd; background:#263b50; }
     .layer.grouped { box-shadow:inset 3px 0 #a77cff; }
@@ -2081,6 +2082,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     function drawElementBody(item){if(item.type==="image")drawSingleImageLayer(item);else if(item.type==="text")drawText(item);else if(item.type==="sfx")drawSfx(item);else if(item.type==="bubble")drawShape(item);else if(item.type==="emphasis_lines")drawEmphasisLines(item);else if(item.type==="frame")drawFrame(item);}
     function drawElement(item){
       if(item.visible===false||(comicOverlayExport&&item.type==="image"))return;
+      if(comicEditor?.shouldSkipPanelScopedItem?.(item))return;
       const clip=item.type==="emphasis_lines"?comicEditor?.emphasisClipRect(item):comicEditor?.assetClipRect?.(item);
       if(clip){ctx.save();ctx.beginPath();ctx.rect(clip.x,clip.y,clip.w,clip.h);ctx.clip();drawElementBody(item);ctx.restore();}
       else drawElementBody(item);
@@ -3196,7 +3198,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
      function deleteSelected(){const ids=new Set(selectedItems().filter(item=>!item.locked).map(item=>item.id));if(!ids.size)return;pushUndo();const first=state.elements.findIndex(item=>ids.has(item.id));state.elements=state.elements.filter(item=>!ids.has(item.id));const next=state.elements[Math.min(first,state.elements.length-1)]?.id||null;setSelection(next?[next]:[],next);state.vectorEditId=null;syncProperties();render();}
     function deleteSelectedFrame(){const item=state.elements.find(element=>element.id===state.selected);if(!isFrameSelected(item))return false;deleteSelected();return true;}
     function nudgeSelected(dx,dy){const items=selectedItems().filter(canvasItemEditable);if(!items.length)return;pushUndo();items.forEach(item=>{item.x+=dx;item.y+=dy;if(item.type==="frame")item.fit_to_canvas=false;});syncProperties();render();}
-     function findHit(point,allowLocked=false){const candidates=[...state.elements].reverse().filter(e=>e.visible!==false&&canvasHitEnabled(e)&&(allowLocked||canvasItemEditable(e)));for(const group of [candidates.filter(e=>e.type!=="image"),candidates.filter(e=>e.type==="image")])for(const e of group){const local=itemLocalPoint(e,point);if(local.x>=e.x&&local.x<=e.x+e.w&&local.y>=e.y&&local.y<=e.y+e.h)return e;}return null;}
+     function findHit(point,allowLocked=false){const candidates=[...state.elements].reverse().filter(e=>e.visible!==false&&!comicEditor?.shouldSkipPanelScopedItem?.(e)&&canvasHitEnabled(e)&&(allowLocked||canvasItemEditable(e)));for(const group of [candidates.filter(e=>e.type!=="image"),candidates.filter(e=>e.type==="image")])for(const e of group){const local=itemLocalPoint(e,point);if(local.x>=e.x&&local.x<=e.x+e.w&&local.y>=e.y&&local.y<=e.y+e.h)return e;}return null;}
     viewport.addEventListener("pointerdown",(event)=>{if(event.button!==1&&!(event.button===0&&state.spaceDown))return;event.preventDefault();event.stopPropagation();state.drag={mode:"pan",sx:event.clientX,sy:event.clientY,px:state.panX,py:state.panY};canvas.style.cursor="grabbing";viewport.style.cursor="grabbing";viewport.setPointerCapture(event.pointerId);},true);
     viewport.addEventListener("pointermove",(event)=>{const d=state.drag;if(!d||d.mode!=="pan")return;state.panX=d.px+(event.clientX-d.sx);state.panY=d.py+(event.clientY-d.sy);applyViewTransform();});
     canvas.addEventListener("pointerdown",(event)=>{

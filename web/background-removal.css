@@ -463,8 +463,8 @@ dialog.background-removal-dialog.maximized {
 }
 
 .background-removal-mask-mode button[data-br-mask-mode="auto"].active {
-  border-color: #6f7b89;
-  background: #343b45;
+  border-color: #5aa6fb;
+  background: #2d78cb;
   color: #fff;
 }
 

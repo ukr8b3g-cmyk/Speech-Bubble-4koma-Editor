@@ -38,6 +38,27 @@ assert.deepEqual(core.computeLayout(verticalFour, page, 16).panels.map((panel) =
 assert.equal(core.resetVerticalFourRatios(verticalFour), false);
 
 nextId = 0;
+const collapsible = core.createTemplate("vertical_four", makeId);
+const allCollapsiblePanels = core.collectPanels(collapsible);
+const savedRatios = [collapsible.ratio, collapsible.second.ratio, collapsible.second.second.ratio];
+assert.equal(core.countExpandedPanels(collapsible), 4);
+allCollapsiblePanels[1].collapsed = true;
+let collapsedLayout = core.computeLayout(collapsible, page, 16);
+assert.equal(collapsedLayout.panels.length, 3);
+assert.equal(collapsedLayout.dividers.length, 2);
+assert.equal(collapsedLayout.panels.some((panel) => panel.id === allCollapsiblePanels[1].id), false);
+assert.deepEqual([collapsible.ratio, collapsible.second.ratio, collapsible.second.second.ratio], savedRatios);
+allCollapsiblePanels[2].collapsed = true;
+collapsedLayout = core.computeLayout(collapsible, page, 16);
+assert.equal(collapsedLayout.panels.length, 2);
+assert.equal(collapsedLayout.dividers.length, 1);
+allCollapsiblePanels[1].collapsed = false;
+allCollapsiblePanels[2].collapsed = false;
+const restoredLayout = core.computeLayout(collapsible, page, 16);
+assert.deepEqual(restoredLayout.panels.map((panel) => panel.id), allCollapsiblePanels.map((panel) => panel.id));
+assert.equal(restoredLayout.dividers.length, 3);
+
+nextId = 0;
 let tree = core.panelNode(makeId);
 const originalId = tree.id;
 let result = core.splitPanel(tree, originalId, "x", makeId);
@@ -104,6 +125,7 @@ assert.equal(malformed.headings[0].border_width, 5);
 assert.equal(malformed.headings[0].follow_panel_width, true);
 assert.equal("text" in malformed.headings[0], false);
 assert.equal(core.panelNode(makeId).image_locked, false);
+assert.equal(core.panelNode(makeId, { collapsed: true }).collapsed, true);
 const patternedPanel = core.panelNode(makeId, {
   background: "#abcdef",
   background_pattern: { type: "cellular", preset: "cells", color: "#abcdef", patternColor: "#112233", scale: 90, seed: 510 },
@@ -152,5 +174,14 @@ assert.equal(legacy.page.frame_style, "black");
 assert.equal(legacy.page.margin, 30);
 assert.equal(core.computeLayout(legacy.tree, page, legacy.page.gutter).panels.length, 4);
 assert.equal(legacy.headings.length, 1);
+
+const collapsedProject = core.normalizeState(
+  {
+    enabled: true,
+    tree: { kind: "panel", id: "collapsed-panel", collapsed: true },
+  },
+  { width: 800, height: 600, makeId },
+);
+assert.equal(collapsedProject.tree.collapsed, true);
 
 console.log("comic_panels_core_test: OK");
