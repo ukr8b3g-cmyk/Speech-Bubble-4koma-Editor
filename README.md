@@ -127,6 +127,20 @@
 
 画像は背景削除のために外部へ送信されません。ネットワーク通信は、ユーザーが許可した場合のモデル取得にだけ使用します。モデルの配布元とライセンスは[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)を確認してください。
 
+### 不要物の修復（IOPaintShop）
+
+画像内の不要物や生成時の乱れを修正したい場合は、姉妹ツール「[IOPaintShop](https://github.com/ukr8b3g-cmyk/IOPaintShop)」で画像を修復してから、本エディターへ読み込む方法を推奨します。IOPaintShopで書き出したPNG／JPEG／WebPは、一枚画像では画像レイヤー、4コマ漫画ではページ画像として追加できます。元画像を残したまま別画像を追加するため、比較や復元も容易です。
+
+<a href="https://github.com/ukr8b3g-cmyk/IOPaintShop"><img src="docs/images/iopaintshop-repair-workflow.png" width="720" alt="IOPaintShopによる不要物修復の画面"></a>
+
+### 背景素材の作成（Background Prompter）
+
+背景画像を新たに用意したい場合は、Forge Neo向けの[Background Prompter](https://github.com/ukr8b3g-cmyk/Background-Prompter)を利用できます。多数の背景向けプロンプトプリセットから場面や雰囲気に合う背景を作成し、本エディターでは一枚画像の画像レイヤーまたは4コマ漫画のページ画像として読み込めます。
+
+プリセットは背景制作の補助であり、生成画像の著作権・商用利用の可否を保証するものではありません。使用するモデル、追加学習モデル、参照画像、生成サービスの規約および出力条件を確認してください。
+
+<a href="https://github.com/ukr8b3g-cmyk/Background-Prompter"><img src="docs/images/background-prompter-presets.png" width="720" alt="Background Prompterの背景プリセット画面"></a>
+
 ### 背景削除画面の操作
 
 | 操作 | 動作 |
