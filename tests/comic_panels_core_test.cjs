@@ -92,6 +92,14 @@ assert.equal(malformed.headings[0].border_color, "#111111");
 assert.equal(malformed.headings[0].border_width, 5);
 assert.equal("text" in malformed.headings[0], false);
 assert.equal(core.panelNode(makeId).image_locked, false);
+const patternedPanel = core.panelNode(makeId, {
+  background: "#abcdef",
+  background_pattern: { type: "cellular", preset: "cells", color: "#abcdef", patternColor: "#112233", scale: 90, seed: 510 },
+});
+assert.deepEqual(patternedPanel.background_pattern, {
+  type: "cellular", preset: "cells", color: "#abcdef", patternColor: "#112233", scale: 90, seed: 510,
+});
+assert.equal(core.panelNode(makeId, { background_pattern: "invalid" }).background_pattern, null);
 const standard = core.defaultState(undefined, undefined, makeId);
 assert.equal(standard.page.width, 720);
 assert.equal(standard.page.height, 2200);

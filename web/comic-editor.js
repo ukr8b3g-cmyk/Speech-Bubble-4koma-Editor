@@ -24,6 +24,26 @@
     ).join("")}</div>`;
   }
 
+  function backgroundPatterns() {
+    return root.SpeechBubbleCanvasBackgroundPatterns || null;
+  }
+
+  function panelBackgroundPattern(panel) {
+    const patterns = backgroundPatterns();
+    if (!patterns || !panel) return null;
+    return patterns.normalize({ color: panel.background || "#ffffff", ...(panel.background_pattern || {}), transparent: false });
+  }
+
+  function setPanelBackgroundPattern(panel, value) {
+    const patterns = backgroundPatterns();
+    if (!patterns || !panel) return null;
+    const normalized = patterns.normalize({ color: panel.background || "#ffffff", ...(value || {}), transparent: false });
+    normalized.transparent = false;
+    panel.background = normalized.color;
+    panel.background_pattern = normalized;
+    return normalized;
+  }
+
   function uuid() {
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
     return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -139,6 +159,7 @@
     const selectedPanelImageIds = new Set();
     let panelImageSelectionAnchorId = null;
     let selectedTrayImageId = "";
+    let activePanelPatternColor = "color";
     let drag = null;
     let pendingAssignPanelId = null;
     let hydratedDocumentId = "";
@@ -262,6 +283,19 @@
       options.requestRender({ canvas: true });
     }
 
+    function enableRealtimePanelPatternSelectWheel(select) {
+      select?.addEventListener("wheel", (event) => {
+        if (!comic.enabled || document.activeElement !== select) return;
+        const options = Array.from(select.options);
+        const index = options.findIndex((option) => option.value === select.value);
+        const next = Math.max(0, Math.min(options.length - 1, index + (event.deltaY > 0 ? 1 : -1)));
+        if (next === index) return;
+        event.preventDefault();
+        select.value = options[next].value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      }, { passive: false });
+    }
+
     function installUi() {
       const header = document.querySelector("body > header");
       const modeHost = header?.querySelector("[data-toolbar-mode-host]");
@@ -361,8 +395,17 @@
           </section>
           <section data-comic-properties="panel" hidden>
             <button type="button" data-comic-action="select-page">ページ設定</button>
-            <label>コマ背景<input data-comic-panel="background" type="color"></label>
-            ${colorSwatchesMarkup("panel", "background")}
+            <label>背景の種類<select data-comic-panel-pattern-select="type"></select></label>
+            <label>内蔵プリセット<select data-comic-panel-pattern-select="preset"></select></label>
+            <div data-comic-panel-pattern-colors>
+              <label data-comic-panel-pattern-color-label="color">背景色<input data-comic-panel-pattern-color="color" type="color"></label>
+              <label data-comic-panel-pattern-color-label="patternColor">パターン色<input data-comic-panel-pattern-color="patternColor" type="color"></label>
+              <label data-comic-panel-pattern-color-label="color2" hidden>終了色<input data-comic-panel-pattern-color="color2" type="color"></label>
+            </div>
+            <div class="compact-swatch-controls" data-comic-panel-pattern-swatch-controls><span class="control-label">スウォッチ</span><div class="segmented"><button type="button" data-comic-panel-pattern-color-target="color">背景</button><button type="button" data-comic-panel-pattern-color-target="patternColor">パターン</button><button type="button" data-comic-panel-pattern-color-target="color2">終了色</button></div></div>
+            ${colorSwatchesMarkup("panel-pattern", "color")}
+            <div data-comic-panel-pattern-fields></div>
+            <button type="button" data-comic-action="randomize-panel-pattern" hidden>ランダム化</button>
             <button type="button" data-comic-action="choose-panel-image">＋ コマ画像を選択</button>
           </section>
           <section data-comic-properties="heading" hidden>
@@ -407,6 +450,8 @@
         `;
         empty.parentNode.insertBefore(properties, empty);
         elements.properties = properties;
+        enableRealtimePanelPatternSelectWheel(properties.querySelector('[data-comic-panel-pattern-select="type"]'));
+        enableRealtimePanelPatternSelectWheel(properties.querySelector('[data-comic-panel-pattern-select="preset"]'));
       }
 
       const contextMenu = document.createElement("div");
@@ -536,39 +581,74 @@
         changed();
       });
       elements.properties?.addEventListener("input", (event) => {
-        const input = event.target.closest("[data-comic-panel]");
+        const input = event.target.closest("[data-comic-panel-pattern-color],[data-comic-panel-pattern-field]");
         const panel = selectedPanel();
         if (!input || !panel) return;
         if (!input.dataset.comicEditing) {
           options.pushUndo();
           input.dataset.comicEditing = "1";
         }
-        panel[input.dataset.comicPanel] = input.value;
-        updateUi();
+        const value = panelBackgroundPattern(panel);
+        if (!value) return;
+        const key = input.dataset.comicPanelPatternColor || input.dataset.comicPanelPatternField;
+        value[key] = input.type === "color" ? input.value : Number(input.value);
+        setPanelBackgroundPattern(panel, value);
+        if (input.dataset.comicPanelPatternField) input.nextElementSibling.textContent = input.value;
         options.requestRender({ canvas: true });
       });
       elements.properties?.addEventListener("change", (event) => {
-        const input = event.target.closest("[data-comic-panel]");
+        const input = event.target.closest("[data-comic-panel-pattern-color],[data-comic-panel-pattern-field]");
         if (!input) return;
         delete input.dataset.comicEditing;
+        updateUi();
+        changed();
+      });
+      elements.properties?.addEventListener("change", (event) => {
+        const select = event.target.closest("[data-comic-panel-pattern-select]");
+        const panel = selectedPanel();
+        const patterns = backgroundPatterns();
+        if (!select || !panel || !patterns) return;
+        options.pushUndo();
+        const value = panelBackgroundPattern(panel);
+        if (!value) return;
+        if (select.dataset.comicPanelPatternSelect === "type") {
+          setPanelBackgroundPattern(panel, { type: select.value, color: value.color, patternColor: value.patternColor, color2: value.color2 });
+        } else {
+          const type = patterns.TYPES.find((item) => item.id === value.type);
+          const preset = type?.presets.find((item) => item.id === select.value);
+          if (!preset) return;
+          setPanelBackgroundPattern(panel, { ...value, ...preset.values, preset: preset.id });
+        }
+        updateUi();
         changed();
       });
       elements.properties?.addEventListener("click", (event) => {
         const template = event.target.closest("[data-comic-template]")?.dataset.comicTemplate;
         const frameStyle = event.target.closest("[data-comic-frame-style]")?.dataset.comicFrameStyle;
         const panelBackground = event.target.closest("[data-comic-panel-background]")?.dataset.comicPanelBackground;
+        const panelPatternColorTarget = event.target.closest("[data-comic-panel-pattern-color-target]")?.dataset.comicPanelPatternColorTarget;
         const colorButton = event.target.closest("[data-comic-color]");
         const colorHost = colorButton?.closest("[data-comic-color-scope]");
         const action = event.target.closest("[data-comic-action]")?.dataset.comicAction;
         const panel = selectedPanel();
-        if (colorButton && colorHost) {
+        if (panelPatternColorTarget) {
+          activePanelPatternColor = panelPatternColorTarget;
+          updateUi();
+        } else if (colorButton && colorHost) {
           const key = colorHost.dataset.comicColorKey;
           const color = colorButton.dataset.comicColor;
           const scope = colorHost.dataset.comicColorScope;
-          const target = scope === "heading" ? selectedHeading() : scope === "panel" ? panel : comic.page;
+          const target = scope === "heading"
+            ? selectedHeading()
+            : scope === "panel-pattern"
+              ? panelBackgroundPattern(panel)
+              : scope === "panel"
+                ? panel
+                : comic.page;
           if (!target || !key) return;
           options.pushUndo();
           target[key] = color;
+          if (scope === "panel-pattern") setPanelBackgroundPattern(panel, target);
           updateUi();
           changed();
         } else if (template) {
@@ -583,6 +663,14 @@
         } else if (panelBackground && panel) {
           options.pushUndo();
           panel.background = panelBackground;
+          updateUi();
+          changed();
+        } else if (action === "randomize-panel-pattern" && panel) {
+          const patterns = backgroundPatterns();
+          const value = panelBackgroundPattern(panel);
+          if (!patterns || !value) return;
+          options.pushUndo();
+          setPanelBackgroundPattern(panel, { ...value, seed: patterns.randomSeed() });
           updateUi();
           changed();
         } else if (action === "canvas-reset") {
@@ -733,6 +821,60 @@
       options.syncInsertTargetStatus?.();
     }
 
+    function rebuildPanelBackgroundPatternProperties(panel) {
+      const patterns = backgroundPatterns();
+      if (!patterns || !elements.properties || !panel) return;
+      const value = panelBackgroundPattern(panel);
+      if (!value) return;
+      const type = patterns.TYPES.find((item) => item.id === value.type) || patterns.TYPES[0];
+      const typeSelect = elements.properties.querySelector('[data-comic-panel-pattern-select="type"]');
+      const presetSelect = elements.properties.querySelector('[data-comic-panel-pattern-select="preset"]');
+      if (!typeSelect || !presetSelect) return;
+      typeSelect.replaceChildren(...patterns.TYPES.map((item) => new Option(tr(item.ja, item.en), item.id)));
+      typeSelect.value = type.id;
+      presetSelect.replaceChildren(...type.presets.map((item) => new Option(tr(item.ja, item.en), item.id)));
+      presetSelect.value = value.preset;
+      for (const input of elements.properties.querySelectorAll('[data-comic-panel-pattern-color]')) {
+        input.value = value[input.dataset.comicPanelPatternColor];
+      }
+      const gradient = type.id === "linear-gradient" || type.id === "radial-gradient";
+      const solid = type.id === "solid";
+      elements.properties.querySelector('[data-comic-panel-pattern-color-label="patternColor"]').hidden = solid;
+      elements.properties.querySelector('[data-comic-panel-pattern-color-label="color2"]').hidden = !gradient;
+      if (solid && activePanelPatternColor !== "color") activePanelPatternColor = "color";
+      if (!gradient && activePanelPatternColor === "color2") activePanelPatternColor = "color";
+      for (const button of elements.properties.querySelectorAll('[data-comic-panel-pattern-color-target]')) {
+        const key = button.dataset.comicPanelPatternColorTarget;
+        button.hidden = (key === "patternColor" && solid) || (key === "color2" && !gradient);
+        button.classList.toggle("active", key === activePanelPatternColor);
+      }
+      const swatches = elements.properties.querySelector('[data-comic-color-scope="panel-pattern"]');
+      if (swatches) swatches.dataset.comicColorKey = activePanelPatternColor;
+      const fields = elements.properties.querySelector('[data-comic-panel-pattern-fields]');
+      fields.replaceChildren(...type.fields.map((key) => {
+        const definition = patterns.FIELDS[key];
+        const label = document.createElement("label");
+        const row = document.createElement("div");
+        const range = document.createElement("input");
+        const output = document.createElement("output");
+        label.className = "canvas-background-field";
+        label.append(tr(definition.ja, definition.en));
+        row.className = "range-output-row";
+        range.type = "range";
+        range.min = definition.min;
+        range.max = definition.max;
+        range.step = definition.step;
+        range.value = value[key];
+        range.dataset.comicPanelPatternField = key;
+        output.textContent = String(value[key]);
+        row.append(range, output);
+        label.append(row);
+        return label;
+      }));
+      const randomize = elements.properties.querySelector('[data-comic-action="randomize-panel-pattern"]');
+      if (randomize) randomize.hidden = !type.fields.includes("seed");
+    }
+
     function syncProperties() {
       const panel = selectedPanel();
       const imagePanels = selectedImagePanels();
@@ -801,13 +943,16 @@
           ? String(Math.round(Number(heading[key])))
           : heading?.[key] ?? "";
       }
-      for (const input of elements.properties.querySelectorAll("[data-comic-panel]")) {
-        const key = input.dataset.comicPanel;
-        input.value = panel?.[key] ?? "";
-      }
+      if (target === "panel" && panel) rebuildPanelBackgroundPatternProperties(panel);
       for (const host of elements.properties.querySelectorAll("[data-comic-color-scope]")) {
         const scope = host.dataset.comicColorScope;
-        const targetValue = scope === "heading" ? heading : scope === "panel" ? panel : comic.page;
+        const targetValue = scope === "heading"
+          ? heading
+          : scope === "panel-pattern"
+            ? panelBackgroundPattern(panel)
+            : scope === "panel"
+              ? panel
+              : comic.page;
         const selectedColor = String(targetValue?.[host.dataset.comicColorKey] || "").toLowerCase();
         host.querySelectorAll("[data-comic-color]").forEach((button) => {
           button.classList.toggle("active", button.dataset.comicColor.toLowerCase() === selectedColor);
@@ -1579,8 +1724,16 @@
         target.rect(rect.x, rect.y, rect.w, rect.h);
         target.clip();
         if (!overlay && drawBase) {
-          target.fillStyle = panel.background;
-          target.fillRect(rect.x, rect.y, rect.w, rect.h);
+          const pattern = panelBackgroundPattern(panel);
+          if (pattern) {
+            target.save();
+            target.translate(rect.x, rect.y);
+            backgroundPatterns()?.draw(target, pattern, rect.w, rect.h);
+            target.restore();
+          } else {
+            target.fillStyle = panel.background;
+            target.fillRect(rect.x, rect.y, rect.w, rect.h);
+          }
         }
         if (!overlay && drawImages) {
           const image = panel.image_visible === false

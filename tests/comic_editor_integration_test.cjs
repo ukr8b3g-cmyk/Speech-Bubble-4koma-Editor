@@ -58,6 +58,10 @@ assert.match(html, /comic:comicEditor\?\.serialize\(\)/);
 for (const phase of ["base", "images", "borders"]) {
   assert.match(html, new RegExp(`comicEditor\\.drawUnderlay\\(ctx,\\{overlay:comicOverlayExport,phase:"${phase}"\\}\\)`));
 }
+assert.match(editor, /data-comic-panel-pattern-select="type"/);
+assert.match(editor, /data-comic-panel-pattern-fields/);
+assert.match(editor, /randomize-panel-pattern/);
+assert.match(editor, /backgroundPatterns\(\)\?\.draw\(target, pattern, rect\.w, rect\.h\)/);
 assert.match(html, /comic_stack==="below_image"/);
 assert.match(html, /assignLayerComicTarget/);
 assert.match(html, /id:"center",label:"Center",line_count:180,inner_x:\.5,inner_y:\.5/);

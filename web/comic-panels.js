@@ -23,6 +23,21 @@
     return JSON.parse(JSON.stringify(value));
   }
 
+  function normalizeBackgroundPattern(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const result = {};
+    for (const key of ["type", "preset"]) {
+      if (typeof value[key] === "string" && value[key].length <= 64) result[key] = value[key];
+    }
+    for (const key of ["color", "patternColor", "color2"]) {
+      if (/^#[0-9a-f]{6}$/i.test(String(value[key] || ""))) result[key] = String(value[key]).toLowerCase();
+    }
+    for (const key of ["size", "spacing", "angle", "strength", "scale", "detail", "contrast", "seed", "position", "centerX", "centerY", "radius"]) {
+      if (Number.isFinite(Number(value[key]))) result[key] = Number(value[key]);
+    }
+    return Object.keys(result).length ? result : null;
+  }
+
   function defaultId() {
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
     return `comic-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -43,6 +58,7 @@
       background: /^#[0-9a-f]{6}$/i.test(String(values.background || ""))
         ? String(values.background)
         : "#ffffff",
+      background_pattern: normalizeBackgroundPattern(values.background_pattern),
       border_color: /^#[0-9a-f]{6}$/i.test(String(values.border_color || ""))
         ? String(values.border_color)
         : "#111111",
