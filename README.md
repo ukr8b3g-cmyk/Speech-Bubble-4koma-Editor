@@ -12,8 +12,8 @@
 
 ## ダウンロード
 
-- [インストーラー版（Windows x64）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.4/SpeechBubble4komaEditor-v0.1.4-win-x64-setup.exe)
-- [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.4/SHA256SUMS.txt)
+- [インストーラー版（Windows x64）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.5/SpeechBubble4komaEditor-v0.1.5-win-x64-setup.exe)
+- [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.5/SHA256SUMS.txt)
 - [過去のリリース](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases)
 
 - GitHub: https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor
@@ -84,6 +84,14 @@
 初期サイズは720×2200です。キャンバス寸法、外周余白、コマ間隔、枠線、背景色、見出しBoxをPropertiesから変更できます。見出しBoxの表示／非表示は、見出しを選択したProperties上部の「見出しを表示」で切り替えます。ページ構造とコマ画像には個別のロックがあります。
 
 各コマの背景にも、一枚画像と同じ23種類の内蔵パターンを設定できます。パターンはコマ内へ収まり、コマ画像・トーン・枠線の下に描画されます。
+
+### キャンバスサイズとコマ高さ
+
+<img src="docs/images/comic-canvas-resize.png" width="720" alt="4コマ漫画のキャンバスサイズとコマ高さをPropertiesから調整する画面">
+
+漫画ページを選択し、鍵を解除すると、Propertiesからキャンバス幅・高さを変更できます。キャンバスを拡大・縮小すると、外周余白、コマ間隔、枠線、見出しの位置と大きさも比例して調整されるため、大きな出力サイズでも4コマの見た目を保てます。
+
+青いコマ境界を上下へドラッグすると、各コマの高さだけを自由に調整できます。`Reset Panel Heights`は4コマの高さ比率だけを均等へ戻す操作で、キャンバスサイズ、余白、コマ間隔、枠線、コマ画像の設定は変更しません。見出しは初期状態ではコマ領域の幅へ追従し、手動で移動・リサイズした後は「見出しをコマ幅へ合わせる」で再び揃えられます。
 
 見出しBoxは背景と枠だけのレイヤーで、文字は内蔵していません。「＋ 文字を追加」または`T`で通常のTextレイヤーを追加し、見出しBoxの上へ手動で配置してください。
 
