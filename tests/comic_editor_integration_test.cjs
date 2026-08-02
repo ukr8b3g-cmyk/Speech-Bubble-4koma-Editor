@@ -123,6 +123,9 @@ for (const feature of [
   "vertical_four",
   "data-comic-heading",
   "heading-resize",
+  "follow_panel_width",
+  "fitHeadingToPanelWidth",
+  "scaleInteger",
   "border_color",
   "border_width",
   "image_scale",
@@ -153,7 +156,7 @@ assert.doesNotMatch(editor, /data-comic-context="merge"/);
 assert.doesNotMatch(editor, /placeSequentially/);
 assert.doesNotMatch(editor, /空きコマへ順番に配置/);
 assert.doesNotMatch(editor, /heading\.text/);
-assert.match(editor, /漫画ページレイヤーをロックすると、見出しとコマ境界も固定されます/);
+assert.match(editor, /青いコマ境界を上下にドラッグして高さを変更できます/);
 assert.doesNotMatch(editor, /data-comic-page="visible"/);
 assert.doesNotMatch(editor, /data-comic-page="structure_locked"/);
 assert.doesNotMatch(editor, /data-comic-property="image_locked"/);
@@ -206,12 +209,17 @@ assert.match(html, /findRotationHandle\(item,point\)\{const handle=rotationHandl
 assert.match(html, /findTailHandle\(item,point\).*radius=28\/state\.zoom/);
 assert.match(editor, /const resizeHeading =[\s\S]*headingResizeHandleRect\(activeHeading\)/);
 assert.match(editor, /data-comic-action="reset-heading"/);
+assert.match(editor, /data-comic-action="reset-panel-heights"/);
+assert.match(editor, /data-comic-action="fit-heading-to-panel-width"/);
+assert.match(editor, /function snapHeadingToPanelEdges\(heading\)/);
+assert.match(editor, /function pageResizeHandleRect\(\)/);
+assert.match(editor, /function pointerCursorAt\(point\)/);
 assert.match(editor, /data-comic-heading-title-toggle/);
 assert.match(editor, /comic-heading-title-toggle[\s\S]*data-comic-heading="visible"/);
 assert.doesNotMatch(editor, /data-comic-action="add-heading"/);
 assert.equal((editor.match(/data-comic-heading="visible"/g) || []).length, 1);
 assert.match(editor, /selectionKind\.hidden = target === "heading"/);
-assert.match(editor, /comic-property-hint">キャンバス上で移動・リサイズ/);
+assert.match(editor, /data-comic-heading-edit-hint/);
 assert.match(editor, /const trayImages = comic\.images\.filter\(\(metadata\) => metadata\.id !== "source"\)/);
 assert.match(editor, /event\.dataTransfer\.setData\("text\/plain", metadata\.id\)/);
 assert.match(editor, /event\.dataTransfer\.setDragImage\(ghost, 18, 18\)/);

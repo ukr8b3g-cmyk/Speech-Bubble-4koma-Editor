@@ -9,6 +9,10 @@
   const PUBLIC_TEMPLATE_IDS = new Set(["vertical_four"]);
   const MAX_NODES = 63;
   const MIN_PANEL_SIZE = 64;
+  const MAX_LAYOUT_MARGIN = 2048;
+  const MAX_LAYOUT_GUTTER = 1024;
+  const MAX_LAYOUT_BORDER = 64;
+  const MAX_HEADING_GAP = 1024;
 
   function finite(value, fallback = 0) {
     const number = Number(value);
@@ -62,7 +66,7 @@
       border_color: /^#[0-9a-f]{6}$/i.test(String(values.border_color || ""))
         ? String(values.border_color)
         : "#111111",
-      border_width: clamp(finite(values.border_width, 2), 0, 20),
+      border_width: clamp(finite(values.border_width, 2), 0, MAX_LAYOUT_BORDER),
       tone: normalizeTone(values.tone),
     };
   }
@@ -107,6 +111,25 @@
     return createTemplate("vertical_four", makeId);
   }
 
+  function resetVerticalFourRatios(tree) {
+    const root = tree;
+    const second = root?.second;
+    const third = second?.second;
+    if (
+      root?.kind !== "split" || root.axis !== "y" ||
+      second?.kind !== "split" || second.axis !== "y" ||
+      third?.kind !== "split" || third.axis !== "y"
+    ) return false;
+    const expected = [0.25, 1 / 3, 0.5];
+    const nodes = [root, second, third];
+    const changed = nodes.some((node, index) => Math.abs(node.ratio - expected[index]) > 1e-9);
+    if (!changed) return false;
+    nodes.forEach((node, index) => {
+      node.ratio = expected[index];
+    });
+    return true;
+  }
+
   function headingNode(makeId = defaultId, values = {}) {
     return {
       id: String(values.id || `heading-${makeId()}`),
@@ -121,7 +144,8 @@
       border_color: /^#[0-9a-f]{6}$/i.test(String(values.border_color || ""))
         ? String(values.border_color)
         : "#111111",
-      border_width: clamp(finite(values.border_width, 2), 0, 20),
+      border_width: clamp(finite(values.border_width, 2), 0, MAX_LAYOUT_BORDER),
+      follow_panel_width: values.follow_panel_width !== false,
     };
   }
 
@@ -270,16 +294,16 @@
         border_color: /^#[0-9a-f]{6}$/i.test(String(page.border_color || ""))
           ? String(page.border_color)
           : "#111111",
-        border_width: clamp(finite(page.border_width, fallback.page.border_width), 0, 20),
-        gutter: clamp(finite(page.gutter, fallback.page.gutter), 4, 64),
-        margin: clamp(finite(page.margin, fallback.page.margin), 0, 160),
+        border_width: clamp(finite(page.border_width, fallback.page.border_width), 0, MAX_LAYOUT_BORDER),
+        gutter: clamp(finite(page.gutter, fallback.page.gutter), 4, MAX_LAYOUT_GUTTER),
+        margin: clamp(finite(page.margin, fallback.page.margin), 0, MAX_LAYOUT_MARGIN),
         margin_linked: page.margin_linked !== false,
-        margin_top: clamp(finite(page.margin_top, page.margin ?? fallback.page.margin_top), 0, 480),
-        margin_right: clamp(finite(page.margin_right, page.margin ?? fallback.page.margin_right), 0, 480),
-        margin_bottom: clamp(finite(page.margin_bottom, page.margin ?? fallback.page.margin_bottom), 0, 480),
-        margin_left: clamp(finite(page.margin_left, page.margin ?? fallback.page.margin_left), 0, 480),
+        margin_top: clamp(finite(page.margin_top, page.margin ?? fallback.page.margin_top), 0, MAX_LAYOUT_MARGIN),
+        margin_right: clamp(finite(page.margin_right, page.margin ?? fallback.page.margin_right), 0, MAX_LAYOUT_MARGIN),
+        margin_bottom: clamp(finite(page.margin_bottom, page.margin ?? fallback.page.margin_bottom), 0, MAX_LAYOUT_MARGIN),
+        margin_left: clamp(finite(page.margin_left, page.margin ?? fallback.page.margin_left), 0, MAX_LAYOUT_MARGIN),
         canvas_ratio_locked: page.canvas_ratio_locked !== false,
-        heading_gap: clamp(finite(page.heading_gap, fallback.page.heading_gap), 0, 64),
+        heading_gap: clamp(finite(page.heading_gap, fallback.page.heading_gap), 0, MAX_HEADING_GAP),
         visible: page.visible !== false,
         structure_locked: page.structure_locked !== false,
         frame_style: page.frame_style === "black" ? "black" : "white",
@@ -503,6 +527,7 @@
     createHeadings,
     splitNode,
     createTemplate,
+    resetVerticalFourRatios,
     defaultTone,
     normalizeTone,
     normalizeTree,

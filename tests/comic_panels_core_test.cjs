@@ -27,6 +27,17 @@ verifyTemplate("blank", 4);
 assert.deepEqual([...core.PUBLIC_TEMPLATE_IDS], ["vertical_four"]);
 
 nextId = 0;
+const verticalFour = core.createTemplate("vertical_four", makeId);
+const panelIdsBeforeReset = core.computeLayout(verticalFour, page, 16).panels.map((panel) => panel.id);
+verticalFour.ratio = 0.4;
+verticalFour.second.ratio = 0.6;
+verticalFour.second.second.ratio = 0.7;
+assert.equal(core.resetVerticalFourRatios(verticalFour), true);
+assert.deepEqual([verticalFour.ratio, verticalFour.second.ratio, verticalFour.second.second.ratio], [0.25, 1 / 3, 0.5]);
+assert.deepEqual(core.computeLayout(verticalFour, page, 16).panels.map((panel) => panel.id), panelIdsBeforeReset);
+assert.equal(core.resetVerticalFourRatios(verticalFour), false);
+
+nextId = 0;
 let tree = core.panelNode(makeId);
 const originalId = tree.id;
 let result = core.splitPanel(tree, originalId, "x", makeId);
@@ -79,7 +90,7 @@ const malformed = core.normalizeState(
   { width: 800, height: 600, makeId },
 );
 assert.equal(malformed.enabled, true);
-assert.equal(malformed.page.gutter, 64);
+assert.equal(malformed.page.gutter, 999);
 assert.equal(malformed.page.border_width, 0);
 assert.equal(malformed.tree.axis, "x");
 assert.equal(malformed.page.margin, 80);
@@ -90,6 +101,7 @@ assert.equal(malformed.page.visible, true);
 assert.equal(malformed.headings[0].background, "#ffffff");
 assert.equal(malformed.headings[0].border_color, "#111111");
 assert.equal(malformed.headings[0].border_width, 5);
+assert.equal(malformed.headings[0].follow_panel_width, true);
 assert.equal("text" in malformed.headings[0], false);
 assert.equal(core.panelNode(makeId).image_locked, false);
 const patternedPanel = core.panelNode(makeId, {
@@ -116,6 +128,7 @@ assert.equal(standard.headings[0].y, 58);
 assert.equal(standard.headings[0].width, 563);
 assert.equal(standard.headings[0].height, 91);
 assert.equal(standard.headings[0].border_width, 5);
+assert.equal(standard.headings[0].follow_panel_width, true);
 assert.equal(standard.page.structure_locked, true);
 
 const legacy = core.normalizeState(

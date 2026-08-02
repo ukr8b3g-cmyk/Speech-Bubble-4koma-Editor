@@ -161,6 +161,7 @@
     let selectedTrayImageId = "";
     let activePanelPatternColor = "color";
     let drag = null;
+    let hoverTarget = null;
     let pendingAssignPanelId = null;
     let hydratedDocumentId = "";
     const runtimeImages = new Map();
@@ -203,6 +204,50 @@
 
     function layout() {
       return core.computeLayout(comic.tree, pageRect(), comic.page.gutter);
+    }
+
+    function panelRegion() {
+      return pageRect();
+    }
+
+    function snapDistance() {
+      return 8 / Math.max(0.25, canvasState().zoom || 1);
+    }
+
+    function snapHeadingToPanelEdges(heading) {
+      const region = panelRegion();
+      const distance = snapDistance();
+      const left = Math.abs(heading.x - region.x) <= distance;
+      const right = Math.abs(heading.x + heading.width - (region.x + region.w)) <= distance;
+      if (left && right) {
+        heading.x = Math.round(region.x);
+        heading.width = Math.max(40, Math.round(region.w));
+      } else if (left) {
+        heading.x = Math.round(region.x);
+      } else if (right) {
+        heading.x = Math.round(region.x + region.w - heading.width);
+      }
+    }
+
+    function fitHeadingToPanelWidth(heading) {
+      const region = panelRegion();
+      const x = Math.round(region.x);
+      const width = Math.max(40, Math.round(region.w));
+      if (heading.x === x && heading.width === width && heading.follow_panel_width !== false) return false;
+      heading.x = x;
+      heading.width = width;
+      heading.follow_panel_width = true;
+      return true;
+    }
+
+    function pageResizeHandleRect() {
+      const size = 20 / Math.max(0.25, canvasState().zoom || 1);
+      return {
+        x: canvasState().width - size / 2,
+        y: canvasState().height - size / 2,
+        w: size,
+        h: size,
+      };
     }
 
     function selectedPanel() {
@@ -366,18 +411,19 @@
               <label class="comic-check"><input data-comic-page="canvas_ratio_locked" type="checkbox">縦横比を固定</label>
             </div>
             <button class="comic-canvas-reset" type="button" data-comic-action="canvas-reset">標準へ戻す（720 × 2200）</button>
+            <button type="button" data-comic-action="reset-panel-heights">${tr("コマ高さを均等に戻す", "Reset Panel Heights")}</button>
             <div class="comic-frame-style segmented" role="group" aria-label="フレーム配色">
               <button type="button" data-comic-frame-style="white">白地・黒線</button>
               <button type="button" data-comic-frame-style="black">黒地・白線</button>
             </div>
             <div class="comic-two-column">
-              <label>枠線幅<input data-comic-page="border_width" type="number" min="0" max="20" step="0.5"></label>
-              <label>コマ間隔<input data-comic-page="gutter" type="number" min="0" max="64" step="1"></label>
+              <label>枠線幅<input data-comic-page="border_width" type="number" min="0" max="64" step="0.5"></label>
+              <label>コマ間隔<input data-comic-page="gutter" type="number" min="0" max="1024" step="1"></label>
             </div>
             <label class="comic-heading-gap-control">見出し―1コマ目の間隔
               <span class="comic-range-number">
-                <input data-comic-page="heading_gap" type="range" min="0" max="64" step="1">
-                <input data-comic-page="heading_gap" type="number" min="0" max="64" step="1">
+                <input data-comic-page="heading_gap" type="range" min="0" max="1024" step="1">
+                <input data-comic-page="heading_gap" type="number" min="0" max="1024" step="1">
               </span>
             </label>
             <label>ページ背景<input data-comic-page="background" type="color"></label>
@@ -386,12 +432,12 @@
             ${colorSwatchesMarkup("page", "border_color")}
             <div class="comic-margin-row">
               <label class="comic-check"><input data-comic-page="margin_linked" type="checkbox">連動</label>
-              <label>上<input data-comic-page="margin_top" type="number" min="0" max="480" step="1"></label>
-              <label>右<input data-comic-page="margin_right" type="number" min="0" max="480" step="1"></label>
-              <label>下<input data-comic-page="margin_bottom" type="number" min="0" max="480" step="1"></label>
-              <label>左<input data-comic-page="margin_left" type="number" min="0" max="480" step="1"></label>
+              <label>上<input data-comic-page="margin_top" type="number" min="0" max="2048" step="1"></label>
+              <label>右<input data-comic-page="margin_right" type="number" min="0" max="2048" step="1"></label>
+              <label>下<input data-comic-page="margin_bottom" type="number" min="0" max="2048" step="1"></label>
+              <label>左<input data-comic-page="margin_left" type="number" min="0" max="2048" step="1"></label>
             </div>
-            <p class="hint">各コマは独立した枠です。漫画ページレイヤーをロックすると、見出しとコマ境界も固定されます。</p>
+            <p class="hint">${tr("漫画ページのロックを解除すると、青いコマ境界を上下にドラッグして高さを変更できます。", "Unlock the comic page, then drag the blue panel dividers to change panel heights.")}</p>
           </section>
           <section data-comic-properties="panel" hidden>
             <button type="button" data-comic-action="select-page">ページ設定</button>
@@ -413,7 +459,7 @@
             ${colorSwatchesMarkup("heading", "background")}
             <label>Outline<input data-comic-heading="border_color" type="color"></label>
             ${colorSwatchesMarkup("heading", "border_color")}
-            <label>Outline Width<input data-comic-heading="border_width" type="number" min="0" max="20" step="1"></label>
+            <label>Outline Width<input data-comic-heading="border_width" type="number" min="0" max="64" step="1"></label>
             <div class="comic-two-column">
               <label>幅<input data-comic-heading="width" type="number" min="40" step="1"></label>
               <label>高さ<input data-comic-heading="height" type="number" min="24" step="1"></label>
@@ -423,8 +469,9 @@
               <label>位置 Y<input data-comic-heading="y" type="number" step="1"></label>
             </div>
             <div class="comic-heading-visibility-row">
-              <span class="comic-property-hint">キャンバス上で移動・リサイズ</span>
+              <span class="comic-property-hint" data-comic-heading-edit-hint></span>
             </div>
+            <button type="button" data-comic-action="fit-heading-to-panel-width">${tr("見出しをコマ幅へ合わせる", "Fit Heading to Panel Width")}</button>
             <button type="button" data-comic-action="reset-heading">位置・サイズを標準へ戻す</button>
             <p class="hint">見出しBoxには文字を含めません。文字は通常のTextレイヤーを配置してください。</p>
           </section>
@@ -503,7 +550,7 @@
         if (input.type === "checkbox") comic.page[key] = input.checked;
         else if (input.type === "color") comic.page[key] = input.value;
         else {
-          const maximum = key === "gutter" || key === "heading_gap" ? 64 : key.startsWith("margin_") ? 480 : 20;
+          const maximum = key === "gutter" || key === "heading_gap" ? 1024 : key.startsWith("margin_") ? 2048 : 64;
           comic.page[key] = Math.round(core.clamp(input.value, 0, maximum));
           if (key.startsWith("margin_") && comic.page.margin_linked) {
             for (const marginKey of ["margin_top", "margin_right", "margin_bottom", "margin_left"]) {
@@ -571,6 +618,7 @@
           const minimum = input.min === "" ? -Infinity : Number(input.min);
           const maximum = input.max === "" ? Infinity : Number(input.max);
           heading[key] = Math.max(minimum, Math.min(maximum, Math.round(Number(input.value) || 0)));
+          if (["x", "y", "width", "height"].includes(key)) heading.follow_panel_width = false;
         }
         options.requestRender({ canvas: true });
       });
@@ -705,6 +753,14 @@
           }
           updateUi();
           changed();
+        } else if (action === "reset-panel-heights") {
+          if (comic.page.structure_locked) return;
+          const previewTree = core.clone(comic.tree);
+          if (!core.resetVerticalFourRatios(previewTree)) return;
+          options.pushUndo();
+          core.resetVerticalFourRatios(comic.tree);
+          updateUi();
+          changed();
         } else if (action === "reset-heading") {
           const heading = selectedHeading();
           if (!heading) return;
@@ -714,6 +770,14 @@
           heading.y = standard.y;
           heading.width = standard.width;
           heading.height = standard.height;
+          heading.follow_panel_width = true;
+          updateUi();
+          changed();
+        } else if (action === "fit-heading-to-panel-width") {
+          const heading = selectedHeading();
+          if (!heading || comic.page.structure_locked || !fitHeadingToPanelWidth({ ...heading })) return;
+          options.pushUndo();
+          fitHeadingToPanelWidth(heading);
           updateUi();
           changed();
         } else if (action === "select-page") {
@@ -910,6 +974,25 @@
       elements.properties.querySelectorAll("[data-comic-properties]").forEach((section) => {
         section.hidden = section.dataset.comicProperties !== target;
       });
+      const structureLocked = comic.page.structure_locked !== false;
+      const resetPanelHeights = elements.properties.querySelector('[data-comic-action="reset-panel-heights"]');
+      if (resetPanelHeights) {
+        resetPanelHeights.disabled = structureLocked;
+        resetPanelHeights.title = structureLocked
+          ? tr("漫画ページのロックを解除してください", "Unlock the comic page to reset panel heights.")
+          : "";
+      }
+      const fitHeading = elements.properties.querySelector('[data-comic-action="fit-heading-to-panel-width"]');
+      if (fitHeading) {
+        fitHeading.disabled = structureLocked || !heading;
+        fitHeading.title = structureLocked
+          ? tr("漫画ページのロックを解除してください", "Unlock the comic page to fit the heading.")
+          : "";
+      }
+      const headingHint = elements.properties.querySelector("[data-comic-heading-edit-hint]");
+      if (headingHint) headingHint.textContent = structureLocked
+        ? tr("漫画ページのロックを解除すると、Canvas上で移動・サイズ変更できます。", "Unlock the comic page to move or resize the heading on the canvas.")
+        : tr("Canvas上で見出しを移動・サイズ変更できます。", "Move or resize the heading on the canvas.");
       for (const input of elements.properties.querySelectorAll("[data-comic-page]")) {
         const key = input.dataset.comicPage;
         if (input.type === "checkbox") input.checked = Boolean(comic.page[key]);
@@ -1815,7 +1898,7 @@
           target.setLineDash([]);
           if (!comic.page.structure_locked) {
             const handle = headingResizeHandleRect(heading);
-            target.fillStyle = "#ffffff";
+            target.fillStyle = hoverTarget?.type === "heading-resize" ? "#4fa3ff" : "#ffffff";
             target.strokeStyle = "#4fa3ff";
             target.fillRect(handle.x, handle.y, handle.w, handle.h);
             target.strokeRect(handle.x, handle.y, handle.w, handle.h);
@@ -1834,7 +1917,9 @@
       for (const divider of comic.page.structure_locked ? [] : computed.dividers) {
         const centerX = divider.rect.x + divider.rect.w / 2;
         const centerY = divider.rect.y + divider.rect.h / 2;
-        target.strokeStyle = "rgba(79,163,255,.8)";
+        const hovered = hoverTarget?.type === "divider" && hoverTarget.id === divider.id;
+        target.strokeStyle = hovered ? "#4fa3ff" : "rgba(79,163,255,.8)";
+        target.lineWidth = hovered ? 3 : 2;
         target.beginPath();
         if (divider.axis === "x") {
           target.moveTo(centerX, divider.rect.y);
@@ -1844,6 +1929,14 @@
           target.lineTo(divider.rect.x + divider.rect.w, centerY);
         }
         target.stroke();
+      }
+      if (!comic.page.structure_locked && selectedTarget === "page" && !options.hasLayerSelection?.()) {
+        const handle = pageResizeHandleRect();
+        target.fillStyle = hoverTarget?.type === "page-resize" ? "#4fa3ff" : "#ffffff";
+        target.strokeStyle = "#4fa3ff";
+        target.lineWidth = 1;
+        target.fillRect(handle.x, handle.y, handle.w, handle.h);
+        target.strokeRect(handle.x, handle.y, handle.w, handle.h);
       }
       target.restore();
     }
@@ -1987,6 +2080,18 @@
 
     function handlePointerDown(event, point) {
       if (!comic.enabled || options.layerAt?.(point)) return false;
+      if (!comic.page.structure_locked && selectedTarget === "page" && pointInRect(point, pageResizeHandleRect())) {
+        options.pushUndo();
+        drag = {
+          type: "page-resize",
+          startX: point.x,
+          startY: point.y,
+          width: canvasState().width,
+          height: canvasState().height,
+          changed: false,
+        };
+        return true;
+      }
       const activeHeading = selectedHeading();
       const resizeHeading =
         activeHeading &&
@@ -2108,15 +2213,70 @@
       } else if (drag.type === "heading") {
         drag.heading.x = Math.round(drag.x + point.x - drag.startX);
         drag.heading.y = Math.round(drag.y + point.y - drag.startY);
+        drag.heading.follow_panel_width = false;
+        snapHeadingToPanelEdges(drag.heading);
         drag.changed = true;
       } else if (drag.type === "heading-resize") {
         drag.heading.width = Math.max(40, Math.round(drag.width + point.x - drag.startX));
         drag.heading.height = Math.max(24, Math.round(drag.height + point.y - drag.startY));
+        drag.heading.follow_panel_width = false;
+        snapHeadingToPanelEdges(drag.heading);
         drag.changed = true;
+      } else if (drag.type === "page-resize") {
+        const width = Math.round(core.clamp(drag.width + point.x - drag.startX, 320, 8192));
+        const height = Math.round(core.clamp(drag.height + point.y - drag.startY, 480, 16384));
+        let nextWidth = width;
+        let nextHeight = height;
+        if (comic.page.canvas_ratio_locked) {
+          const scale = Math.max(width / Math.max(1, drag.width), height / Math.max(1, drag.height));
+          nextWidth = Math.round(core.clamp(drag.width * scale, 320, 8192));
+          nextHeight = Math.round(core.clamp(drag.height * scale, 480, 16384));
+        }
+        if (nextWidth !== canvasState().width || nextHeight !== canvasState().height) {
+          options.resizeCanvas?.(nextWidth, nextHeight);
+          comic.page.width = nextWidth;
+          comic.page.height = nextHeight;
+          drag.changed = true;
+        }
       }
       syncProperties();
       options.requestRender({ canvas: true });
       return true;
+    }
+
+    function updateHoverTarget(next) {
+      const before = hoverTarget ? `${hoverTarget.type}:${hoverTarget.id || ""}` : "";
+      const after = next ? `${next.type}:${next.id || ""}` : "";
+      if (before === after) return;
+      hoverTarget = next;
+      options.requestRender({ canvas: true });
+    }
+
+    function pointerCursorAt(point) {
+      if (!comic.enabled || comic.page.structure_locked || options.layerAt?.(point)) {
+        updateHoverTarget(null);
+        return "";
+      }
+      if (selectedTarget === "page" && pointInRect(point, pageResizeHandleRect())) {
+        updateHoverTarget({ type: "page-resize" });
+        return "nwse-resize";
+      }
+      const activeHeading = selectedHeading();
+      if (activeHeading && activeHeading.visible !== false && pointInRect(point, headingResizeHandleRect(activeHeading))) {
+        updateHoverTarget({ type: "heading-resize", id: activeHeading.id });
+        return "nwse-resize";
+      }
+      if (headingAt(point)) {
+        updateHoverTarget({ type: "heading" });
+        return "move";
+      }
+      const divider = core.dividerAt(layout(), point, 12 / Math.max(0.25, canvasState().zoom || 1));
+      if (divider?.axis === "y") {
+        updateHoverTarget({ type: "divider", id: divider.id });
+        return "ns-resize";
+      }
+      updateHoverTarget(null);
+      return "";
     }
 
     function handlePointerEnd() {
@@ -2289,6 +2449,16 @@
     function scale(scaleX, scaleY) {
       comic.page.width = canvasState().width;
       comic.page.height = canvasState().height;
+      const lineScale = Math.sqrt(scaleX * scaleY);
+      const scaleInteger = (value, factor, maximum) => Math.min(maximum, Math.max(0, Math.round((Number(value) || 0) * factor)));
+      comic.page.margin = scaleInteger(comic.page.margin, lineScale, 2048);
+      comic.page.margin_left = scaleInteger(comic.page.margin_left, scaleX, 2048);
+      comic.page.margin_right = scaleInteger(comic.page.margin_right, scaleX, 2048);
+      comic.page.margin_top = scaleInteger(comic.page.margin_top, scaleY, 2048);
+      comic.page.margin_bottom = scaleInteger(comic.page.margin_bottom, scaleY, 2048);
+      comic.page.gutter = scaleInteger(comic.page.gutter, scaleY, 1024);
+      comic.page.heading_gap = scaleInteger(comic.page.heading_gap, scaleY, 1024);
+      comic.page.border_width = Math.min(64, Math.round((Number(comic.page.border_width) || 0) * lineScale * 2) / 2);
       for (const item of layout().panels) {
         item.node.image_offset_x *= scaleX;
         item.node.image_offset_y *= scaleY;
@@ -2298,6 +2468,8 @@
         heading.y *= scaleY;
         heading.width *= scaleX;
         heading.height *= scaleY;
+        heading.border_width = Math.min(64, Math.round((Number(heading.border_width) || 0) * Math.sqrt(scaleX * scaleY) * 2) / 2);
+        if (heading.follow_panel_width !== false) fitHeadingToPanelWidth(heading);
       }
     }
 
@@ -2336,6 +2508,7 @@
       effectTargetRect,
       handlePointerDown,
       handlePointerMove,
+      pointerCursorAt,
       handlePointerEnd,
       handleWheel,
       handleImageDrop,
