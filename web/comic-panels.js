@@ -7,6 +7,7 @@
 
   const TEMPLATE_IDS = new Set(["vertical_four", "two_column", "two_column_sample"]);
   const PUBLIC_TEMPLATE_IDS = new Set(["vertical_four"]);
+  const CURRENT_STATE_VERSION = 1;
   const MAX_NODES = 63;
   const MIN_PANEL_SIZE = 64;
   const MAX_LAYOUT_MARGIN = 2048;
@@ -258,6 +259,13 @@
     const makeId = options.makeId || defaultId;
     const fallback = defaultState(options.width, options.height, makeId);
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return fallback;
+    const requestedVersion = raw.version == null ? CURRENT_STATE_VERSION : Number(raw.version);
+    if (!Number.isInteger(requestedVersion) || requestedVersion < 1) {
+      throw new Error("Invalid comic state version");
+    }
+    if (requestedVersion > CURRENT_STATE_VERSION) {
+      throw new Error(`Unsupported comic state version: ${requestedVersion}`);
+    }
     const templateId = "vertical_four";
     const tree =
       raw.template_id === "vertical_four" || !raw.template_id
@@ -283,7 +291,7 @@
           }))
       : [];
     return {
-      version: 1,
+      version: CURRENT_STATE_VERSION,
       enabled: raw.enabled === true,
       template_id: templateId,
       page: {
@@ -555,6 +563,7 @@
   return {
     TEMPLATE_IDS,
     PUBLIC_TEMPLATE_IDS,
+    CURRENT_STATE_VERSION,
     MIN_PANEL_SIZE,
     clamp,
     clone,

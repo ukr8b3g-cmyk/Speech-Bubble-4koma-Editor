@@ -10,7 +10,16 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .project_store import _decode_project_image
+from .project_schema import (
+    ALLOWED_IMAGE_MIMES,
+    RECOVERY_FORMAT,
+    RECOVERY_VERSION,
+    json_bytes,
+    strict_json_loads,
+    validate_layout,
+    validate_unique_logical_ids,
+)
+from .project_store import _decode_project_image, _inspect_project_image
 
 MAX_GENERATIONS = 5
 MAX_AGE_DAYS = 30
@@ -21,8 +30,8 @@ def _atomic_json_write(path: Path, value: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
-        with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as stream:
-            json.dump(value, stream, ensure_ascii=False, separators=(",", ":"))
+        with os.fdopen(handle, "wb") as stream:
+            stream.write(json_bytes(value))
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
@@ -52,14 +61,41 @@ class RecoveryStore:
     def _layout(payload: dict) -> dict:
         layout = payload.get("layout")
         if isinstance(layout, str):
-            layout = json.loads(layout or "{}")
+            layout = strict_json_loads(layout or "{}", label="recovery layout")
         if not isinstance(layout, dict):
             raise ValueError("Recovery layout is invalid")
-        return layout
+        return validate_layout(layout)
+
+    @staticmethod
+    def _validate_asset_records(records: object) -> list[dict]:
+        if not isinstance(records, list):
+            raise ValueError("Recovery image list is invalid")
+        validate_unique_logical_ids(records)
+        result = []
+        for record in records:
+            copied = dict(record)
+            filename = str(copied.get("file") or "")
+            digest = str(copied.get("sha256") or "").lower()
+            mime = str(copied.get("mime") or "").lower()
+            if not filename or Path(filename).name != filename or "/" in filename or "\\" in filename:
+                raise ValueError("Recovery image file is invalid")
+            if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+                raise ValueError("Recovery image checksum is invalid")
+            if mime not in ALLOWED_IMAGE_MIMES:
+                raise ValueError("Recovery image MIME type is invalid")
+            copied["id"] = str(copied["id"]).strip()
+            copied["sha256"] = digest
+            copied["mime"] = mime
+            result.append(copied)
+        return result
 
     def _asset_records(self, payload: dict) -> list[dict]:
+        source_records = payload.get("images")
+        if not isinstance(source_records, list):
+            raise ValueError("Recovery image list is invalid")
+        validate_unique_logical_ids(source_records)
         records = []
-        for source in payload.get("images", []) if isinstance(payload.get("images"), list) else []:
+        for source in source_records:
             _entry, data, metadata = _decode_project_image(source)
             digest = metadata["sha256"]
             extension = Path(metadata["path"]).suffix.lower() or ".png"
@@ -96,7 +132,7 @@ class RecoveryStore:
                 for item in images
             ],
         }
-        encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
 
     def save(self, payload: dict, *, checkpoint: bool = False) -> dict:
@@ -104,8 +140,8 @@ class RecoveryStore:
         images = self._asset_records(payload)
         now = datetime.now(timezone.utc)
         record = {
-            "format": "speech-bubble-editor-recovery",
-            "version": 1,
+            "format": RECOVERY_FORMAT,
+            "version": RECOVERY_VERSION,
             "updated_at": now.isoformat(),
             "title": str(payload.get("title") or "speech-bubble-project")[:260],
             "project_path": str(payload.get("project_path") or "")[:1024],
@@ -132,15 +168,27 @@ class RecoveryStore:
 
     def _read_record(self, path: Path, *, validate_assets: bool = True) -> dict:
         try:
-            record = json.loads(path.read_text(encoding="utf-8"))
+            record = strict_json_loads(path.read_bytes(), label="recovery")
+            if record.get("format") != RECOVERY_FORMAT or record.get("version") != RECOVERY_VERSION:
+                return {}
+            record["layout"] = validate_layout(record.get("layout"))
+            record["images"] = self._validate_asset_records(record.get("images"))
         except (OSError, ValueError, TypeError):
-            return {}
-        if record.get("format") != "speech-bubble-editor-recovery" or record.get("version") != 1:
             return {}
         if validate_assets:
             for image in record.get("images", []):
                 asset = self.assets / str(image.get("file", ""))
-                if not asset.is_file() or hashlib.sha256(asset.read_bytes()).hexdigest() != image.get("sha256"):
+                if not asset.is_file():
+                    return {}
+                data = asset.read_bytes()
+                if hashlib.sha256(data).hexdigest() != image.get("sha256"):
+                    return {}
+                try:
+                    image_format, _width, _height = _inspect_project_image(data)
+                except ValueError:
+                    return {}
+                extension = {"PNG": "png", "JPEG": "jpeg", "WEBP": "webp"}[image_format]
+                if image.get("mime") != f"image/{extension}":
                     return {}
         return record
 

@@ -25,6 +25,13 @@ verifyTemplate("two_column", 8);
 verifyTemplate("two_column_sample", 8);
 verifyTemplate("blank", 4);
 assert.deepEqual([...core.PUBLIC_TEMPLATE_IDS], ["vertical_four"]);
+assert.equal(core.CURRENT_STATE_VERSION, 1);
+assert.equal(core.normalizeState({ enabled: true }, { makeId }).version, 1);
+assert.equal(core.normalizeState({ version: 1, enabled: true }, { makeId }).version, 1);
+assert.throws(
+  () => core.normalizeState({ version: 2, enabled: true }, { makeId }),
+  /Unsupported comic state version/i,
+);
 
 nextId = 0;
 const verticalFour = core.createTemplate("vertical_four", makeId);

@@ -3,6 +3,10 @@
 
   const GEOMETRY_KEY = "speech-bubble-editor:background-removal-geometry:v1";
   const DEFAULT_HISTORY_LIMIT = 24;
+  const selectionCore = root.SpeechBubbleBackgroundSelection;
+  if (!selectionCore) {
+    throw new Error("SpeechBubbleBackgroundSelection must be loaded before background-removal.js");
+  }
 
   function isEnglish() {
     return document.documentElement.lang === "en";
@@ -191,14 +195,31 @@
             </div>
             <p class="hint" data-br-mask-mode-help>AIが背景を自動判定します。</p>
             <p class="background-removal-process-state" data-br-process-state data-state="neutral">自動処理待ち</p>
-            <h3 data-br-text="tools">ツール</h3>
+            <h3 data-br-text="maskAction">マスク操作</h3>
             <div class="background-removal-tool-pair">
-              <button type="button" data-br-tool="keep" data-br-text="keepBrush" title="消した領域を復元します (B)">復元ブラシ</button>
-              <button type="button" class="active" data-br-tool="erase" data-br-text="eraseBrush" title="領域を透明にします (E)">消しゴムツール</button>
+              <button type="button" data-br-tool="keep" title="消した領域を復元します (B)"><span data-br-text="keepAction">残す</span></button>
+              <button type="button" class="active" data-br-tool="erase" title="領域を透明にします (E)"><span data-br-text="eraseAction">消す</span></button>
             </div>
-            <label class="background-removal-brush-size"><span data-br-text="brushSize">ブラシサイズ</span><input data-br-brush-size type="range" min="4" max="512" value="120"><input data-br-brush-number type="number" min="4" max="512" value="120" aria-label="ブラシサイズ"></label>
-            <label class="background-removal-brush-size"><span data-br-text="brushHardness">ブラシの硬さ</span><input data-br-brush-hardness type="range" min="0" max="100" value="100"><input data-br-brush-hardness-number type="number" min="0" max="100" value="100" aria-label="ブラシの硬さ（%）"></label>
-            <p class="hint" data-br-text="rightDrag">右ドラッグ：サイズ変更</p>
+            <h3 data-br-text="tools">ツール</h3>
+            <div class="background-removal-edit-tool-pair" role="group" aria-label="編集ツール">
+              <button type="button" class="active" data-br-edit-tool="wand" aria-pressed="true">
+                <svg class="background-removal-wand-icon" viewBox="0 0 24 24" aria-hidden="true"><path class="background-removal-wand-shaft" d="m9 9 11 11"></path><path d="m3.5 3.5 4 4m0-4-4 4M14 3v4m-2-2h4"></path></svg>
+                <span data-br-text="wandTool">自動選択</span>
+              </button>
+              <button type="button" data-br-edit-tool="brush" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.8 4.2 19.8 9.2 10 19c-1.2 1.2-2.8 1.8-4.5 1.7 1.2-.7 1.8-1.8 1.8-3.3 0-1 .4-1.9 1.1-2.6Z"></path><path d="m13.2 5.8 5 5"></path></svg>
+                <span data-br-text="brushTool">ブラシ</span>
+              </button>
+            </div>
+            <div data-br-brush-settings>
+              <label class="background-removal-brush-size"><span data-br-text="brushSize">ブラシサイズ</span><input data-br-brush-size type="range" min="4" max="512" value="120"><input data-br-brush-number type="number" min="4" max="512" value="120" aria-label="ブラシサイズ"></label>
+              <label class="background-removal-brush-size"><span data-br-text="brushHardness">ブラシの硬さ</span><input data-br-brush-hardness type="range" min="0" max="100" value="100"><input data-br-brush-hardness-number type="number" min="0" max="100" value="100" aria-label="ブラシの硬さ（%）"></label>
+              <p class="hint" data-br-text="rightDrag">右ドラッグ：サイズ変更</p>
+            </div>
+            <div data-br-wand-settings hidden>
+              <label class="background-removal-control-row"><span data-br-text="wandTolerance">許容値</span><input data-br-wand-tolerance type="range" min="0" max="255" step="1" value="12"><input data-br-wand-tolerance-number type="number" min="0" max="255" step="1" value="12" aria-label="自動選択の許容値"></label>
+              <p class="hint" data-br-text="wandHelp">クリック位置からつながる近い色を選択します。色むらは残った部分を追加クリックしてください。</p>
+            </div>
             <button type="button" class="background-removal-run-mask" data-br-action="run-mask" disabled>自動背景削除を実行</button>
             <h3 data-br-text="viewMode">表示モード</h3>
             <select class="background-removal-view-select" data-br-view aria-label="表示モード"><option value="result" data-br-text="result">透過結果</option><option value="overlay" data-br-text="redOverlay">赤マスク重ね表示</option><option value="mask" data-br-text="maskOnly">マスクのみ</option></select>
@@ -237,10 +258,10 @@
       title: ["背景削除", "Background Removal"], subtitle: ["AI背景削除＆マスク編集", "AI background removal & mask editing"],
       maximize: ["最大化", "Maximize"], restore: ["元のサイズ", "Restore"], close: ["閉じる", "Close"],
       changeImage: ["画像を変更", "Change Image"], dropImage: ["PNG / JPEG / WebPをドロップ", "Drop PNG / JPEG / WebP"], chooseFile: ["ファイルを選択", "Choose File"],
-      original: ["元画像", "Original"], fit: ["フィット", "Fit"], pan: ["移動", "Pan"], tools: ["ツール", "Tools"],
+      original: ["元画像", "Original"], fit: ["フィット", "Fit"], pan: ["移動", "Pan"], maskAction: ["マスク操作", "Mask Action"], tools: ["ツール", "Tools"],
       maskMethod: ["処理方法", "Processing Method"], automaticMask: ["自動", "Automatic"], guidedMask: ["範囲指定", "Guided Selection"],
       automaticMaskHelp: ["AIが背景を自動判定します。", "AI detects the background automatically."], guidedMaskHelp: ["残す部分・消す部分を塗って指定します。", "Paint areas to keep or remove before running AI background removal."],
-      keepBrush: ["復元ブラシ", "Restore Brush"], eraseBrush: ["消しゴムツール", "Eraser Tool"], brushSize: ["ブラシサイズ", "Brush Size"], brushHardness: ["ブラシの硬さ", "Brush Hardness"], rightDrag: ["右ドラッグ：サイズ変更", "Right-drag: change size"],
+      keepAction: ["残す", "Keep"], eraseAction: ["消す", "Remove"], keepBrush: ["復元ブラシ", "Restore Brush"], eraseBrush: ["消しゴムツール", "Eraser Tool"], brushTool: ["ブラシ", "Brush"], wandTool: ["自動選択", "Magic Wand"], wandTolerance: ["許容値", "Tolerance"], wandHelp: ["クリック位置からつながる近い色を選択します。色むらは残った部分を追加クリックしてください。", "Selects similar connected colors from the clicked point. Click remaining shades again when needed."], brushSize: ["ブラシサイズ", "Brush Size"], brushHardness: ["ブラシの硬さ", "Brush Hardness"], rightDrag: ["右ドラッグ：サイズ変更", "Right-drag: change size"],
       viewMode: ["表示モード", "View Mode"], result: ["透過結果", "Transparent Result"], redOverlay: ["赤マスク重ね表示", "Red Mask Overlay"], maskOnly: ["マスクのみ", "Mask Only"],
       maskCorrection: ["マスク補正", "Mask Correction"], morph: ["マスク拡張・縮小", "Grow / Shrink Mask"], feather: ["境界ぼかし", "Feather Edge"], fillHoles: ["穴埋め", "Fill Holes"], removeSmall: ["小領域除去", "Remove Small Regions"],
       details: ["詳細", "Details"], threshold: ["マスクしきい値", "Mask Threshold"], overlayOpacity: ["赤マスク濃度", "Red Overlay Opacity"], operations: ["操作", "Operations"],
@@ -263,6 +284,10 @@
     const brushNumber = dialog.querySelector("[data-br-brush-number]");
     const brushHardnessInput = dialog.querySelector("[data-br-brush-hardness]");
     const brushHardnessNumber = dialog.querySelector("[data-br-brush-hardness-number]");
+    const brushSettings = dialog.querySelector("[data-br-brush-settings]");
+    const wandSettings = dialog.querySelector("[data-br-wand-settings]");
+    const wandToleranceInput = dialog.querySelector("[data-br-wand-tolerance]");
+    const wandToleranceNumber = dialog.querySelector("[data-br-wand-tolerance-number]");
     const thresholdInput = dialog.querySelector("[data-br-threshold]");
     const thresholdNumber = dialog.querySelector("[data-br-threshold-number]");
     const opacityInput = dialog.querySelector("[data-br-overlay-opacity]");
@@ -294,6 +319,7 @@
     let history = [];
     let redo = [];
     let tool = "erase";
+    let editTool = "wand";
     let viewMode = "result";
     let renderQueued = false;
     let drawing = false;
@@ -331,6 +357,7 @@
       close.title = close.ariaLabel = text.close[isEnglish() ? 1 : 0];
       applyButton.textContent = options.getMode() === "comic" ? tr("ページ画像へ追加", "Add to Page Images") : tr("一枚画像へ適用", "Apply to Single Image");
       updateMaskModeUi();
+      updateEditToolUi();
       updateResultCaption();
     }
 
@@ -477,8 +504,6 @@
       modelPanel.hidden = false;
       const keepButton = dialog.querySelector('[data-br-tool="keep"]');
       const eraseButton = dialog.querySelector('[data-br-tool="erase"]');
-      keepButton.textContent = text[guided ? "guideKeep" : "keepBrush"][isEnglish() ? 1 : 0];
-      eraseButton.textContent = text[guided ? "guideRemove" : "eraseBrush"][isEnglish() ? 1 : 0];
       keepButton.title = guided ? tr("必ず残す部分を緑で指定します (B)", "Mark areas that must be kept in green (B)") : tr("消した領域を復元します (B)", "Restore erased areas (B)");
       eraseButton.title = guided ? tr("必ず消す部分を赤で指定します (E)", "Mark areas that must be removed in red (E)") : tr("領域を透明にします (E)", "Erase areas to transparency (E)");
       const processState = dialog.querySelector("[data-br-process-state]");
@@ -492,12 +517,42 @@
       runMask.textContent = text[runTextKey][isEnglish() ? 1 : 0];
       const reset = dialog.querySelector('[data-br-action="reset-mask"]');
       reset.textContent = text[guided ? "resetGuidedMask" : "resetAutoMask"][isEnglish() ? 1 : 0];
+      selectTool(tool);
       updateHistoryButtons();
     }
 
     function selectTool(nextTool) {
       tool = nextTool;
-      dialog.querySelectorAll("[data-br-tool]").forEach((button) => button.classList.toggle("active", button.dataset.brTool === tool));
+      dialog.querySelectorAll("[data-br-tool]").forEach((button) => {
+        const active = button.dataset.brTool === tool;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+    }
+
+    function updateEditToolUi() {
+      dialog.dataset.editTool = editTool;
+      dialog.querySelectorAll("[data-br-edit-tool]").forEach((button) => {
+        const active = button.dataset.brEditTool === editTool;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+      brushSettings.hidden = editTool !== "brush";
+      wandSettings.hidden = editTool !== "wand";
+      const wandActive = editTool === "wand" && !panTool;
+      resultViewport.classList.toggle("background-removal-wand-active", wandActive);
+      if (editTool !== "brush" || panTool) {
+        brushCursor.hidden = true;
+        cursorClient = null;
+      }
+    }
+
+    function selectEditTool(nextTool) {
+      if (!['brush', 'wand'].includes(nextTool)) return;
+      editTool = nextTool;
+      panTool = false;
+      dialog.querySelectorAll('[data-br-action="pan"]').forEach((button) => button.classList.remove("active"));
+      updateEditToolUi();
     }
 
     async function selectMaskMode(nextMode) {
@@ -522,6 +577,73 @@
       while (history.length > historyLimit()) history.shift();
       redo = [];
       updateHistoryButtons();
+    }
+
+    function selectedRegionHasChange(indices, targetMask, targetValue, oppositeMask = null, oppositeValue = 0) {
+      for (let offset = 0; offset < indices.length; offset += 1) {
+        const index = indices[offset];
+        if (targetMask[index] !== targetValue || (oppositeMask && oppositeMask[index] !== oppositeValue)) return true;
+      }
+      return false;
+    }
+
+    function applyMagicWand(point) {
+      if (!sourcePixels || !sourceCanvas.width || !sourceCanvas.height) return;
+      const x = Math.floor(point.x);
+      const y = Math.floor(point.y);
+      if (x < 0 || y < 0 || x >= sourceCanvas.width || y >= sourceCanvas.height) return;
+
+      const selection = selectionCore.selectContiguousRgba(
+        sourcePixels.data,
+        sourceCanvas.width,
+        sourceCanvas.height,
+        x,
+        y,
+        Number(wandToleranceInput.value),
+      );
+      if (!selection.count) {
+        setStatus(tr("選択できる領域がありません。", "No selectable region was found."), "info");
+        return;
+      }
+
+      if (maskMode === "guided") {
+        initializeGuideMasks();
+        const selectedGuide = tool === "keep" ? guideKeepMask : guideRemoveMask;
+        const oppositeGuide = tool === "keep" ? guideRemoveMask : guideKeepMask;
+        if (!selectedRegionHasChange(selection.indices, selectedGuide, 255, oppositeGuide, 0)) {
+          setStatus(tr("この領域はすでに同じ指定です。", "This region already has the same instruction."), "info");
+          return;
+        }
+        pushHistory();
+        for (let offset = 0; offset < selection.count; offset += 1) {
+          const index = selection.indices[offset];
+          selectedGuide[index] = 255;
+          oppositeGuide[index] = 0;
+        }
+        guidedDirty = true;
+        applyButton.disabled = true;
+      } else {
+        if (!editedMask) return;
+        const targetValue = tool === "keep" ? 255 : 0;
+        if (!selectedRegionHasChange(selection.indices, editedMask, targetValue)) {
+          setStatus(tr("この領域はすでに同じ状態です。", "This region already has the same state."), "info");
+          return;
+        }
+        pushHistory();
+        for (let offset = 0; offset < selection.count; offset += 1) {
+          editedMask[selection.indices[offset]] = targetValue;
+        }
+        applyButton.disabled = false;
+      }
+
+      updateMaskModeUi();
+      scheduleRender();
+      setStatus(
+        tool === "keep"
+          ? tr("自動選択した領域を残しました。", "Kept the automatically selected region.")
+          : tr("自動選択した領域を消しました。必要に応じて残った色を追加クリックしてください。", "Removed the automatically selected region. Click remaining shades again when needed."),
+        "ready",
+      );
     }
 
     function processedMask() {
@@ -740,6 +862,10 @@
       processingRunning = false;
       history = [];
       redo = [];
+      editTool = "wand";
+      panTool = false;
+      dialog.querySelectorAll('[data-br-action="pan"]').forEach((button) => button.classList.remove("active"));
+      updateEditToolUi();
       updateHistoryButtons();
       updateSourceBar();
       sourcePicker.hidden = true;
@@ -1021,6 +1147,12 @@
         selectTool(toolButton.dataset.brTool);
         panTool = false;
         dialog.querySelectorAll('[data-br-action="pan"]').forEach((button) => button.classList.remove("active"));
+        updateEditToolUi();
+        return;
+      }
+      const editToolButton = event.target.closest("[data-br-edit-tool]");
+      if (editToolButton) {
+        selectEditTool(editToolButton.dataset.brEditTool);
         return;
       }
       const action = event.target.closest("[data-br-action]")?.dataset.brAction;
@@ -1050,6 +1182,7 @@
       else if (action === "pan") {
         panTool = !panTool;
         dialog.querySelectorAll('[data-br-action="pan"]').forEach((button) => button.classList.toggle("active", panTool));
+        updateEditToolUi();
       } else if (action === "undo" && history.length) {
         redo.push(editSnapshot());
         restoreEditSnapshot(history.pop());
@@ -1118,6 +1251,7 @@
 
     bindRangeAndNumber(brushInput, brushNumber, 4, 512, setBrushSize);
     bindRangeAndNumber(brushHardnessInput, brushHardnessNumber, 0, 100, scheduleRender);
+    bindRangeAndNumber(wandToleranceInput, wandToleranceNumber, 0, 255, () => {});
     bindRangeAndNumber(thresholdInput, thresholdNumber, 0, 255, scheduleRender);
     bindRangeAndNumber(opacityInput, opacityNumber, 10, 90, scheduleRender);
     bindRangeAndNumber(morphInput, morphNumber, -10, 10, scheduleRender);
@@ -1134,6 +1268,11 @@
       if (!editable && event.button !== 1 && !(event.button === 0 && panTool)) return;
       if (editable && !editedMask && maskMode !== "guided") return;
       event.preventDefault();
+      if (editable && event.button === 2 && editTool !== "brush") return;
+      if (editable && event.button === 0 && editTool === "wand" && !panTool) {
+        applyMagicWand(clientToImagePoint(event.clientX, event.clientY, resultViewport, false));
+        return;
+      }
       viewport.setPointerCapture(event.pointerId);
       lastClient = { x: event.clientX, y: event.clientY };
       if (editable && event.button === 2) {
@@ -1152,7 +1291,10 @@
     }
 
     function moveViewportPointer(event, viewport, editable) {
-      if (editable) updateBrushCursor(event.clientX, event.clientY);
+      if (editable && editTool === "brush" && !panTool) updateBrushCursor(event.clientX, event.clientY);
+      else if (editable) {
+        brushCursor.hidden = true;
+      }
       if (brushResizeState) {
         if (event.pointerId !== brushResizeState.pointerId) return;
         event.preventDefault();
@@ -1202,7 +1344,11 @@
         setScale(view.scale * (event.deltaY < 0 ? 1.12 : 1 / 1.12), event.clientX, event.clientY, viewport);
       }, { passive: false });
     }
-    resultViewport.addEventListener("pointerleave", (event) => { if (!event.buttons) { brushCursor.hidden = true; cursorClient = null; } });
+    resultViewport.addEventListener("pointerleave", (event) => {
+      if (event.buttons) return;
+      brushCursor.hidden = true;
+      cursorClient = null;
+    });
     resultViewport.addEventListener("contextmenu", (event) => event.preventDefault());
 
     let moving = null;
@@ -1237,6 +1383,9 @@
       processingRunning = false;
       maskMode = "auto";
       selectTool("erase");
+      editTool = "wand";
+      panTool = false;
+      updateEditToolUi();
       sourceContext.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
       resultContext.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
       updateSourceBar();

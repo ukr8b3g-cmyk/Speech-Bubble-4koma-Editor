@@ -8,6 +8,7 @@ const css = fs.readFileSync("web/comic-editor.css", "utf8");
 const desktopShell = fs.readFileSync("web/desktop/desktop-shell.js", "utf8");
 const desktopCss = fs.readFileSync("web/desktop/desktop.css", "utf8");
 const canvasBackgroundPatterns = fs.readFileSync("web/canvas-background-patterns.js", "utf8");
+const projectSchema = fs.readFileSync("web/project-schema.js", "utf8");
 const desktopMain = fs.readFileSync("desktop_app/main.py", "utf8");
 const renderer = fs.readFileSync("speech_bubble_editor/renderer.py", "utf8");
 const readme = fs.readFileSync("README.md", "utf8");
@@ -32,6 +33,17 @@ for (const item of newBuiltInSfx) {
   assert.deepEqual(item.defaults, { fillColor: "#EC407A", outlineColor: "#111111", outlineWidth: 3 }, `${item.id} must use the requested pink and black style`);
   assert.ok(fs.existsSync(`web/assets/sfx/sfx-png-corrected-list-v2/${item.asset}`), `${item.id} asset must exist`);
 }
+
+assert.ok(html.includes("./project-schema.js?v="), "Project schema must be loaded by the Editor");
+assert.ok(
+  html.indexOf("./project-schema.js?v=") < html.indexOf("./comic-panels.js?v="),
+  "Project schema must load before comic panels",
+);
+assert.match(projectSchema, /CURRENT_LAYOUT_VERSION = 4/);
+assert.match(projectSchema, /CURRENT_COMIC_VERSION = 1/);
+assert.match(html, /projectSchema\.build\(\{activeWorkspace,workspaces,comic:comicEditor\?\.serialize\(\)\|\|null\}\)/);
+assert.match(html, /const prepared=projectSchema\.preflightPayload\(payload\)[\s\S]*?clearDocumentCanvas\(\)/);
+assert.match(html, /loadState\(JSON\.stringify\(prepared\.layout\),\{strict:true\}\)/);
 assert.match(html, /sortGroup:Number\.isFinite\(Number\(raw\.sortGroup\)\)/);
 for (const [id, width, height] of [
   ["n-small-tsu-ellipsis-mask", 380, 181],
@@ -53,13 +65,17 @@ for (const [id, width, height] of [
 assert.match(desktopShell, /class="desktop-check desktop-empty-guide-check"[^>]*><input data-desktop-setting="show_empty_canvas_guide"/);
 assert.match(desktopCss, /\.desktop-empty-guide-check\s*\{[^}]*width:\s*100%;[^}]*justify-content:\s*flex-start;[^}]*text-align:\s*left;/);
 assert.match(html, /comicEditor\?\.restore\(comicLayout\)/);
-assert.match(html, /payload\.comic=comic/);
+assert.match(html, /projectSchema\.build\(\{activeWorkspace,workspaces,comic:comicEditor\?\.serialize\(\)\|\|null\}\)/);
 assert.match(html, /comic:comicEditor\?\.serialize\(\)/);
 for (const phase of ["base", "images", "borders"]) {
   assert.match(html, new RegExp(`comicEditor\\.drawUnderlay\\(ctx,\\{overlay:comicOverlayExport,phase:"${phase}"\\}\\)`));
 }
 assert.match(editor, /data-comic-panel-pattern-select="type"/);
 assert.match(editor, /data-comic-panel-pattern-fields/);
+assert.match(editor, /function drawDividerGuide\(target, divider, hovered\)/);
+assert.match(editor, /const railThickness = 8 \/ zoom/);
+assert.match(editor, /target\.fillText\(horizontal \? "↕" : "↔", centerX, centerY \+ \.5 \/ zoom\)/);
+assert.match(editor, /for \(const divider of comic\.page\.structure_locked \? \[\] : computed\.dividers\) \{\s*const hovered[\s\S]*?drawDividerGuide\(target, divider, hovered\);/);
 assert.match(editor, /randomize-panel-pattern/);
 assert.match(editor, /backgroundPatterns\(\)\?\.draw\(target, pattern, rect\.w, rect\.h\)/);
 assert.match(html, /comic_stack==="below_image"/);
@@ -161,7 +177,7 @@ assert.doesNotMatch(editor, /data-comic-context="merge"/);
 assert.doesNotMatch(editor, /placeSequentially/);
 assert.doesNotMatch(editor, /空きコマへ順番に配置/);
 assert.doesNotMatch(editor, /heading\.text/);
-assert.match(editor, /青いコマ境界を上下にドラッグして高さを変更できます/);
+assert.match(editor, /青いドラッグバー（↕）を上下に動かして高さを変更できます/);
 assert.doesNotMatch(editor, /data-comic-page="visible"/);
 assert.doesNotMatch(editor, /data-comic-property="image_locked"/);
 assert.match(editor, /target\.strokeRect\(\s*item\.rect\.x \+ inset/);
@@ -283,9 +299,8 @@ assert.match(editor, /event\.target\.closest\('\[data-comic-action="remove-image
 assert.match(editor, /selectedTrayImageId = addedId/);
 assert.match(converter, /applyButton\.textContent = tr\("追加処理中…", "Adding…"\)/);
 assert.match(html, /function insertSfx[\s\S]*insertionTargetAt[\s\S]*applyComicPanelTarget/);
-assert.match(html, /workspaces:\{\s*single:\{canvas:[\s\S]*comic:\{canvas:/);
+assert.match(html, /projectSchema\.build\(\{activeWorkspace,workspaces,comic:comicEditor\?\.serialize\(\)\|\|null\}\)/);
 assert.match(html, /for\(const name of \["single","comic"\]\)/);
-assert.match(html, /active_workspace:activeWorkspace/);
 assert.match(html, /id="comicInsertTargetStatus"/);
 assert.match(html, /function visibleCanvasDocumentRect\(\)/);
 assert.match(html, /function addTextLayer\(\)[\s\S]*bubbleIndex\+1/);
@@ -428,8 +443,7 @@ assert.match(html, /\.shape-card \{[^}]*aspect-ratio:1/);
 assert.match(html, /#allSfx \.sfx-library-section > \.palette \{[^}]*grid-template-columns:repeat\(auto-fill,minmax\(82px,1fr\)\)/);
 assert.match(html, /header \.comic-mode-toggle \{[^}]*align-items:center;[^}]*margin:0/);
 assert.match(html, /state\.selected===BACKGROUND_LAYER_ID[\s\S]*transformDetails"\)\.hidden=true[\s\S]*shadowEffects"\)\.hidden=true/);
-assert.match(html, /version:4/);
-assert.match(html, /canvas_background:active\.canvasBackground/);
+assert.match(html, /projectSchema\.build\(\{activeWorkspace,workspaces,comic:comicEditor\?\.serialize\(\)\|\|null\}\)/);
 assert.match(html, /SINGLE_IMAGE_ASSET_PREFIX="single-image:"/);
 assert.match(html, /createSingleImageLayer\(asset,\{role:"original"/);
 assert.match(html, /applyProcessedSingleImage\(blob,[^\n]+,"background-removal"\)/);
@@ -452,7 +466,6 @@ assert.match(html, /canvasBackgroundPatterns\?\.draw\(ctx,state\.canvasBackgroun
 assert.match(html, /id="canvasBackgroundType"/);
 assert.match(html, /id="canvasBackgroundPreset"/);
 assert.match(html, /id="canvasBackgroundFields"/);
-assert.match(html, /version:4/);
 assert.match(html, /state\.canvasBackground=normalizedCanvasBackground/);
 assert.match(desktopShell, /\["背景の種類", "Background Type"\]/);
 assert.match(desktopShell, /\["内蔵プリセット", "Built-in Preset"\]/);

@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
-import json
 import os
 import tempfile
 import uuid
@@ -13,14 +12,23 @@ from pathlib import Path, PurePosixPath
 
 from PIL import Image
 
+from .project_schema import (
+    PROJECT_ARCHIVE_VERSION,
+    PROJECT_FORMAT,
+    ProjectSchemaError,
+    json_bytes,
+    strict_json_loads,
+    validate_comic_state,
+    validate_layout,
+    validate_manifest,
+    validate_unique_logical_ids,
+)
+from .version import APP_VERSION
+
 MAX_PROJECT_BYTES = 512 * 1024 * 1024
 MAX_ENTRIES = 256
 MAX_IMAGE_BYTES = 96 * 1024 * 1024
 ALLOWED_IMAGE_FORMATS = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp"}
-
-
-def _json_bytes(value: dict) -> bytes:
-    return json.dumps(value, ensure_ascii=False, indent=2).encode("utf-8")
 
 
 def _safe_entries(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
@@ -40,15 +48,7 @@ def _safe_entries(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
     return entries
 
 
-def _decode_project_image(record: dict) -> tuple[str, bytes, dict]:
-    raw = str(record.get("data_url", ""))
-    if "," not in raw:
-        raise ValueError("Project image data is missing")
-    encoded = raw.split(",", 1)[1]
-    try:
-        data = base64.b64decode(encoded, validate=True)
-    except (ValueError, TypeError) as error:
-        raise ValueError("Project image data is invalid") from error
+def _inspect_project_image(data: bytes) -> tuple[str, int, int]:
     if not data or len(data) > MAX_IMAGE_BYTES:
         raise ValueError("Project image is empty or too large")
     try:
@@ -61,7 +61,24 @@ def _decode_project_image(record: dict) -> tuple[str, bytes, dict]:
         raise ValueError("Project image cannot be decoded") from error
     if image_format not in ALLOWED_IMAGE_FORMATS or width * height > 100_000_000:
         raise ValueError("Project image format or dimensions are unsupported")
-    image_id = str(record.get("id") or uuid.uuid4())
+    return image_format, width, height
+
+
+def _decode_project_image(record: dict) -> tuple[str, bytes, dict]:
+    if not isinstance(record, dict):
+        raise ValueError("Project image record is invalid")
+    raw = str(record.get("data_url", ""))
+    if "," not in raw:
+        raise ValueError("Project image data is missing")
+    encoded = raw.split(",", 1)[1]
+    try:
+        data = base64.b64decode(encoded, validate=True)
+    except (ValueError, TypeError) as error:
+        raise ValueError("Project image data is invalid") from error
+    image_format, width, height = _inspect_project_image(data)
+    image_id = str(record.get("id") or "").strip()
+    if not image_id:
+        raise ValueError("Project image id is missing")
     extension = ALLOWED_IMAGE_FORMATS[image_format]
     digest = hashlib.sha256(data).hexdigest()
     metadata = {
@@ -78,7 +95,7 @@ def _decode_project_image(record: dict) -> tuple[str, bytes, dict]:
     return metadata["path"], data, metadata
 
 
-_LAYOUT_IMAGE_KEYS = {"image_id", "imageId", "background_image_id", "backgroundImageId"}
+_LAYOUT_IMAGE_KEYS = {"image_id", "imageId", "background_image_id", "backgroundImageId", "image_asset_id"}
 
 
 def _referenced_image_ids(value, path: str = "layout") -> list[tuple[str, str]]:
@@ -102,16 +119,22 @@ class ProjectStore:
         target.parent.mkdir(parents=True, exist_ok=True)
         layout = payload.get("layout")
         if isinstance(layout, str):
-            layout = json.loads(layout or "{}")
+            layout = strict_json_loads(layout or "{}", label="layout")
         if not isinstance(layout, dict):
             raise ValueError("Project layout is invalid")
+        layout = validate_layout(layout, require_current=True)
         comic = layout.get("comic") if isinstance(layout.get("comic"), dict) else {}
+        validate_comic_state(comic)
+        source_images = payload.get("images")
+        if not isinstance(source_images, list):
+            raise ValueError("Project image list is invalid")
         images = []
         image_files = {}
-        for record in payload.get("images", []) if isinstance(payload.get("images"), list) else []:
+        for record in source_images:
             entry_path, data, metadata = _decode_project_image(record)
             images.append(metadata)
             image_files.setdefault(entry_path, data)
+        validate_unique_logical_ids(images)
         image_ids = {str(item["id"]) for item in images}
         missing = [(image_id, location) for image_id, location in _referenced_image_ids(layout) if image_id not in image_ids]
         if missing:
@@ -120,9 +143,11 @@ class ProjectStore:
             raise ValueError(f"Project image blob is missing: {details}{suffix}")
         now = datetime.now(timezone.utc).isoformat()
         manifest = {
-            "format": "speech-bubble-editor-project",
-            "version": 1,
-            "app_version": "0.1.1",
+            "format": PROJECT_FORMAT,
+            "version": PROJECT_ARCHIVE_VERSION,
+            "app_version": APP_VERSION,
+            "layout_schema_version": int(layout.get("version", 1)),
+            "comic_schema_version": int(comic.get("version", 1)) if comic else None,
             "created_at": str(payload.get("created_at") or now),
             "updated_at": now,
             "project_id": str(payload.get("project_id") or uuid.uuid4()),
@@ -135,19 +160,23 @@ class ProjectStore:
             "comic": "comic.json",
             "images": images,
         }
+        manifest = validate_manifest(manifest)
         handle, temporary = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
         os.close(handle)
         try:
             with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
-                archive.writestr("manifest.json", _json_bytes(manifest))
-                archive.writestr("layout.json", _json_bytes(layout))
-                archive.writestr("comic.json", _json_bytes(comic))
+                archive.writestr("manifest.json", json_bytes(manifest))
+                archive.writestr("layout.json", json_bytes(layout))
+                archive.writestr("comic.json", json_bytes(comic))
                 for entry_path, data in image_files.items():
                     archive.writestr(entry_path, data)
             with zipfile.ZipFile(temporary, "r") as archive:
                 _safe_entries(archive)
-                json.loads(archive.read("manifest.json"))
-                json.loads(archive.read("layout.json"))
+                written_manifest = validate_manifest(strict_json_loads(archive.read("manifest.json"), label="manifest"))
+                written_layout = validate_layout(strict_json_loads(archive.read("layout.json"), label="layout"), require_current=True)
+                written_comic = validate_comic_state(strict_json_loads(archive.read(written_manifest["comic"]), label="comic state"))
+                if written_layout.get("comic", {}) != written_comic:
+                    raise ProjectSchemaError("Project comic data is inconsistent")
             os.replace(temporary, target)
         finally:
             if os.path.exists(temporary):
@@ -159,16 +188,31 @@ class ProjectStore:
             raise ValueError("Project file is missing or too large")
         with zipfile.ZipFile(path, "r") as archive:
             _safe_entries(archive)
-            manifest = json.loads(archive.read("manifest.json"))
-            if manifest.get("format") != "speech-bubble-editor-project" or manifest.get("version") != 1:
-                raise ValueError("Unsupported project version")
-            layout = json.loads(archive.read(str(manifest.get("layout", "layout.json"))))
+            manifest = validate_manifest(strict_json_loads(archive.read("manifest.json"), label="manifest"))
+            layout = validate_layout(strict_json_loads(archive.read(manifest["layout"]), label="layout"))
+            archive_names = {entry.filename for entry in archive.infolist()}
+            comic_path = manifest.get("comic") or ("comic.json" if "comic.json" in archive_names else "")
+            if manifest.get("comic") and comic_path not in archive_names:
+                raise ValueError("Project comic data is missing")
+            if comic_path:
+                archived_comic = validate_comic_state(strict_json_loads(archive.read(comic_path), label="comic state"))
+                layout_comic = layout.get("comic")
+                if isinstance(layout_comic, dict):
+                    if layout_comic != archived_comic:
+                        raise ValueError("Project comic data is inconsistent")
+                elif archived_comic:
+                    layout["comic"] = archived_comic
             images = []
-            for record in manifest.get("images", []):
-                entry = str(record.get("path", ""))
+            for record in manifest["images"]:
+                entry = record["path"]
                 data = archive.read(entry)
                 if hashlib.sha256(data).hexdigest() != record.get("sha256"):
                     raise ValueError("Project image checksum does not match")
+                image_format, width, height = _inspect_project_image(data)
+                extension = ALLOWED_IMAGE_FORMATS[image_format]
+                actual_mime = f"image/{'jpeg' if extension == 'jpg' else extension}"
+                if record["mime"] != actual_mime or int(record["width"]) != width or int(record["height"]) != height:
+                    raise ValueError("Project image metadata does not match")
                 images.append(
                     {
                         "id": record["id"],
@@ -177,4 +221,10 @@ class ProjectStore:
                         "data_url": f"data:{record.get('mime', 'image/png')};base64,{base64.b64encode(data).decode('ascii')}",
                     }
                 )
+            image_ids = {record["id"] for record in manifest["images"]}
+            missing = [(image_id, location) for image_id, location in _referenced_image_ids(layout) if image_id not in image_ids]
+            if missing:
+                details = ", ".join(f"{image_id} ({location})" for image_id, location in missing[:8])
+                suffix = "" if len(missing) <= 8 else f" (+{len(missing) - 8} more)"
+                raise ValueError(f"Project image blob is missing: {details}{suffix}")
         return {"ok": True, "path": str(path), "manifest": manifest, "layout": layout, "images": images}

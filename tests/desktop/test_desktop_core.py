@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import json
 import tempfile
@@ -46,6 +47,39 @@ def png_data_url() -> str:
     Image.new("RGBA", (2, 2), (255, 0, 0, 255)).save(output, format="PNG")
     encoded = base64.b64encode(output.getvalue()).decode("ascii")
     return f"data:image/png;base64,{encoded}"
+
+
+def current_layout(
+    *,
+    active_workspace: str = "single",
+    single_elements: list[dict] | None = None,
+    comic_elements: list[dict] | None = None,
+    comic: dict | None = None,
+) -> dict:
+    single = {
+        "canvas": {"width": 1024, "height": 1024},
+        "background_visible": True,
+        "canvas_background": {"color": "#ffffff", "transparent": False},
+        "elements": list(single_elements or []),
+    }
+    comic_workspace = {
+        "canvas": {"width": 720, "height": 1600},
+        "background_visible": True,
+        "elements": list(comic_elements or []),
+    }
+    active = single if active_workspace == "single" else comic_workspace
+    result = {
+        "format": "speech-bubble-editor-layout",
+        "version": 4,
+        "active_workspace": active_workspace,
+        "canvas": dict(active["canvas"]),
+        "background_visible": active["background_visible"],
+        "elements": list(active["elements"]),
+        "workspaces": {"single": single, "comic": comic_workspace},
+    }
+    if comic is not None:
+        result["comic"] = comic
+    return result
 
 
 class DesktopCoreTest(unittest.TestCase):
@@ -271,10 +305,10 @@ class DesktopCoreTest(unittest.TestCase):
             project_path = root / "sample.sbeproj"
             payload = {
                 "title": "sample",
-                "layout": {
-                    "canvas": {"width": 720, "height": 1600},
-                    "comic": {"enabled": True, "template_id": "vertical_four"},
-                },
+                "layout": current_layout(
+                    active_workspace="comic",
+                    comic={"version": 1, "enabled": True, "template_id": "vertical_four"},
+                ),
                 "images": [
                     {
                         "id": "image-1",
@@ -333,9 +367,12 @@ class DesktopCoreTest(unittest.TestCase):
                     missing_path,
                     {
                         **payload,
-                        "layout": {
-                            "comic": {"panels": [{"id": "panel-2", "image_id": "missing-image"}]}
-                        },
+                        "layout": current_layout(
+                            comic_elements=[
+                                {"id": "panel-2-image", "type": "image", "image_asset_id": "missing-image"}
+                            ],
+                            comic={"version": 1, "enabled": True, "template_id": "vertical_four"},
+                        ),
                     },
                 )
             self.assertEqual(missing_path.read_bytes(), before_missing)
@@ -343,6 +380,137 @@ class DesktopCoreTest(unittest.TestCase):
             recent = RecentProjects(paths.recent)
             recent.touch(project_path)
             self.assertEqual(recent.load()[0]["path"], str(project_path.resolve()))
+
+    def test_project_schema_rejects_invalid_archives_without_replacing_valid_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            store = ProjectStore()
+            payload = {
+                "title": "schema",
+                "layout": current_layout(
+                    single_elements=[{"id": "single-image", "type": "image", "image_asset_id": "image-1"}],
+                    comic={"version": 1, "enabled": True, "template_id": "vertical_four"},
+                ),
+                "images": [{"id": "image-1", "name": "image.png", "mime": "image/png", "data_url": png_data_url()}],
+            }
+
+            def save_project(name: str) -> Path:
+                project_path = root / f"{name}.sbeproj"
+                store.save(project_path, payload)
+                return project_path
+
+            def rewrite_json(project_path: Path, mutate) -> None:
+                with zipfile.ZipFile(project_path, "r") as archive:
+                    entries = {entry.filename: archive.read(entry.filename) for entry in archive.infolist()}
+                mutate(entries)
+                with zipfile.ZipFile(project_path, "w") as archive:
+                    for name, data in entries.items():
+                        archive.writestr(name, data)
+
+            valid_path = save_project("valid")
+            self.assertEqual(store.load(valid_path)["manifest"]["version"], 1)
+
+            future_layout = save_project("future-layout")
+            rewrite_json(
+                future_layout,
+                lambda entries: entries.__setitem__(
+                    "layout.json",
+                    json.dumps({**json.loads(entries["layout.json"]), "version": 999}).encode("utf-8"),
+                ),
+            )
+            with self.assertRaises(ValueError):
+                store.load(future_layout)
+
+            future_comic = save_project("future-comic")
+            def mutate_future_comic(entries: dict[str, bytes]) -> None:
+                layout = json.loads(entries["layout.json"])
+                layout["comic"]["version"] = 999
+                entries["layout.json"] = json.dumps(layout).encode("utf-8")
+                comic = json.loads(entries["comic.json"])
+                comic["version"] = 999
+                entries["comic.json"] = json.dumps(comic).encode("utf-8")
+            rewrite_json(future_comic, mutate_future_comic)
+            with self.assertRaises(ValueError):
+                store.load(future_comic)
+
+            future_manifest = save_project("future-manifest")
+            rewrite_json(
+                future_manifest,
+                lambda entries: entries.__setitem__(
+                    "manifest.json",
+                    json.dumps({**json.loads(entries["manifest.json"]), "version": 2}).encode("utf-8"),
+                ),
+            )
+            with self.assertRaises(ValueError):
+                store.load(future_manifest)
+
+            nan_layout = current_layout()
+            nan_layout["workspaces"]["single"]["canvas"]["width"] = float("nan")
+            with self.assertRaises(ValueError):
+                store.save(root / "nan.sbeproj", {"layout": nan_layout, "images": []})
+            infinity_layout = current_layout()
+            infinity_layout["workspaces"]["single"]["canvas"]["width"] = float("inf")
+            with self.assertRaises(ValueError):
+                store.save(root / "infinity.sbeproj", {"layout": infinity_layout, "images": []})
+
+            duplicate_images = {**payload, "images": [payload["images"][0], {**payload["images"][0]}]}
+            with self.assertRaisesRegex(ValueError, "Duplicate project image id"):
+                store.save(root / "duplicate-id.sbeproj", duplicate_images)
+
+            missing_reference = save_project("missing-reference")
+            def mutate_missing_reference(entries: dict[str, bytes]) -> None:
+                layout = json.loads(entries["layout.json"])
+                layout["workspaces"]["single"]["elements"][0]["image_asset_id"] = "missing-image"
+                entries["layout.json"] = json.dumps(layout).encode("utf-8")
+            rewrite_json(missing_reference, mutate_missing_reference)
+            with self.assertRaisesRegex(ValueError, "Project image blob is missing"):
+                store.load(missing_reference)
+
+            mismatched_comic = save_project("mismatched-comic")
+            rewrite_json(
+                mismatched_comic,
+                lambda entries: entries.__setitem__("comic.json", json.dumps({"version": 1, "enabled": False}).encode("utf-8")),
+            )
+            with self.assertRaisesRegex(ValueError, "comic data is inconsistent"):
+                store.load(mismatched_comic)
+
+            checksum_mismatch = save_project("checksum-mismatch")
+            with zipfile.ZipFile(checksum_mismatch, "r") as archive:
+                image_entry = json.loads(archive.read("manifest.json"))["images"][0]["path"]
+            rewrite_json(checksum_mismatch, lambda entries: entries.__setitem__(image_entry, b"changed-image"))
+            with self.assertRaisesRegex(ValueError, "checksum"):
+                store.load(checksum_mismatch)
+
+            undecodable_image = save_project("undecodable-image")
+            def mutate_undecodable_image(entries: dict[str, bytes]) -> None:
+                manifest = json.loads(entries["manifest.json"])
+                image_path = manifest["images"][0]["path"]
+                data = b"not an image"
+                entries[image_path] = data
+                manifest["images"][0]["sha256"] = hashlib.sha256(data).hexdigest()
+                entries["manifest.json"] = json.dumps(manifest).encode("utf-8")
+            rewrite_json(undecodable_image, mutate_undecodable_image)
+            with self.assertRaisesRegex(ValueError, "cannot be decoded"):
+                store.load(undecodable_image)
+
+            unchanged = save_project("preserved-output")
+            before = unchanged.read_bytes()
+            with self.assertRaises(ValueError):
+                store.save(unchanged, {"layout": current_layout(), "images": [{"id": "missing", "name": "bad", "mime": "image/png", "data_url": "data:image/png;base64,not-base64"}]})
+            self.assertEqual(unchanged.read_bytes(), before)
+
+    def test_recovery_skips_future_layout_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = RecoveryStore(Path(temporary) / "recovery")
+            payload = {"layout": current_layout(), "images": [], "checkpoint": True}
+            store.save(payload, checkpoint=True)
+            record = json.loads(store.current.read_text(encoding="utf-8"))
+            record["layout"]["version"] = 999
+            store.current.write_text(json.dumps(record), encoding="utf-8")
+            restored = store.load()
+            self.assertTrue(restored["available"] if "available" in restored else restored["ok"])
+            self.assertEqual(restored["fallback_generation"], 1)
+            self.assertEqual(restored["layout"]["version"], 4)
 
     def test_unsafe_project_path_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

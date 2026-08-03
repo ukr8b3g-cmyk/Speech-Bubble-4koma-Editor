@@ -390,6 +390,45 @@ dialog.background-removal-dialog.maximized {
   color: #fff;
 }
 
+.background-removal-edit-tool-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.background-removal-edit-tool-pair button {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.background-removal-edit-tool-pair svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: 0 0 auto;
+}
+
+.background-removal-wand-icon .background-removal-wand-shaft {
+  stroke-width: 3.8;
+}
+
+.background-removal-edit-tool-pair button.active {
+  border-color: #5aa6fb;
+  background: #2d78cb;
+  color: #fff;
+}
+
+[data-br-wand-settings] .background-removal-control-row {
+  margin-top: 12px;
+}
+
 .background-removal-brush-size {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 68px;
@@ -527,6 +566,30 @@ dialog.background-removal-dialog[data-mask-mode="guided"] .background-removal-to
 dialog.background-removal-dialog[data-mask-mode="guided"] .background-removal-tool-pair [data-br-tool="erase"].active {
   border-color: #ef7b7b;
   background: #a83f3f;
+}
+
+.background-removal-tool-pair [data-br-tool="keep"] {
+  border-color: #467d59;
+  background: #243b2c;
+}
+
+.background-removal-tool-pair [data-br-tool="keep"].active {
+  border-color: #70cf91;
+  background: #2f8654;
+}
+
+.background-removal-tool-pair [data-br-tool="erase"] {
+  border-color: #8b5151;
+  background: #402929;
+}
+
+.background-removal-tool-pair [data-br-tool="erase"].active {
+  border-color: #ef7b7b;
+  background: #a83f3f;
+}
+
+.background-removal-viewport.background-removal-wand-active[data-br-viewport="result"] canvas {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke='%23000' stroke-linecap='round'%3E%3Cpath stroke-width='3.5' d='M12 12 27 27'/%3E%3Cpath stroke='%23fff' stroke-width='1.2' d='M12.8 12.8 15.4 15.4'/%3E%3Cpath stroke-width='1.5' d='m4.5 4.5 5 5m0-5-5 5m10-6v4m-2-2h4'/%3E%3C/g%3E%3C/svg%3E") 7 7, crosshair;
 }
 
 .background-removal-checks {

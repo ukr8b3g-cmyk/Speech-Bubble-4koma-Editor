@@ -440,7 +440,7 @@
               <label>下<input data-comic-page="margin_bottom" type="number" min="0" max="2048" step="1"></label>
               <label>左<input data-comic-page="margin_left" type="number" min="0" max="2048" step="1"></label>
             </div>
-            <p class="hint">${tr("漫画ページのロックを解除すると、青いコマ境界を上下にドラッグして高さを変更できます。", "Unlock the comic page, then drag the blue panel dividers to change panel heights.")}</p>
+            <p class="hint">${tr("漫画ページのロックを解除すると、コマ間の青いドラッグバー（↕）を上下に動かして高さを変更できます。", "Unlock the comic page, then drag the blue ↕ handle between panels to change their heights.")}</p>
           </section>
           <section data-comic-properties="panel" hidden>
             <button type="button" data-comic-action="select-page">ページ設定</button>
@@ -1914,6 +1914,56 @@
       return true;
     }
 
+    function roundedOverlayRect(target, x, y, width, height, radius) {
+      const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
+      target.beginPath();
+      target.moveTo(x + safeRadius, y);
+      target.lineTo(x + width - safeRadius, y);
+      target.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+      target.lineTo(x + width, y + height - safeRadius);
+      target.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+      target.lineTo(x + safeRadius, y + height);
+      target.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+      target.lineTo(x, y + safeRadius);
+      target.quadraticCurveTo(x, y, x + safeRadius, y);
+      target.closePath();
+    }
+
+    function drawDividerGuide(target, divider, hovered) {
+      const zoom = Math.max(0.25, canvasState().zoom || 1);
+      const centerX = divider.rect.x + divider.rect.w / 2;
+      const centerY = divider.rect.y + divider.rect.h / 2;
+      const active = drag?.type === "divider" && drag.divider?.id === divider.id;
+      const horizontal = divider.axis === "y";
+      const railThickness = 8 / zoom;
+      const pillWidth = (horizontal ? 42 : 22) / zoom;
+      const pillHeight = (horizontal ? 22 : 42) / zoom;
+      const pillX = centerX - pillWidth / 2;
+      const pillY = centerY - pillHeight / 2;
+
+      target.save();
+      target.fillStyle = active
+        ? "rgba(245,158,11,.94)"
+        : hovered
+          ? "rgba(84,201,255,.94)"
+          : "rgba(79,163,255,.72)";
+      if (horizontal) {
+        target.fillRect(divider.rect.x, centerY - railThickness / 2, divider.rect.w, railThickness);
+      } else {
+        target.fillRect(centerX - railThickness / 2, divider.rect.y, railThickness, divider.rect.h);
+      }
+
+      target.fillStyle = active ? "#b45309" : hovered ? "#1976d2" : "#245fa8";
+      roundedOverlayRect(target, pillX, pillY, pillWidth, pillHeight, 7 / zoom);
+      target.fill();
+      target.fillStyle = "rgba(255,255,255,.96)";
+      target.font = `700 ${12 / zoom}px system-ui, sans-serif`;
+      target.textAlign = "center";
+      target.textBaseline = "middle";
+      target.fillText(horizontal ? "↕" : "↔", centerX, centerY + .5 / zoom);
+      target.restore();
+    }
+
     function drawOverlay(target) {
       if (!comic.enabled) return;
       const computed = layout();
@@ -1956,20 +2006,8 @@
         }
       }
       for (const divider of comic.page.structure_locked ? [] : computed.dividers) {
-        const centerX = divider.rect.x + divider.rect.w / 2;
-        const centerY = divider.rect.y + divider.rect.h / 2;
         const hovered = hoverTarget?.type === "divider" && hoverTarget.id === divider.id;
-        target.strokeStyle = hovered ? "#4fa3ff" : "rgba(79,163,255,.8)";
-        target.lineWidth = hovered ? 3 : 2;
-        target.beginPath();
-        if (divider.axis === "x") {
-          target.moveTo(centerX, divider.rect.y);
-          target.lineTo(centerX, divider.rect.y + divider.rect.h);
-        } else {
-          target.moveTo(divider.rect.x, centerY);
-          target.lineTo(divider.rect.x + divider.rect.w, centerY);
-        }
-        target.stroke();
+        drawDividerGuide(target, divider, hovered);
       }
       if (!comic.page.structure_locked && selectedTarget === "page" && !options.hasLayerSelection?.()) {
         const handle = pageResizeHandleRect();

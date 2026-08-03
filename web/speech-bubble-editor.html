@@ -7,12 +7,14 @@
   <link rel="icon" type="image/x-icon" href="./assets/speech-bubble-4koma.ico">
   <link rel="stylesheet" href="./comic-editor.css?v=0.5.0-desktop-6">
   <link rel="stylesheet" href="./comic-converter.css?v=0.1.4-multi-image-1">
-  <link rel="stylesheet" href="./background-removal.css?v=0.1.3-ui2">
+  <link rel="stylesheet" href="./background-removal.css?v=0.1.3-ui2-magic-wand-1">
   <link rel="stylesheet" href="./desktop/desktop.css?v=0.5.0-desktop-5">
+  <script src="./project-schema.js?v=project-schema-1"></script>
   <script src="./comic-panels.js?v=0.1.4-panel-patterns-1"></script>
   <script src="./comic-editor.js?v=0.1.4-panel-patterns-1"></script>
   <script src="./comic-converter.js?v=0.1.4-multi-image-1"></script>
-  <script src="./background-removal.js?v=0.1.3-ui2"></script>
+  <script src="./background-removal-selection.js?v=magic-wand-1"></script>
+  <script src="./background-removal.js?v=0.1.3-ui2-magic-wand-1"></script>
   <script src="./canvas-background-patterns.js?v=0.1.4-patterns-1"></script>
   <script src="./desktop/desktop-shell.js?v=0.1.4-multi-image-1"></script>
   <script>
@@ -812,6 +814,7 @@
     const BACKGROUND_LAYER_ID="__single_background_layer__";
     function normalizedBackgroundImage(value={}){return{attached:value.attached!==false,locked:value.locked!==false,scale:Math.max(.1,Math.min(8,Number(value.scale)||1)),offsetX:Number(value.offsetX)||0,offsetY:Number(value.offsetY)||0};}
     const canvasBackgroundPatterns=window.SpeechBubbleCanvasBackgroundPatterns;
+    const projectSchema=window.SpeechBubbleProjectSchema;
     function normalizedCanvasBackground(value={}){return canvasBackgroundPatterns?.normalize(value)||{color:"#ffffff",transparent:value.transparent===true};}
     const SINGLE_IMAGE_ASSET_PREFIX="single-image:";
     const singleImageAssets=new Map();
@@ -1733,12 +1736,19 @@
     function defaultFrame(presetId="frame-border") { const preset=FRAME_BY_ID.get(presetId)||FRAME_PRESETS[0],border=Math.max(0,finiteOr(preset.border_width,36)),item={id:id(),type:"frame",frame_preset_id:preset.id,frame_label:preset.label,frame_kind:preset.frame_kind||"border",x:0,y:0,w:state.width,h:state.height,rotation:0,opacity:1,fit_to_canvas:true,pin_to_top:preset.pin_to_top!==false,frame_scale:finiteOr(preset.default_scale,100),frame_inset:finiteOr(preset.default_inset,0),border_color:preset.border_color||"#ffffff",border_width_x:border,border_width_y:border,inner_stroke_color:preset.inner_stroke_color||"#111111",inner_stroke_width:preset.inner_stroke_width||0,asset_src:preset.asset_src||"",asset_src_2x:preset.asset_src_2x||"",frame_mode:preset.frame_mode||"border",frame_slice:preset.frame_slice?{...preset.frame_slice}:null,attached_decorations:(preset.attached_decorations||[]).map(decoration=>decoration.id),fit_mode:preset.fit_mode||"cover",shadow_enabled:false,shadow_color:"#000000",shadow_opacity:.55,shadow_x:8,shadow_y:8,shadow_blur:12,glow_enabled:false,glow_color:"#ffffff",glow_opacity:.75,glow_blur:16,glow_spread:0,locked:false,visible:true};syncFrameToCanvas(item);return item;}
     const LAYOUT_ELEMENT_TYPES=new Set(["text","sfx","sfx_stamp","bubble","shape","frame","emphasis_lines","image"]);
     function normalizedLayoutPathPoints(points){if(!Array.isArray(points))return null;const clean=points.slice(0,256).filter(point=>point&&typeof point==="object"&&!Array.isArray(point)&&Number.isFinite(Number(point.x))&&Number.isFinite(Number(point.y))).map(point=>{const x=finiteOr(point.x,0),y=finiteOr(point.y,0);return{x,y,in_x:finiteOr(point.in_x,x),in_y:finiteOr(point.in_y,y),out_x:finiteOr(point.out_x,x),out_y:finiteOr(point.out_y,y)};});return clean.length>=3?clean:null;}
-    function loadState(rawOverride=null) {
+    function loadState(rawOverride=null,options={}) {
       let hasElementList = false,comicLayout=null,workspaceLayouts=null,requestedWorkspace="single";
-      state.elements=[];state.selected=null;state.selection=[];state.vectorEditId=null;state.vectorAnchorIndex=null;state.vectorAddMode=false;state.undo=[];state.redo=[];
+      let data;
       try {
         const raw = rawOverride===null?localStorage.getItem(jsonKey):rawOverride;
-        const data = raw ? JSON.parse(raw) : {};
+        data = projectSchema.normalize(raw||{});
+      } catch(error) {
+        if(options.strict===true)throw error;
+        console.warn("Speech Bubble local layout restore failed",error);
+        data=projectSchema.normalize({});
+      }
+      state.elements=[];state.selected=null;state.selection=[];state.vectorEditId=null;state.vectorAnchorIndex=null;state.vectorAddMode=false;state.undo=[];state.redo=[];
+      {
         comicLayout=data.comic&&typeof data.comic==="object"?data.comic:null;
         workspaceLayouts=data.workspaces&&typeof data.workspaces==="object"?data.workspaces:null;
         requestedWorkspace=data.active_workspace==="comic"||comicLayout?.enabled===true?"comic":"single";
@@ -1753,7 +1763,7 @@
         state.backgroundImage = normalizedBackgroundImage(initialLayout.background_image||{attached:imageLoaded});
         hasElementList = Array.isArray(initialLayout.elements);
         state.elements = hasElementList ? initialLayout.elements.filter(item=>item&&typeof item==="object"&&!Array.isArray(item)&&LAYOUT_ELEMENT_TYPES.has(String(item.type||""))) : [];
-      } catch { state.elements = []; }
+      }
       const normalizeLoadedElement=(item) => {
         if (!item.id) item.id = id();
         if (item.visible === undefined) item.visible = true;
@@ -2341,21 +2351,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     function currentLayoutJson(){
       flushPendingEmphasisRegeneration();
       captureActiveWorkspace();
-      const active=workspaces[activeWorkspace];
-      const payload={
-        version:4,
-        active_workspace:activeWorkspace,
-        canvas:{width:active.width,height:active.height},
-        background_visible:active.backgroundVisible,
-        canvas_background:active.canvasBackground,
-        background_image:active.backgroundImage,
-        elements:active.elements,
-        workspaces:{
-          single:{canvas:{width:workspaces.single.width,height:workspaces.single.height},background_visible:workspaces.single.backgroundVisible,canvas_background:workspaces.single.canvasBackground,background_image:workspaces.single.backgroundImage,elements:workspaces.single.elements,view:workspaces.single.view||null},
-          comic:{canvas:{width:workspaces.comic.width,height:workspaces.comic.height},background_visible:workspaces.comic.backgroundVisible,elements:workspaces.comic.elements,view:workspaces.comic.view||null},
-        },
-      },comic=comicEditor?.serialize();
-      if(comic)payload.comic=comic;
+      const payload=projectSchema.build({activeWorkspace,workspaces,comic:comicEditor?.serialize()||null});
       return JSON.stringify(payload,null,2);
     }
     async function hashImageBlob(blob){
@@ -3494,10 +3490,10 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       return{title:sourceName||"speech-bubble-project",project_path:currentProjectPath,layout:JSON.parse(currentLayoutJson()),images};
     }
     async function loadDesktopPayload(payload,{recovery=false}={}){
-      const nextId=`standalone:${createUuid()}`;setStandaloneContext(nextId);clearDocumentCanvas();sourceName=String(payload?.manifest?.title||"speech-bubble-project");currentProjectPath=String(payload?.path||payload?.manifest?.project_path||"");dirtyTrackingEnabled=false;
-      const records=Array.isArray(payload?.images)?payload.images:[],singleRecords=records.filter(record=>record?.id===DESKTOP_SINGLE_BACKGROUND_ID||String(record?.id||"").startsWith(SINGLE_IMAGE_ASSET_PREFIX)),savedSingleElements=payload?.layout?.workspaces?.single?.elements||payload?.layout?.elements||[],preferredId=savedSingleElements.find(item=>item?.type==="image"&&item.source_role==="original")?.image_asset_id||savedSingleElements.find(item=>item?.type==="image")?.image_asset_id||singleRecords[0]?.id;
-      for(const record of singleRecords){if(!record?.data_url)continue;const blob=await fetch(record.data_url).then(response=>response.blob()),assetId=record.id===DESKTOP_SINGLE_BACKGROUND_ID?`${SINGLE_IMAGE_ASSET_PREFIX}legacy-original`:record.id;if(record.id===preferredId||(!imageLoaded&&record===singleRecords[0]))await displayImageBlob(blob,{name:record.name||sourceName,assetId});else await registerSingleImageAsset(blob,record.name||"Image",assetId);}
-      loadState(JSON.stringify(payload?.layout||{}));if(activeWorkspace==="single")ensurePrimarySingleImageLayer();await comicEditor?.importProjectImages?.(records.filter(record=>record?.id!==DESKTOP_SINGLE_BACKGROUND_ID&&!String(record?.id||"").startsWith(SINGLE_IMAGE_ASSET_PREFIX)));
+      const prepared=projectSchema.preflightPayload(payload),records=await Promise.all(prepared.images.map(async record=>{const response=await fetch(record.data_url);if(!response.ok)throw new Error(`Image load failed: ${record.id}`);const blob=await response.blob();if(!String(blob.type||"").startsWith("image/"))throw new Error(`Image data is invalid: ${record.id}`);const url=URL.createObjectURL(blob);try{await loadSingleImageElement(url);}finally{URL.revokeObjectURL(url);}return{...record,blob};})),singleRecords=records.filter(record=>record.id===DESKTOP_SINGLE_BACKGROUND_ID||record.id.startsWith(SINGLE_IMAGE_ASSET_PREFIX)),savedSingleElements=prepared.layout.workspaces.single.elements||prepared.layout.elements||[],preferredId=savedSingleElements.find(item=>item?.type==="image"&&item.source_role==="original")?.image_asset_id||savedSingleElements.find(item=>item?.type==="image")?.image_asset_id||singleRecords[0]?.id;
+      const nextId=`standalone:${createUuid()}`;setStandaloneContext(nextId);clearDocumentCanvas();sourceName=String(prepared.manifest?.title||"speech-bubble-project");currentProjectPath=String(prepared.path||prepared.manifest?.project_path||"");dirtyTrackingEnabled=false;
+      for(const record of singleRecords){const assetId=record.id===DESKTOP_SINGLE_BACKGROUND_ID?`${SINGLE_IMAGE_ASSET_PREFIX}legacy-original`:record.id;if(record.id===preferredId||(!imageLoaded&&record===singleRecords[0]))await displayImageBlob(record.blob,{name:record.name||sourceName,assetId});else await registerSingleImageAsset(record.blob,record.name||"Image",assetId);}
+      loadState(JSON.stringify(prepared.layout),{strict:true});if(activeWorkspace==="single")ensurePrimarySingleImageLayer();await comicEditor?.importProjectImages?.(records.filter(record=>record.id!==DESKTOP_SINGLE_BACKGROUND_ID&&!record.id.startsWith(SINGLE_IMAGE_ASSET_PREFIX)).map(({blob,...record})=>record));
       lastSavedLayout=currentLayoutJson();hasExplicitSavedLayout=!recovery;layoutDirty=recovery;state.undo=[];state.redo=[];dirtyTrackingEnabled=true;
       restoreWorkspaceView(workspaces[activeWorkspace],false);syncProperties();requestRender({canvas:true,layers:true,preview:false});updateActionState();
     }
