@@ -246,7 +246,7 @@
         canvas_ratio_locked: false,
         heading_gap: 30,
         visible: true,
-        structure_locked: true,
+        structure_locked: false,
         frame_style: "white",
       },
       headings: createHeadings("vertical_four", Math.max(1, Math.round(finite(width, 720))), makeId),
@@ -314,7 +314,7 @@
         canvas_ratio_locked: page.canvas_ratio_locked !== false,
         heading_gap: clamp(finite(page.heading_gap, fallback.page.heading_gap), 0, MAX_HEADING_GAP),
         visible: page.visible !== false,
-        structure_locked: page.structure_locked !== false,
+        structure_locked: page.structure_locked === true,
         frame_style: page.frame_style === "black" ? "black" : "white",
       },
       headings: (Array.isArray(raw.headings) && raw.headings.length

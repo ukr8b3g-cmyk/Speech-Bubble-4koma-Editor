@@ -450,6 +450,7 @@ dialog.background-removal-dialog.maximized {
 }
 
 .background-removal-brush-size input[type="number"],
+.background-removal-edge-number input[type="number"],
 .background-removal-control-row input[type="number"] {
   min-width: 0;
   padding: 4px 6px;
@@ -493,6 +494,63 @@ dialog.background-removal-dialog.maximized {
   display: grid;
   gap: 9px;
   margin-bottom: 14px;
+}
+
+.background-removal-edge-correction {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.background-removal-edge-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(108px, auto);
+  gap: 7px;
+  align-items: end;
+}
+
+.background-removal-edge-row > label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: #c8d2df;
+  font-size: 12px;
+}
+
+.background-removal-edge-number {
+  display: grid;
+  grid-template-columns: minmax(58px, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+}
+
+.background-removal-edge-number input {
+  min-width: 0;
+  text-align: right;
+}
+
+.background-removal-edge-matte-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.background-removal-edge-state {
+  min-height: 16px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.background-removal-edge-state[data-state="applied"] {
+  color: #75d69b;
+}
+
+dialog.background-removal-dialog .background-removal-edge-correction button.active {
+  border-color: #70b7ff;
+  background: #245c8b;
+  color: #fff;
 }
 
 .background-removal-mask-mode {
@@ -713,6 +771,14 @@ dialog.background-removal-dialog[data-mask-mode="guided"] .background-removal-to
 :root[data-theme="light"] .background-removal-footer,
 :root[data-theme="light"] .background-removal-tools {
   background: #f7f8fa;
+}
+
+:root[data-theme="light"] .background-removal-edge-row > label {
+  color: #344150;
+}
+
+:root[data-theme="light"] .background-removal-edge-state[data-state="applied"] {
+  color: #237243;
 }
 
 @media (max-width: 1050px) {

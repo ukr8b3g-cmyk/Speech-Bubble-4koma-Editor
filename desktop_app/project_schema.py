@@ -9,8 +9,9 @@ from pathlib import PurePosixPath
 PROJECT_FORMAT = "speech-bubble-editor-project"
 PROJECT_ARCHIVE_VERSION = 1
 LAYOUT_FORMAT = "speech-bubble-editor-layout"
-LAYOUT_SCHEMA_VERSION = 4
+LAYOUT_SCHEMA_VERSION = 5
 COMIC_SCHEMA_VERSION = 1
+GENERAL_COMIC_SCHEMA_VERSION = 1
 RECOVERY_FORMAT = "speech-bubble-editor-recovery"
 RECOVERY_VERSION = 1
 MAX_LAYOUT_BYTES = 32 * 1024 * 1024
@@ -118,6 +119,21 @@ def validate_comic_state(comic: object) -> dict:
     return result
 
 
+def validate_general_comic_state(comic: object) -> dict:
+    if comic is None:
+        return {}
+    if not isinstance(comic, dict):
+        raise ProjectSchemaError("General comic state must be an object")
+    result = _clone_object(comic, label="general comic state")
+    version = result.get("version", GENERAL_COMIC_SCHEMA_VERSION)
+    _positive_integer(
+        version,
+        label="General comic state version",
+        maximum=GENERAL_COMIC_SCHEMA_VERSION,
+    )
+    return result
+
+
 def validate_layout(layout: dict, *, require_current: bool = False) -> dict:
     if not isinstance(layout, dict):
         raise ProjectSchemaError("Project layout is invalid")
@@ -137,12 +153,12 @@ def validate_layout(layout: dict, *, require_current: bool = False) -> dict:
         if result.get("format") not in {None, LAYOUT_FORMAT}:
             raise ProjectSchemaError("Project layout format is invalid")
         active_workspace = result.get("active_workspace")
-        if active_workspace not in {"single", "comic"}:
+        if active_workspace not in {"single", "comic", "comic_layout"}:
             raise ProjectSchemaError("Project active workspace is invalid")
         workspaces = result.get("workspaces")
         if not isinstance(workspaces, dict):
             raise ProjectSchemaError("Project workspaces are invalid")
-        for name in ("single", "comic"):
+        for name in ("single", "comic", "comic_layout"):
             workspace = workspaces.get(name)
             if not isinstance(workspace, dict):
                 raise ProjectSchemaError(f"Project workspace is missing: {name}")
@@ -155,6 +171,8 @@ def validate_layout(layout: dict, *, require_current: bool = False) -> dict:
             _validate_elements(result.get("elements"), label="layout")
     if "comic" in result and result.get("comic") is not None:
         validate_comic_state(result["comic"])
+    if "general_comic" in result and result.get("general_comic") is not None:
+        validate_general_comic_state(result["general_comic"])
     return result
 
 

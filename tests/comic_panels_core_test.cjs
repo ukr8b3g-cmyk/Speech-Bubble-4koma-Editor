@@ -65,6 +65,11 @@ const restoredLayout = core.computeLayout(collapsible, page, 16);
 assert.deepEqual(restoredLayout.panels.map((panel) => panel.id), allCollapsiblePanels.map((panel) => panel.id));
 assert.equal(restoredLayout.dividers.length, 3);
 
+const collapsedFirst = core.createTemplate("vertical_four", makeId);
+core.collectPanels(collapsedFirst)[0].collapsed = true;
+const collapsedFirstLayout = core.computeLayout(collapsedFirst, page, 16);
+assert.equal(collapsedFirstLayout.panels[0].rect.y, page.y, "collapsing the first panel must not add space above the reflowed panels");
+
 nextId = 0;
 let tree = core.panelNode(makeId);
 const originalId = tree.id;
@@ -123,7 +128,7 @@ assert.equal(malformed.page.border_width, 0);
 assert.equal(malformed.tree.axis, "x");
 assert.equal(malformed.page.margin, 80);
 assert.equal(malformed.page.visible, true);
-  assert.equal(malformed.page.structure_locked, true);
+  assert.equal(malformed.page.structure_locked, false);
   assert.equal(malformed.page.frame_style, "white");
   assert.equal(malformed.headings.length, 1);
 assert.equal(malformed.headings[0].background, "#ffffff");
@@ -158,7 +163,7 @@ assert.equal(standard.headings[0].width, 563);
 assert.equal(standard.headings[0].height, 91);
 assert.equal(standard.headings[0].border_width, 5);
 assert.equal(standard.headings[0].follow_panel_width, true);
-assert.equal(standard.page.structure_locked, true);
+assert.equal(standard.page.structure_locked, false);
 
 const legacy = core.normalizeState(
   {

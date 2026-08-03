@@ -6,14 +6,17 @@
   "use strict";
 
   const FORMAT = "speech-bubble-editor-layout";
-  const CURRENT_LAYOUT_VERSION = 4;
+  const CURRENT_LAYOUT_VERSION = 5;
   const CURRENT_COMIC_VERSION = 1;
-  const WORKSPACE_NAMES = Object.freeze(["single", "comic"]);
+  const CURRENT_GENERAL_COMIC_VERSION = 1;
+  const WORKSPACE_NAMES = Object.freeze(["single", "comic", "comic_layout"]);
   const DEFAULT_CANVASES = Object.freeze({
     single: Object.freeze({ width: 1024, height: 1024 }),
     comic: Object.freeze({ width: 720, height: 2200 }),
+    comic_layout: Object.freeze({ width: 2480, height: 3508 }),
   });
   const SINGLE_IMAGE_PREFIX = "single-image:";
+  const GENERAL_COMIC_IMAGE_PREFIX = "general-comic-image:";
   const LEGACY_SINGLE_IMAGE_ID = "__single_background__";
 
   class ProjectSchemaError extends Error {
@@ -105,8 +108,19 @@
     return comic;
   }
 
-  function requestedWorkspace(value, comic) {
-    if (value == null || value === "") return comic?.enabled === true ? "comic" : "single";
+  function generalComicVersion(value) {
+    if (value == null) return null;
+    if (!isObject(value)) fail("INVALID_LAYOUT", "General comic state must be an object");
+    const version = value.version == null ? CURRENT_GENERAL_COMIC_VERSION : Number(value.version);
+    if (!Number.isInteger(version) || version < 1) fail("UNSUPPORTED_GENERAL_COMIC_VERSION", "Invalid general comic state version");
+    if (version > CURRENT_GENERAL_COMIC_VERSION) fail("UNSUPPORTED_GENERAL_COMIC_VERSION", `Unsupported general comic state version: ${version}`);
+    const state = clone(value);
+    state.version = version;
+    return state;
+  }
+
+  function requestedWorkspace(value, comic, generalComic = null) {
+    if (value == null || value === "") return generalComic?.enabled === true ? "comic_layout" : comic?.enabled === true ? "comic" : "single";
     if (!WORKSPACE_NAMES.includes(value)) fail("INVALID_WORKSPACE", `Invalid active workspace: ${value}`);
     return value;
   }
@@ -139,7 +153,7 @@
       fail("UNSUPPORTED_LAYOUT_VERSION", `Layout version ${CURRENT_LAYOUT_VERSION} is required for saving`);
     }
     if (!isObject(layout.workspaces)) fail("INVALID_WORKSPACE", "Project workspaces are required");
-    const activeWorkspace = requestedWorkspace(layout.active_workspace, layout.comic);
+    const activeWorkspace = requestedWorkspace(layout.active_workspace, layout.comic, layout.general_comic);
     for (const name of WORKSPACE_NAMES) {
       const workspace = layout.workspaces[name];
       if (!isObject(workspace)) fail("INVALID_WORKSPACE", `Missing workspace: ${name}`);
@@ -147,6 +161,7 @@
       uniqueElementIds(workspace.elements, name);
     }
     comicVersion(layout.comic);
+    generalComicVersion(layout.general_comic);
     const result = clone(layout);
     result.format = typeof result.format === "string" ? result.format : FORMAT;
     result.version = CURRENT_LAYOUT_VERSION;
@@ -158,7 +173,8 @@
     const source = parse(input);
     const sourceVersion = requestedLayoutVersion(source.version);
     const comic = comicVersion(source.comic);
-    const activeWorkspace = requestedWorkspace(source.active_workspace, comic);
+    const generalComic = generalComicVersion(source.general_comic);
+    const activeWorkspace = requestedWorkspace(source.active_workspace, comic, generalComic);
     const hasWorkspaces = isObject(source.workspaces);
     const result = clone(source);
     result.format = typeof source.format === "string" ? source.format : FORMAT;
@@ -192,6 +208,8 @@
     result.elements = clone(active.elements);
     if (comic) result.comic = comic;
     else delete result.comic;
+    if (generalComic) result.general_comic = generalComic;
+    else result.general_comic = null;
     return validateNormalized(result, { requireCurrent: true });
   }
 
@@ -228,11 +246,12 @@
 
   function build(runtime) {
     if (!isObject(runtime)) fail("INVALID_LAYOUT", "Runtime layout must be an object");
-    const activeWorkspace = requestedWorkspace(runtime.activeWorkspace, runtime.comic);
+    const activeWorkspace = requestedWorkspace(runtime.activeWorkspace, runtime.comic, runtime.generalComic);
     if (!isObject(runtime.workspaces)) fail("INVALID_WORKSPACE", "Runtime workspaces are required");
     const workspaces = {
       single: runtimeWorkspace(runtime.workspaces.single, "single"),
       comic: runtimeWorkspace(runtime.workspaces.comic, "comic"),
+      comic_layout: runtimeWorkspace(runtime.workspaces.comic_layout, "comic_layout"),
     };
     const active = workspaces[activeWorkspace];
     const payload = {
@@ -247,6 +266,7 @@
       workspaces,
     };
     if (runtime.comic) payload.comic = comicVersion(runtime.comic);
+    payload.general_comic = runtime.generalComic ? generalComicVersion(runtime.generalComic) : null;
     return validateNormalized(payload, { requireCurrent: true });
   }
 
@@ -278,14 +298,16 @@
       return normalized;
     });
     const singleRecords = images.filter((record) => record.id === LEGACY_SINGLE_IMAGE_ID || record.id.startsWith(SINGLE_IMAGE_PREFIX));
-    const comicRecords = images.filter((record) => !singleRecords.includes(record));
-    return { ...source, layout, images, singleRecords, comicRecords };
+    const generalRecords = images.filter((record) => record.id.startsWith(GENERAL_COMIC_IMAGE_PREFIX));
+    const comicRecords = images.filter((record) => !singleRecords.includes(record) && !generalRecords.includes(record));
+    return { ...source, layout, images, singleRecords, comicRecords, generalRecords };
   }
 
   return {
     FORMAT,
     CURRENT_LAYOUT_VERSION,
     CURRENT_COMIC_VERSION,
+    CURRENT_GENERAL_COMIC_VERSION,
     WORKSPACE_NAMES,
     ProjectSchemaError,
     parse,

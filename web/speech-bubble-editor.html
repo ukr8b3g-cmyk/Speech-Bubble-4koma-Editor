@@ -5,16 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Speech Bubble 4koma Editor</title>
   <link rel="icon" type="image/x-icon" href="./assets/speech-bubble-4koma.ico">
-  <link rel="stylesheet" href="./comic-editor.css?v=0.5.0-desktop-6">
+  <link rel="stylesheet" href="./comic-editor.css?v=0.5.0-desktop-7">
+  <link rel="stylesheet" href="./general-comic-editor.css?v=general-comic-2">
   <link rel="stylesheet" href="./comic-converter.css?v=0.1.4-multi-image-1">
-  <link rel="stylesheet" href="./background-removal.css?v=0.1.3-ui2-magic-wand-1">
+  <link rel="stylesheet" href="./background-removal.css?v=0.1.4-edge-matting-1">
   <link rel="stylesheet" href="./desktop/desktop.css?v=0.5.0-desktop-5">
   <script src="./project-schema.js?v=project-schema-1"></script>
+  <script src="./editor-mode-controller.js?v=general-comic-1"></script>
+  <script src="./general-comic-core.js?v=general-comic-2"></script>
   <script src="./comic-panels.js?v=0.1.4-panel-patterns-1"></script>
-  <script src="./comic-editor.js?v=0.1.4-panel-patterns-1"></script>
+  <script src="./comic-editor.js?v=0.1.4-panel-patterns-2"></script>
+  <script src="./general-comic-editor.js?v=general-comic-2"></script>
   <script src="./comic-converter.js?v=0.1.4-multi-image-1"></script>
   <script src="./background-removal-selection.js?v=magic-wand-1"></script>
-  <script src="./background-removal.js?v=0.1.3-ui2-magic-wand-1"></script>
+  <script src="./background-removal-edge.js?v=0.1.4-edge-matting-1"></script>
+  <script src="./background-removal.js?v=0.1.4-edge-matting-1"></script>
   <script src="./canvas-background-patterns.js?v=0.1.4-patterns-1"></script>
   <script src="./desktop/desktop-shell.js?v=0.1.4-multi-image-1"></script>
   <script>
@@ -71,7 +76,8 @@
     .range-output-row output { text-align:right; color:var(--muted); }
     [data-comic-mode="single"] { background:#2563eb; color:#fff; }
     [data-comic-mode="comic"] { background:#15803d; color:#fff; }
-    [data-comic-mode][aria-pressed="true"] { border-color:#fff; box-shadow:0 0 0 1px #fff7 inset; }
+    [data-editor-mode="comic_layout"] { background:#8b4513; color:#fff; }
+    [data-editor-mode][aria-pressed="true"] { border-color:#fff; box-shadow:0 0 0 1px #fff7 inset; }
     header .segmented button { height:28px; min-height:28px; }
     header .comic-mode-toggle { display:flex; align-items:center; gap:3px; margin:0; }
     header .comic-mode-toggle button,#openEditorSettings { height:28px; min-height:28px; line-height:1.2; }
@@ -609,7 +615,7 @@
           </details>
         </div>
         <div id="emphasisProps" hidden>
-          <label id="emphasisComicScopeRow" hidden>4コマ内の適用先
+          <label id="emphasisComicScopeRow" hidden><span id="emphasisComicScopeLabel">4コマ内の適用先</span>
             <select id="emphasisComicTarget" data-comic-target="emphasis"><option value="page">4コマ全体</option></select>
           </label>
           <div class="emphasis-top-fields">
@@ -646,7 +652,7 @@
             </div>
           </details>
         </div>
-        <label id="comicLayerScopeRow" hidden>4コマ内の配置
+        <label id="comicLayerScopeRow" hidden><span id="comicLayerScopeLabel">4コマ内の配置</span>
           <select id="assetComicTarget" data-comic-target="asset"><option value="free">ページ上（枠外へ出せる）</option></select>
         </label>
         <details id="transformDetails"><summary>Transform</summary>
@@ -833,13 +839,14 @@
     const WORKSPACE_VIEW_KEY="speech_bubble:workspace_views:v1";
     function storedWorkspaceViews(){try{const value=JSON.parse(localStorage.getItem(WORKSPACE_VIEW_KEY)||"{}");return value&&typeof value==="object"?value:{};}catch{return{};}}
     const storedViews=storedWorkspaceViews();
-    const firstApplicationView=!storedViews.single&&!storedViews.comic;
+    const firstApplicationView=!storedViews.single&&!storedViews.comic&&!storedViews.comic_layout;
     function normalizedWorkspaceView(value){const zoom=Number(value?.zoom),panX=Number(value?.panX),panY=Number(value?.panY);return Number.isFinite(zoom)&&Number.isFinite(panX)&&Number.isFinite(panY)?{zoom:Math.max(.1,Math.min(4,zoom)),panX,panY}:null;}
-    function saveWorkspaceViews(){try{localStorage.setItem(WORKSPACE_VIEW_KEY,JSON.stringify({single:workspaces.single.view||null,comic:workspaces.comic.view||null}));}catch{}}
+    function saveWorkspaceViews(){try{localStorage.setItem(WORKSPACE_VIEW_KEY,JSON.stringify({single:workspaces.single.view||null,comic:workspaces.comic.view||null,comic_layout:workspaces.comic_layout.view||null}));}catch{}}
     let activeWorkspace="single";
     const workspaces={
       single:{width:1024,height:1024,backgroundVisible:true,canvasBackground:normalizedCanvasBackground(),backgroundImage:normalizedBackgroundImage({attached:false}),elements:[],view:normalizedWorkspaceView(storedViews.single)},
       comic:{width:720,height:2200,backgroundVisible:true,elements:[],view:normalizedWorkspaceView(storedViews.comic)},
+      comic_layout:{width:2480,height:3508,backgroundVisible:true,canvasBackground:normalizedCanvasBackground({color:"#ffffff",transparent:false}),backgroundImage:normalizedBackgroundImage({attached:false}),elements:[],view:normalizedWorkspaceView(storedViews.comic_layout)},
     };
     function captureActiveWorkspace(){
       const target=workspaces[activeWorkspace];
@@ -848,7 +855,7 @@
     }
     function restoreWorkspaceView(source,renderCanvas=false){const view=normalizedWorkspaceView(source?.view);if(!view){fitView(renderCanvas);return;}state.zoom=view.zoom;state.panX=view.panX;state.panY=view.panY;applyViewTransform();if(renderCanvas)requestRender({canvas:true});}
     function switchEditorWorkspace(requested){
-      const next=requested==="comic"?"comic":"single";
+      const next=["single","comic","comic_layout"].includes(requested)?requested:"single";
       if(next===activeWorkspace)return;
       if(hostMode==="desktop")window.SpeechBubbleDesktopShell?.saveRecovery?.(true).catch?.(error=>console.warn("Speech Bubble workspace checkpoint failed",error));
       captureActiveWorkspace();
@@ -864,12 +871,42 @@
       document.getElementById("addSingleImageLayerFromLayers").hidden=next!=="single";
       restoreWorkspaceView(source,false);
     }
-    let comicEditor=null,comicConverter=null,backgroundRemoval=null,comicOverlayExport=false;
+    let modeController=null,comicEditor=null,generalComicEditor=null,comicConverter=null,backgroundRemoval=null,comicOverlayExport=false;
+    function activeStructuralEditor(){return generalComicEditor?.isActive()?generalComicEditor:comicEditor?.isActive()?comicEditor:null;}
+
+    function initializeModeController(){
+      if(!["desktop","desktop-file"].includes(hostMode)||modeController||!window.SpeechBubbleEditorModeController)return modeController;
+      modeController=window.SpeechBubbleEditorModeController.create({host:document.querySelector("[data-toolbar-mode-host]"),initialMode:activeWorkspace,onChanged:({active})=>{document.documentElement.dataset.editorMode=active;syncProperties();updateActionState();requestRender({canvas:true,layers:true});requestAnimationFrame(()=>fitView(false));}});
+      return modeController;
+    }
+    function registerEditorModes(){
+      if(!modeController)return;
+      const switchMode=target=>({control={}}={})=>{
+        if(activeWorkspace!==target&&control.recordUndo!==false)pushUndo();
+        comicEditor?.setActive(false,{switchWorkspace:false,recordUndo:false,fitView:false,notify:false});
+        generalComicEditor?.setActive(false,{switchWorkspace:false,recordUndo:false,fitView:false,notify:false});
+        switchEditorWorkspace(target);
+        comicEditor?.setActive(target==="comic",{switchWorkspace:false,recordUndo:false,fitView:false,notify:false});
+        generalComicEditor?.setActive(target==="comic_layout",{switchWorkspace:false,recordUndo:false,fitView:false,notify:false});
+        if(control.notify!==false&&activeWorkspace===target){layoutDirty=true;scheduleAutoSave();}
+        return true;
+      };
+      modeController.register("single",switchMode("single"));
+      modeController.register("comic",switchMode("comic"));
+      modeController.register("comic_layout",switchMode("comic_layout"));
+    }
+    function syncEditorModeFromWorkspace(){
+      comicEditor?.setActive(activeWorkspace==="comic",{switchWorkspace:false,recordUndo:false,fitView:false,notify:false});
+      generalComicEditor?.setActive(activeWorkspace==="comic_layout",{switchWorkspace:false,recordUndo:false,fitView:false,notify:false});
+      modeController?.setCurrent(activeWorkspace);
+      document.documentElement.dataset.editorMode=activeWorkspace;
+    }
     async function selectedSingleImageSource(){const layer=selectedSingleImageLayer(),asset=singleImageAssetFor(layer);if(layer&&asset){lastSingleProcessingLayerId=layer.id;return{blob:asset.blob,name:layer.image_name||asset.name,width:asset.width,height:asset.height,layer_id:layer.id,visible:layer.visible!==false};}if(!imageLoaded||!image.naturalWidth)return null;lastSingleProcessingLayerId="";return{blob:await sourceImageBlob(),name:sourceName||"speech_bubble",width:image.naturalWidth,height:image.naturalHeight};}
     async function applyProcessedSingleImage(blob,name,role){if(!blob)return false;const source=state.elements.find(item=>item.id===lastSingleProcessingLayerId&&item.type==="image")||selectedSingleImageLayer();await addSingleImageLayerFromBlob(blob,name,{inherit:source,role,hideSource:Boolean(source)});layoutDirty=true;scheduleAutoSave();updateActionState();return true;}
     function initializeComicEditor(){
       if(!["desktop","desktop-file"].includes(hostMode)||comicEditor||!window.SpeechBubbleComicEditor)return comicEditor;
       comicEditor=window.SpeechBubbleComicEditor.create({
+        modeController,
         getCanvasState:()=>state,
         getDocumentId:()=>documentId,
         getSourceImage:()=>image,
@@ -908,14 +945,43 @@
        });
       return comicEditor;
     }
+    function initializeGeneralComicEditor(){
+      if(!["desktop","desktop-file"].includes(hostMode)||generalComicEditor||!window.SpeechBubbleGeneralComicEditor)return generalComicEditor;
+      generalComicEditor=window.SpeechBubbleGeneralComicEditor.create({
+        defaultWidth:2480,defaultHeight:3508,
+        getCanvasState:()=>state,getDocumentId:()=>documentId,
+        pushUndo,clearLayerSelection:()=>setSelection([],null),hasLayerSelection:()=>state.selection.length>0,
+        layerAt:point=>findHit(point,false),
+        resizeCanvas:(width,height)=>{scaleStateToImageSize(width,height);fitView(false);},
+        requestRender,fitView,syncProperties,syncActionState:updateActionState,setStatus:setSaveState,
+        switchWorkspace:switchEditorWorkspace,syncInsertTargetStatus,
+        onDocumentChanged:()=>{layoutDirty=true;scheduleAutoSave();updateActionState();},
+        assignLayerGeneralComicTarget,
+        reassignPanelTargets:reassignGeneralComicPanelTargets,
+        detachPanelTargetsToPage:detachGeneralComicPanelTargetsToPage,
+        hasPanelTargetedLayers:()=>workspaces.comic_layout.elements.some(item=>item.general_comic_scope==="panel"),
+        colorSwatches:COMIC_SWATCHES,
+        openBackgroundRemoval:()=>initializeBackgroundRemoval()?.open?.(),
+        openComicConversion:()=>initializeComicConverter()?.open?.(),
+      });
+      return generalComicEditor;
+    }
+    function assignLayerGeneralComicTarget(layerId,panelId=null){
+      const item=state.elements.find(element=>element.id===layerId);if(!item||!generalComicEditor?.isActive())return false;
+      pushUndo();generalComicEditor.assignElementTarget(item,panelId?{scope:"panel",panelId}:{scope:"page"});setSelection([item.id],item.id);syncProperties();render();return true;
+    }
+    function reassignGeneralComicPanelTargets(removedPanelIds,keptPanelId){
+      const removed=new Set(removedPanelIds||[]);for(const item of workspaces.comic_layout.elements)if(item.general_comic_scope==="panel"&&removed.has(item.general_comic_panel_id))item.general_comic_panel_id=keptPanelId;
+    }
+    function detachGeneralComicPanelTargetsToPage(){for(const item of workspaces.comic_layout.elements)if(item.general_comic_scope==="panel"){item.general_comic_scope="page";item.general_comic_panel_id=null;}}
     function initializeComicConverter(){
       if(comicConverter||!window.SpeechBubbleComicConverter)return comicConverter;
       comicConverter=window.SpeechBubbleComicConverter.create({
-        getMode:()=>comicEditor?.isActive()?"comic":"single",
+        getMode:()=>comicEditor?.isActive()||generalComicEditor?.isActive()?"comic":"single",
         getDocumentId:()=>documentId,
         getSingleSource:selectedSingleImageSource,
-        getComicSources:()=>comicEditor?.getConversionSources?.()||Promise.resolve([]),
-        addPageImage:(blob,name)=>comicEditor?.addConvertedImage?.(blob,name),
+        getComicSources:()=>generalComicEditor?.isActive()?generalComicEditor.getConversionSources?.()||Promise.resolve([]):comicEditor?.getConversionSources?.()||Promise.resolve([]),
+        addPageImage:(blob,name)=>generalComicEditor?.isActive()?generalComicEditor.addConvertedImage?.(blob,name):comicEditor?.addConvertedImage?.(blob,name),
         applySingleImage:(blob,name)=>applyProcessedSingleImage(blob,name||`${sourceName||"speech_bubble"}-comic`,"comic-conversion"),
         setStatus:setSaveState,
       });
@@ -924,10 +990,10 @@
     function initializeBackgroundRemoval(){
       if(backgroundRemoval||!window.SpeechBubbleBackgroundRemoval||!hostMode.startsWith("desktop"))return backgroundRemoval;
       backgroundRemoval=window.SpeechBubbleBackgroundRemoval.create({
-        getMode:()=>comicEditor?.isActive()?"comic":"single",
+        getMode:()=>comicEditor?.isActive()||generalComicEditor?.isActive()?"comic":"single",
         getSingleSource:selectedSingleImageSource,
-        getComicSources:()=>comicEditor?.getConversionSources?.()||Promise.resolve([]),
-        addPageImage:(blob,name)=>comicEditor?.addConvertedImage?.(blob,name),
+        getComicSources:()=>generalComicEditor?.isActive()?generalComicEditor.getConversionSources?.()||Promise.resolve([]):comicEditor?.getConversionSources?.()||Promise.resolve([]),
+        addPageImage:(blob,name)=>generalComicEditor?.isActive()?generalComicEditor.addConvertedImage?.(blob,name):comicEditor?.addConvertedImage?.(blob,name),
         applySingleImage:(blob,name)=>applyProcessedSingleImage(blob,name||`${sourceName||"speech_bubble"}-no-bg`,"background-removal"),
         setStatus:setSaveState,
       });
@@ -988,8 +1054,8 @@
     async function generatedBackgroundId(name,tab,url){const cleanUrl=String(url||"").split("?")[0],fallback=cleanUrl.split("/").pop()||"speech_bubble",identity=`${String(tab||"unknown").toLowerCase()}\n${String(name||fallback).toLowerCase()}`;try{const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(identity));return`generated:${Array.from(new Uint8Array(digest),value=>value.toString(16).padStart(2,"0")).join("")}`;}catch{let hash=2166136261;for(let index=0;index<identity.length;index++){hash^=identity.charCodeAt(index);hash=Math.imul(hash,16777619);}return`generated:${(hash>>>0).toString(16).padStart(8,"0")}`;}}
     async function storeGeneratedBackground(id,blob,name,tab,url){if(!id?.startsWith("generated:")||!blob)return;try{await storeCachedBackground({documentId:id,kind:"generated",blob,sourceName:name||"speech_bubble",sourceTab:tab||"",sourceUrl:String(url||"")});}catch(error){console.warn("Speech Bubble generated background save failed",error);}}
     function setSaveState(message,level="info",detail=""){const node=document.getElementById("saveState");if(!node)return;node.textContent=message;node.title=detail||message;node.dataset.level=level;}
-    function hasEditableDocument(){const defaultBackground=normalizedCanvasBackground(),customizedSingleCanvas=activeWorkspace==="single"&&(JSON.stringify(normalizedCanvasBackground(state.canvasBackground))!==JSON.stringify(defaultBackground)||state.backgroundVisible===false);return Boolean(imageLoaded&&state.backgroundImage.attached&&image.naturalWidth)||Boolean(workspaces.single.elements.length)||customizedSingleCanvas||Boolean(comicEditor?.isActive());}
-    function updateActionState(){const hasDocument=hasEditableDocument();document.getElementById("saveLayout").disabled=!hasDocument;document.getElementById("exportImage").disabled=!hasDocument;document.getElementById("discardChanges").disabled=!hasDocument||!layoutDirty;document.getElementById("emptyCanvasState").hidden=hasDocument||!showEmptyCanvasGuide;if(!hasDocument)setSaveState(uiText("画像を読み込んでください","Load an image to begin"),"info");else if(layoutDirty)setSaveState(autoSaveEnabled?uiText("未保存の変更（下書き保存対象）","Unsaved changes (included in draft)"):uiText("未保存の変更があります","Unsaved changes"),"dirty");else if(hasExplicitSavedLayout)setSaveState(uiText("レイアウト保存済み","Layout saved"),"saved");else setSaveState(comicEditor?.isActive()&&!imageLoaded?uiText("新規漫画ページ","New comic page"):uiText("新規レイアウト","New layout"),"info");}
+    function hasEditableDocument(){const defaultBackground=normalizedCanvasBackground(),customizedSingleCanvas=activeWorkspace==="single"&&(JSON.stringify(normalizedCanvasBackground(state.canvasBackground))!==JSON.stringify(defaultBackground)||state.backgroundVisible===false);return Boolean(imageLoaded&&state.backgroundImage.attached&&image.naturalWidth)||Boolean(workspaces.single.elements.length)||customizedSingleCanvas||Boolean(comicEditor?.isActive())||Boolean(generalComicEditor?.hasPage());}
+    function updateActionState(){const hasDocument=hasEditableDocument();document.getElementById("saveLayout").disabled=!hasDocument;document.getElementById("exportImage").disabled=!hasDocument;document.getElementById("discardChanges").disabled=!hasDocument||!layoutDirty;document.getElementById("emptyCanvasState").hidden=hasDocument||activeWorkspace!=="single"||!showEmptyCanvasGuide;if(!hasDocument)setSaveState(generalComicEditor?.isActive()?uiText("コミックページを作成してください","Create a comic page"):uiText("画像を読み込んでください","Load an image to begin"),"info");else if(layoutDirty)setSaveState(autoSaveEnabled?uiText("未保存の変更（下書き保存対象）","Unsaved changes (included in draft)"):uiText("未保存の変更があります","Unsaved changes"),"dirty");else if(hasExplicitSavedLayout)setSaveState(uiText("レイアウト保存済み","Layout saved"),"saved");else setSaveState(activeStructuralEditor()&&!imageLoaded?uiText("新規漫画ページ","New comic page"):uiText("新規レイアウト","New layout"),"info");}
     function markLayoutDirty(){if(!dirtyTrackingEnabled||!hasEditableDocument())return;layoutDirty=currentLayoutJson()!==lastSavedLayout;updateActionState();}
     let sfxBrowseMode="sfx";
     let sfxSortMode="recommended";
@@ -1731,13 +1797,13 @@
     }
     function defaultEmphasisLines(presetId="center"){const preset=EMPHASIS_BY_ID.get(presetId)||EMPHASIS_PRESETS[0],{id:presetKey,label,...geometry}=preset,item={...geometry,id:id(),type:"emphasis_lines",preset:presetKey,x:0,y:0,w:state.width,h:state.height,rotation:0,fit_to_canvas:true,color:"#000000",opacity:1,seed:randomEmphasisSeed(),rays:[],comic_scope:"page",comic_panel_id:"",locked:false,visible:true};return normalizeEmphasisLines(item);}
     function applyEmphasisPresetToItem(item,presetId){const preset=EMPHASIS_BY_ID.get(presetId)||EMPHASIS_PRESETS[0];item.preset=preset.id;item.overshoot=EMPHASIS_EDGE_OVERSHOOT;for(const key of ["line_count","inner_x","inner_y","line_width","line_length","taper","center_x","center_y","length_random","inner_random","width_random","spacing_random"])item[key]=preset[key];scheduleEmphasisRegeneration(item);}
-    function syncEmphasisToCanvas(item){if(!item||item.type!=="emphasis_lines"||!item.fit_to_canvas)return;const target=comicEditor?.isActive()?comicEditor.effectTargetRect?.(item):null,x=target?.x??0,y=target?.y??0,w=target?.w??state.width,h=target?.h??state.height,changed=item.x!==x||item.y!==y||item.w!==w||item.h!==h||item.rotation!==0;item.x=x;item.y=y;item.w=w;item.h=h;item.rotation=0;if(changed)regenerateEmphasisRays(item);}
+    function syncEmphasisToCanvas(item){if(!item||item.type!=="emphasis_lines"||!item.fit_to_canvas)return;const target=generalComicEditor?.isActive()?generalComicEditor.emphasisClipRect?.(item):comicEditor?.isActive()?comicEditor.effectTargetRect?.(item):null,x=target?.x??0,y=target?.y??0,w=target?.w??state.width,h=target?.h??state.height,changed=item.x!==x||item.y!==y||item.w!==w||item.h!==h||item.rotation!==0;item.x=x;item.y=y;item.w=w;item.h=h;item.rotation=0;if(changed)regenerateEmphasisRays(item);}
     function syncFrameToCanvas(item){if(!item||item.type!=="frame"||!item.fit_to_canvas)return;const maximum=Math.max(0,Math.min(state.width,state.height)/2-.5),inset=Math.max(-maximum,Math.min(maximum,finiteOr(item.frame_inset,0)));item.frame_inset=inset;item.x=inset;item.y=inset;item.w=Math.max(1,state.width-inset*2);item.h=Math.max(1,state.height-inset*2);item.rotation=0;item.flip_x=false;item.flip_y=false;}
     function defaultFrame(presetId="frame-border") { const preset=FRAME_BY_ID.get(presetId)||FRAME_PRESETS[0],border=Math.max(0,finiteOr(preset.border_width,36)),item={id:id(),type:"frame",frame_preset_id:preset.id,frame_label:preset.label,frame_kind:preset.frame_kind||"border",x:0,y:0,w:state.width,h:state.height,rotation:0,opacity:1,fit_to_canvas:true,pin_to_top:preset.pin_to_top!==false,frame_scale:finiteOr(preset.default_scale,100),frame_inset:finiteOr(preset.default_inset,0),border_color:preset.border_color||"#ffffff",border_width_x:border,border_width_y:border,inner_stroke_color:preset.inner_stroke_color||"#111111",inner_stroke_width:preset.inner_stroke_width||0,asset_src:preset.asset_src||"",asset_src_2x:preset.asset_src_2x||"",frame_mode:preset.frame_mode||"border",frame_slice:preset.frame_slice?{...preset.frame_slice}:null,attached_decorations:(preset.attached_decorations||[]).map(decoration=>decoration.id),fit_mode:preset.fit_mode||"cover",shadow_enabled:false,shadow_color:"#000000",shadow_opacity:.55,shadow_x:8,shadow_y:8,shadow_blur:12,glow_enabled:false,glow_color:"#ffffff",glow_opacity:.75,glow_blur:16,glow_spread:0,locked:false,visible:true};syncFrameToCanvas(item);return item;}
     const LAYOUT_ELEMENT_TYPES=new Set(["text","sfx","sfx_stamp","bubble","shape","frame","emphasis_lines","image"]);
     function normalizedLayoutPathPoints(points){if(!Array.isArray(points))return null;const clean=points.slice(0,256).filter(point=>point&&typeof point==="object"&&!Array.isArray(point)&&Number.isFinite(Number(point.x))&&Number.isFinite(Number(point.y))).map(point=>{const x=finiteOr(point.x,0),y=finiteOr(point.y,0);return{x,y,in_x:finiteOr(point.in_x,x),in_y:finiteOr(point.in_y,y),out_x:finiteOr(point.out_x,x),out_y:finiteOr(point.out_y,y)};});return clean.length>=3?clean:null;}
     function loadState(rawOverride=null,options={}) {
-      let hasElementList = false,comicLayout=null,workspaceLayouts=null,requestedWorkspace="single";
+      let hasElementList = false,comicLayout=null,generalComicLayout=null,workspaceLayouts=null,requestedWorkspace="single";
       let data;
       try {
         const raw = rawOverride===null?localStorage.getItem(jsonKey):rawOverride;
@@ -1750,14 +1816,18 @@
       state.elements=[];state.selected=null;state.selection=[];state.vectorEditId=null;state.vectorAnchorIndex=null;state.vectorAddMode=false;state.undo=[];state.redo=[];
       {
         comicLayout=data.comic&&typeof data.comic==="object"?data.comic:null;
+        generalComicLayout=data.general_comic&&typeof data.general_comic==="object"?data.general_comic:null;
         workspaceLayouts=data.workspaces&&typeof data.workspaces==="object"?data.workspaces:null;
-        requestedWorkspace=data.active_workspace==="comic"||comicLayout?.enabled===true?"comic":"single";
+        requestedWorkspace=["single","comic","comic_layout"].includes(data.active_workspace)
+          ? data.active_workspace
+          : generalComicLayout?.enabled===true?"comic_layout":comicLayout?.enabled===true?"comic":"single";
         const initialLayout=workspaceLayouts?.[requestedWorkspace]&&typeof workspaceLayouts[requestedWorkspace]==="object"
           ? workspaceLayouts[requestedWorkspace]
           : {canvas:data.canvas,background_visible:data.background_visible,canvas_background:data.canvas_background,background_image:data.background_image,elements:data.elements};
         state.canvasFromLayout = Number.isFinite(Number(initialLayout.canvas?.width)) && Number.isFinite(Number(initialLayout.canvas?.height));
-        state.width = Math.round(Math.max(1,Math.min(65535,finiteOr(initialLayout.canvas?.width,requestedWorkspace==="comic"?720:1024))));
-        state.height = Math.round(Math.max(1,Math.min(65535,finiteOr(initialLayout.canvas?.height,requestedWorkspace==="comic"?2200:1024))));
+        const fallbackCanvas=requestedWorkspace==="comic"?{width:720,height:2200}:requestedWorkspace==="comic_layout"?{width:2480,height:3508}:{width:1024,height:1024};
+        state.width = Math.round(Math.max(1,Math.min(65535,finiteOr(initialLayout.canvas?.width,fallbackCanvas.width))));
+        state.height = Math.round(Math.max(1,Math.min(65535,finiteOr(initialLayout.canvas?.height,fallbackCanvas.height))));
         state.backgroundVisible = initialLayout.background_visible !== false;
         state.canvasBackground = normalizedCanvasBackground(initialLayout.canvas_background);
         state.backgroundImage = normalizedBackgroundImage(initialLayout.background_image||{attached:imageLoaded});
@@ -1795,12 +1865,14 @@
         else if(item.type==="emphasis_lines"){normalizeEmphasisLines(item);}
         else if(item.type==="frame"){const preset=FRAME_BY_ID.get(item.frame_preset_id)||FRAME_PRESETS[0],legacyBorder=Math.max(0,finiteOr(item.border_width,preset.border_width)),availableDecorations=(preset.attached_decorations||[]).map(decoration=>decoration.id);item.frame_preset_id=preset.id;item.frame_label=item.frame_label||preset.label;item.frame_kind=item.frame_kind||preset.frame_kind||(preset.asset_src?"decorative":"border");item.fit_to_canvas=item.fit_to_canvas!==false;item.pin_to_top=item.pin_to_top!==false&&preset.pin_to_top!==false;item.frame_scale=Math.max(10,Math.min(400,finiteOr(item.frame_scale,preset.default_scale||100)));item.frame_inset=finiteOr(item.frame_inset,preset.default_inset||0);item.border_color=item.border_color||preset.border_color||"#ffffff";item.border_width_x=Math.max(0,finiteOr(item.border_width_x,legacyBorder));item.border_width_y=Math.max(0,finiteOr(item.border_width_y,legacyBorder));if(item.locked===undefined)item.locked=false;delete item.border_width;delete item.corner_radius;item.inner_stroke_color=item.inner_stroke_color||preset.inner_stroke_color||"#111111";item.inner_stroke_width=Math.max(0,finiteOr(item.inner_stroke_width,preset.inner_stroke_width));item.asset_src=item.asset_src||preset.asset_src||"";item.asset_src_2x=item.asset_src_2x||preset.asset_src_2x||"";item.frame_mode=item.frame_mode||preset.frame_mode||"border";item.frame_slice=item.frame_slice||(preset.frame_slice?{...preset.frame_slice}:null);item.attached_decorations=Array.isArray(item.attached_decorations)?item.attached_decorations.map(String).filter(value=>availableDecorations.includes(value)):availableDecorations;item.fit_mode=["cover","contain","stretch","tile"].includes(item.fit_mode)?item.fit_mode:(preset.fit_mode||"cover");item.opacity=Math.max(0,Math.min(1,finiteOr(item.opacity,1)));item.shadow_opacity=Math.max(0,Math.min(1,finiteOr(item.shadow_opacity,.55)));item.glow_enabled=!!item.glow_enabled;item.glow_color=item.glow_color||"#ffffff";item.glow_opacity=Math.max(0,Math.min(1,finiteOr(item.glow_opacity,.75)));item.glow_blur=Math.max(0,finiteOr(item.glow_blur,16));item.glow_spread=Math.max(0,finiteOr(item.glow_spread,0));syncFrameToCanvas(item);}
         if(item.type!=="emphasis_lines"){item.comic_scope=item.comic_scope==="panel"?"panel":"free";item.comic_panel_id=String(item.comic_panel_id||"");}
+        item.general_comic_scope=item.general_comic_scope==="panel"?"panel":"page";
+        item.general_comic_panel_id=item.general_comic_scope==="panel"?String(item.general_comic_panel_id||""):null;
         normalizeItemNumericValues(item);
       };
       state.elements.forEach(normalizeLoadedElement);
       if(workspaceLayouts){
-        for(const name of ["single","comic"]){
-          const fallback=name==="comic"?{width:720,height:2200}:{width:1024,height:1024};
+        for(const name of ["single","comic","comic_layout"]){
+          const fallback=name==="comic"?{width:720,height:2200}:name==="comic_layout"?{width:2480,height:3508}:{width:1024,height:1024};
           const rawWorkspace=workspaceLayouts[name]&&typeof workspaceLayouts[name]==="object"?workspaceLayouts[name]:{};
           const elements=Array.isArray(rawWorkspace.elements)
             ? rawWorkspace.elements.filter(item=>item&&typeof item==="object"&&!Array.isArray(item)&&LAYOUT_ELEMENT_TYPES.has(String(item.type||"")))
@@ -1823,6 +1895,7 @@
         activeWorkspace=requestedWorkspace;
         workspaces.single={width:1024,height:1024,backgroundVisible:true,canvasBackground:normalizedCanvasBackground(),backgroundImage:normalizedBackgroundImage({attached:imageLoaded}),elements:[],view:normalizedWorkspaceView(storedViews.single)};
         workspaces.comic={width:720,height:2200,backgroundVisible:true,elements:[],view:normalizedWorkspaceView(storedViews.comic)};
+        workspaces.comic_layout={width:2480,height:3508,backgroundVisible:true,canvasBackground:normalizedCanvasBackground({color:"#ffffff",transparent:false}),backgroundImage:normalizedBackgroundImage({attached:false}),elements:[],view:normalizedWorkspaceView(storedViews.comic_layout)};
         workspaces[activeWorkspace]={
           width:state.width,
           height:state.height,
@@ -1840,6 +1913,8 @@
       state.selected = state.elements[state.elements.length - 1]?.id || null;
       state.selection = state.selected ? [state.selected] : [];
       comicEditor?.restore(comicLayout);
+      generalComicEditor?.restore(generalComicLayout);
+      syncEditorModeFromWorkspace();
     }
     function selectedItems(){const ids=new Set(state.selection);return state.elements.filter(item=>ids.has(item.id));}
     let layerSelectionAnchorId="";
@@ -1853,7 +1928,7 @@
     function isFrameSelected(item){return Boolean(item)&&item.type==="frame"&&state.selection.length===1&&state.selection[0]===item.id&&!item.locked;}
     function canvasItemEditable(item){return Boolean(item)&&!item.locked&&(item.type!=="frame"||isFrameSelected(item));}
     function canvasHitEnabled(item){return Boolean(item)&&item.type!=="frame"&&item.type!=="emphasis_lines";}
-    function setSelection(ids,primary=null){const next=[...new Set(ids)].filter(itemId=>state.elements.some(item=>item.id===itemId));state.selection=next;state.selected=primary&&state.selection.includes(primary)?primary:(state.selection.at(-1)||null);if(next.length)comicEditor?.clearSelection();if(state.selection.length!==1){state.vectorEditId=null;state.vectorAnchorIndex=null;state.vectorAddMode=false;}syncInsertTargetStatus();}
+    function setSelection(ids,primary=null){const next=[...new Set(ids)].filter(itemId=>state.elements.some(item=>item.id===itemId));state.selection=next;state.selected=primary&&state.selection.includes(primary)?primary:(state.selection.at(-1)||null);if(next.length){comicEditor?.clearSelection();generalComicEditor?.clearSelection();}if(state.selection.length!==1){state.vectorEditId=null;state.vectorAnchorIndex=null;state.vectorAddMode=false;}syncInsertTargetStatus();}
     function selectLayerRow(item,event){
       const displayed=[...state.elements].reverse(),displayedIds=displayed.map(layer=>layer.id);
       if(event.shiftKey&&displayedIds.includes(layerSelectionAnchorId)){
@@ -2090,11 +2165,19 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     function drawEmphasisLines(item){syncEmphasisToCanvas(item);const x=Number(item.x)||0,y=Number(item.y)||0,w=Math.max(1,Number(item.w)||1),h=Math.max(1,Number(item.h)||1),rays=validEmphasisRays(item.rays)||regenerateEmphasisRays(item);ctx.save();ctx.translate(x+w/2,y+h/2);ctx.rotate((Number(item.rotation)||0)*Math.PI/180);ctx.scale(item.flip_x?-1:1,item.flip_y?-1:1);ctx.translate(-w/2,-h/2);ctx.globalAlpha=emphasisClamp(item.opacity,0,1,1);ctx.fillStyle=item.color||"#000000";for(const polygon of rays){ctx.beginPath();ctx.moveTo(polygon[0][0]*w,polygon[0][1]*h);for(let index=1;index<4;index+=1)ctx.lineTo(polygon[index][0]*w,polygon[index][1]*h);ctx.closePath();ctx.fill();}ctx.restore();}
     function drawSingleImageLayer(item){const asset=singleImageAssetFor(item);if(!asset?.image?.complete||!asset.image.naturalWidth)return;const w=Math.max(1,Number(item.w)||1),h=Math.max(1,Number(item.h)||1);ctx.save();ctx.translate((Number(item.x)||0)+w/2,(Number(item.y)||0)+h/2);ctx.rotate((Number(item.rotation)||0)*Math.PI/180);ctx.scale(item.flip_x?-1:1,item.flip_y?-1:1);ctx.globalAlpha=Math.max(0,Math.min(1,finiteOr(item.opacity,1)));ctx.drawImage(asset.image,-w/2,-h/2,w,h);ctx.restore();}
     function drawElementBody(item){if(item.type==="image")drawSingleImageLayer(item);else if(item.type==="text")drawText(item);else if(item.type==="sfx")drawSfx(item);else if(item.type==="bubble")drawShape(item);else if(item.type==="emphasis_lines")drawEmphasisLines(item);else if(item.type==="frame")drawFrame(item);}
+    function elementClipShape(item){
+      if(generalComicEditor?.isActive()&&item?.general_comic_scope==="panel")return generalComicEditor.panelShape?.(item.general_comic_panel_id)||null;
+      if(!comicEditor?.isActive())return null;
+      const rect=item.type==="emphasis_lines"?comicEditor.emphasisClipRect?.(item):comicEditor.assetClipRect?.(item);
+      return rect?{kind:"rect",...rect}:null;
+    }
+    function traceClipShape(target,shape){if(shape.kind==="rect"){target.rect(shape.x,shape.y,shape.w,shape.h);return;}const points=Array.isArray(shape.points)?shape.points:[];if(points.length<3)return;target.moveTo(points[0].x,points[0].y);for(const point of points.slice(1))target.lineTo(point.x,point.y);target.closePath();}
+    function pointInClipShape(point,shape){if(!shape)return true;if(shape.kind==="rect")return point.x>=shape.x&&point.x<=shape.x+shape.w&&point.y>=shape.y&&point.y<=shape.y+shape.h;const points=Array.isArray(shape.points)?shape.points:[];if(points.length<3)return false;let inside=false;for(let index=0,previous=points.length-1;index<points.length;previous=index++){const a=points[index],b=points[previous],crosses=(a.y>point.y)!==(b.y>point.y)&&point.x<(b.x-a.x)*(point.y-a.y)/((b.y-a.y)||Number.EPSILON)+a.x;if(crosses)inside=!inside;}return inside;}
     function drawElement(item){
       if(item.visible===false||(comicOverlayExport&&item.type==="image"))return;
-      if(comicEditor?.shouldSkipPanelScopedItem?.(item))return;
-      const clip=item.type==="emphasis_lines"?comicEditor?.emphasisClipRect(item):comicEditor?.assetClipRect?.(item);
-      if(clip){ctx.save();ctx.beginPath();ctx.rect(clip.x,clip.y,clip.w,clip.h);ctx.clip();drawElementBody(item);ctx.restore();}
+      const structuralEditor=activeStructuralEditor();if(structuralEditor?.shouldSkipPanelScopedItem?.(item))return;
+      const clip=elementClipShape(item);
+      if(clip){ctx.save();ctx.beginPath();traceClipShape(ctx,clip);ctx.clip();drawElementBody(item);ctx.restore();}
       else drawElementBody(item);
     }
     function presetLabel(item){return item?.user_preset_name||PRESET_BY_ID.get(item?.preset_id)?.label||String(item?.shape||"Bubble").replaceAll("_"," ");}
@@ -2122,15 +2205,18 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     const EDITOR_DRAG_TYPE="application/x-speech-bubble-editor-item";
     function placeInsertedItem(item,point=null){const center=point||{x:state.width/2,y:state.height/2};item.x=Math.round(center.x-item.w/2);item.y=Math.round(center.y-item.h/2);}
     function selectedComicLayerTarget(){
-      const selected=state.elements.find(item=>item.id===state.selected);
+      const editor=activeStructuralEditor(),selected=state.elements.find(item=>item.id===state.selected);if(!editor)return null;
+      if(generalComicEditor?.isActive()&&selected?.general_comic_scope==="panel"&&selected.general_comic_panel_id)return generalComicEditor.panelInsertionTarget?.(selected.general_comic_panel_id)||{scope:"panel",panelId:selected.general_comic_panel_id};
       if(comicEditor?.isActive()&&selected?.comic_scope==="panel"&&selected.comic_panel_id)return comicEditor.panelInsertionTarget?.(selected.comic_panel_id)||{scope:"panel",panelId:selected.comic_panel_id};
-      return comicEditor?.selectedInsertionTarget?.()||null;
+      return editor.selectedInsertionTarget?.()||null;
     }
-    function bubbleComicTarget(){return selectedComicLayerTarget()||comicEditor?.defaultPanelInsertionTarget?.()||null;}
+    function bubbleComicTarget(){const editor=activeStructuralEditor();return selectedComicLayerTarget()||editor?.defaultPanelInsertionTarget?.()||null;}
     function applyComicPanelTarget(item,target,point=null){
-      if(!target||target.scope!=="panel")return false;
-      const resolved=target.rect?target:comicEditor?.panelInsertionTarget?.(target.panelId),rect=resolved?.rect||null;
-      item.comic_scope="panel";item.comic_panel_id=target.panelId;item.comic_stack="above_image";
+      const editor=activeStructuralEditor();if(!editor)return false;
+      if(target?.scope!=="panel"){if(generalComicEditor?.isActive())generalComicEditor.assignElementTarget?.(item,{scope:"page"});return false;}
+      const resolved=target.rect?target:editor.panelInsertionTarget?.(target.panelId),rect=resolved?.rect||null;
+      if(generalComicEditor?.isActive())generalComicEditor.assignElementTarget?.(item,{scope:"panel",panelId:target.panelId});
+      else{item.comic_scope="panel";item.comic_panel_id=target.panelId;item.comic_stack="above_image";}
       if(rect){
         const scale=Math.min(1,(rect.w*.78)/Math.max(1,item.w),(rect.h*.72)/Math.max(1,item.h));
         if(scale<1){item.w=Math.max(1,Math.round(item.w*scale));item.h=Math.max(1,Math.round(item.h*scale));}
@@ -2143,17 +2229,17 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     }
     function syncInsertTargetStatus(){
       const status=document.getElementById("comicInsertTargetStatus");if(!status)return;
-      status.hidden=!comicEditor?.isActive();if(status.hidden)return;
-      const target=selectedComicLayerTarget()||comicEditor?.defaultPanelInsertionTarget?.();
-      status.textContent=target?.scope==="panel"?`追加先：コマ${Math.max(1,(Number(target.panelIndex)||0)+1)}`:"追加先：ページ全体";
+      const editor=activeStructuralEditor();status.hidden=!editor;if(status.hidden)return;
+      const target=selectedComicLayerTarget()||editor.defaultPanelInsertionTarget?.();
+      status.textContent=target?.scope==="panel"?uiText(`追加先：コマ${Math.max(1,(Number(target.panelIndex)||0)+1)}`,`Insert into: Panel ${Math.max(1,(Number(target.panelIndex)||0)+1)}`):uiText("追加先：ページ全体","Insert into: Page");
     }
     function enablePresetDrag(element,payload){element.draggable=true;element.addEventListener("dragstart",event=>{event.dataTransfer.effectAllowed="copy";event.dataTransfer.setData(EDITOR_DRAG_TYPE,JSON.stringify(payload));});}
     function insertBubbleBelowText(item){const firstTextIndex=state.elements.findIndex(layer=>layer.type==="text");if(firstTextIndex<0)state.elements.push(item);else state.elements.splice(firstTextIndex,0,item);}
-    function insertPreset(presetId,point=null){pushUndo();const item=defaultBubble(presetId),target=comicEditor?.isActive()?bubbleComicTarget():null;if(!applyComicPanelTarget(item,target,point)){placeInsertedItem(item,point);insertBubbleBelowText(item);}else state.elements.push(item);recordPresetUse(presetId);setSelection([item.id],item.id);syncProperties();render();}
+    function insertPreset(presetId,point=null){pushUndo();const item=defaultBubble(presetId),target=activeStructuralEditor()?bubbleComicTarget():null;if(!applyComicPanelTarget(item,target,point)){placeInsertedItem(item,point);insertBubbleBelowText(item);}else state.elements.push(item);recordPresetUse(presetId);setSelection([item.id],item.id);syncProperties();render();}
     function makePresetCard(preset){const button=document.createElement("button"),preview=document.createElement("canvas"),name=document.createElement("span"),awaitingShapeAsset=!bubbleShapeAssetsReady&&["base-thought","base-heart"].includes(preset.id);button.type="button";button.className="shape-card";button.dataset.preset=preset.id;button.dataset.category=preset.category;button.dataset.search=`${preset.label} ${preset.keywords||""}`.toLowerCase();button.disabled=awaitingShapeAsset;button.title=awaitingShapeAsset?`${preset.label} — 素材を読み込み中`:`${preset.label} — click or drag to canvas`;name.className="shape-name";name.textContent=awaitingShapeAsset?`${preset.label}…`:preset.label;button.append(preview,name,makeFavoriteMarker("bubble",preset.id));if(!awaitingShapeAsset){button.onclick=()=>insertPreset(preset.id);enablePresetDrag(button,{kind:"bubble",id:preset.id});}drawPresetThumbnail(preview,preset);return button;}
     function drawFrameThumbnail(canvasElement,preset){const scale=2,w=68*scale,h=40*scale,target=canvasElement.getContext("2d");canvasElement.width=w;canvasElement.height=h;target.clearRect(0,0,w,h);if(preset.preview_src){const preview=cachedFrameImage(preset.preview_src);if(preview?.complete&&preview.naturalWidth){const ratio=Math.min(w/preview.naturalWidth,h/preview.naturalHeight),drawW=preview.naturalWidth*ratio,drawH=preview.naturalHeight*ratio;target.drawImage(preview,(w-drawW)/2,(h-drawH)/2,drawW,drawH);}return;}if(preset.asset_src||preset.frame_mode==="edge-repeat"||preset.frame_mode==="decorated-border"){const item={frame_scale:finiteOr(preset.default_scale,100),w,h,frame_mode:preset.frame_mode,frame_slice:preset.frame_slice,attached_decorations:(preset.attached_decorations||[]).map(decoration=>decoration.id)},asset=frameImageFor(preset,item);target.drawImage(frameSurface(item,preset,asset,w,h),0,0,w,h);return;}const border=Math.max(3,(Number(preset.border_width)||24)/10*scale),inner=Math.max(0,(Number(preset.inner_stroke_width)||0)/2*scale);target.fillStyle=preset.border_color||"#fff";target.beginPath();addRoundedRectPath(target,3*scale,3*scale,w-6*scale,h-6*scale,0);addRoundedRectPath(target,3*scale+border,3*scale+border,w-6*scale-border*2,h-6*scale-border*2,0);target.fill("evenodd");if(inner>0){target.strokeStyle=preset.inner_stroke_color||"#111";target.lineWidth=inner;target.beginPath();addRoundedRectPath(target,3*scale+border+inner/2,3*scale+border+inner/2,w-6*scale-border*2-inner,h-6*scale-border*2-inner,0);target.stroke();}}
     function makeFrameCard(preset){const button=document.createElement("button"),preview=document.createElement("canvas"),name=document.createElement("span");button.type="button";button.className="shape-card";button.dataset.frame=preset.id;button.dataset.category=preset.category;button.dataset.search=`${preset.label} ${preset.keywords||""}`.toLowerCase();button.title=`${preset.label} — click to fit canvas, or drag for manual placement`;name.className="shape-name";name.textContent=preset.label;button.append(preview,name,makeFavoriteMarker("frame",preset.id));button.onclick=()=>insertFrame(preset.id);enablePresetDrag(button,{kind:"frame",id:preset.id});drawFrameThumbnail(preview,preset);return button;}
-    function insertFrame(presetId,point=null){pushUndo();const item=defaultFrame(presetId);if(point){item.fit_to_canvas=false;item.w=Math.max(120,Math.round(state.width*.72));item.h=Math.max(120,Math.round(state.height*.72));placeInsertedItem(item,point);}state.elements.push(item);normalizePinnedFrameOrder();setSelection([item.id],item.id);syncProperties();render();}
+    function insertFrame(presetId,point=null){pushUndo();const item=defaultFrame(presetId),editor=generalComicEditor?.isActive()?generalComicEditor:null,target=editor?(point?editor.insertionTargetAt?.(point):selectedComicLayerTarget()):null;if(target?.scope==="panel"){item.fit_to_canvas=false;applyComicPanelTarget(item,target,point);}else if(point){item.fit_to_canvas=false;item.w=Math.max(120,Math.round(state.width*.72));item.h=Math.max(120,Math.round(state.height*.72));placeInsertedItem(item,point);}else if(editor)editor.assignElementTarget?.(item,{scope:"page"});state.elements.push(item);normalizePinnedFrameOrder();setSelection([item.id],item.id);syncProperties();render();}
     function refreshQuickFrames(){const quick=document.getElementById("quickFrames");if(!quick)return;quick.replaceChildren(...favoriteAssets("frame",FRAME_PRESETS,["frame-border","black-border"]).map(makeFrameCard));}
     function drawEmphasisThumbnail(canvasElement,preset){const width=136,height=80,target=canvasElement.getContext("2d"),rays=generateNormalizedEmphasisRays({...preset,preset:preset.id,seed:1529756813},width,height);canvasElement.width=width;canvasElement.height=height;target.fillStyle="#f7f7f7";target.fillRect(0,0,width,height);target.fillStyle="#111111";for(const polygon of rays){target.beginPath();target.moveTo(polygon[0][0]*width,polygon[0][1]*height);for(let index=1;index<4;index+=1)target.lineTo(polygon[index][0]*width,polygon[index][1]*height);target.closePath();target.fill();}}
     function makeEmphasisCard(preset){const button=document.createElement("button"),preview=document.createElement("canvas"),name=document.createElement("span");button.type="button";button.className="shape-card emphasis-card";button.dataset.emphasis=preset.id;button.title=`${preset.label} — click to add, or drag the focus point to the canvas`;name.className="shape-name";name.textContent=preset.label;button.append(preview,name,makeFavoriteMarker("emphasis",preset.id));button.onclick=()=>insertEmphasisLines(preset.id);enablePresetDrag(button,{kind:"emphasis-lines",id:preset.id});drawEmphasisThumbnail(preview,preset);return button;}
@@ -2161,16 +2247,16 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     function renderEmphasisBrowser(){document.getElementById("allEmphasisLines")?.replaceChildren(...EMPHASIS_PRESETS.map(makeEmphasisCard));}
     function insertEmphasisLines(presetId,point=null){
       pushUndo();
-      const item=defaultEmphasisLines(presetId),target=comicEditor?.isActive()?selectedComicLayerTarget():null,resolved=target?.scope==="panel"?(target.rect?target:comicEditor?.panelInsertionTarget?.(target.panelId)):null,rect=resolved?.rect;
+      const editor=activeStructuralEditor(),item=defaultEmphasisLines(presetId),target=editor?selectedComicLayerTarget():null,resolved=target?.scope==="panel"?(target.rect?target:editor?.panelInsertionTarget?.(target.panelId)):null,rect=resolved?.rect;
       if(rect){
-        item.comic_scope="panel";item.comic_panel_id=resolved.panelId;item.comic_stack="above_image";item.fit_to_canvas=false;
+        if(generalComicEditor?.isActive())generalComicEditor.assignElementTarget?.(item,{scope:"panel",panelId:resolved.panelId});else{item.comic_scope="panel";item.comic_panel_id=resolved.panelId;item.comic_stack="above_image";}item.fit_to_canvas=false;
         item.x=Math.round(rect.x);item.y=Math.round(rect.y);item.w=Math.max(1,Math.round(rect.w));item.h=Math.max(1,Math.round(rect.h));
         const focus=point&&point.x>=rect.x&&point.x<=rect.x+rect.w&&point.y>=rect.y&&point.y<=rect.y+rect.h?point:{x:rect.x+rect.w/2,y:rect.y+rect.h/2};
         item.center_x=emphasisClamp((focus.x-rect.x)/Math.max(1,rect.w),-.5,1.5,item.center_x);
         item.center_y=emphasisClamp((focus.y-rect.y)/Math.max(1,rect.h),-.5,1.5,item.center_y);
-      }else if(point){
-        item.center_x=emphasisClamp(point.x/state.width,-.5,1.5,item.center_x);
-        item.center_y=emphasisClamp(point.y/state.height,-.5,1.5,item.center_y);
+      }else{
+        if(generalComicEditor?.isActive())generalComicEditor.assignElementTarget?.(item,{scope:"page"});
+        if(point){item.center_x=emphasisClamp(point.x/state.width,-.5,1.5,item.center_x);item.center_y=emphasisClamp(point.y/state.height,-.5,1.5,item.center_y);}
       }
       regenerateEmphasisRays(item);state.elements.push(item);normalizePinnedFrameOrder();setSelection([item.id],item.id);syncProperties();render();
     }
@@ -2197,7 +2283,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     function sfxPresetsForMode(mode){return SFX_PRESETS.filter(preset=>!preset.hidden&&(mode==="stamps"?isComicStamp(preset):!isComicStamp(preset)));}
     function refreshQuickSfx(){for(const [mode,elementId,type,defaults] of [["sfx","quickSfx","sfx",["don-exclamation-mask","ban-mask"]],["stamps","quickStamps","stamp",["arrow-thick-right-mask","sparkle-cluster-mask"]]]){const quick=document.getElementById(elementId);if(!quick)continue;quick.replaceChildren(...favoriteAssets(type,sfxPresetsForMode(mode),defaults).map(makeSfxCard));}}
     function recordSfxUse(presetId){const usage=sfxUsage();usage[presetId]=(usage[presetId]||0)+1;try{localStorage.setItem(SFX_USAGE_KEY,JSON.stringify(usage));}catch{}}
-    function insertSfx(presetId,point=null){pushUndo();const item=defaultSfx(presetId),target=comicEditor?.isActive()?(point?comicEditor?.insertionTargetAt?.(point):selectedComicLayerTarget()):null;if(!applyComicPanelTarget(item,target,point))placeInsertedItem(item,point);state.elements.push(item);recordSfxUse(presetId);setSelection([item.id],item.id);syncProperties();render();}
+    function insertSfx(presetId,point=null){pushUndo();const editor=activeStructuralEditor(),item=defaultSfx(presetId),target=editor?(point?editor.insertionTargetAt?.(point):selectedComicLayerTarget()):null;if(!applyComicPanelTarget(item,target,point))placeInsertedItem(item,point);state.elements.push(item);recordSfxUse(presetId);setSelection([item.id],item.id);syncProperties();render();}
     function tintedSfxCardSurface(surface,color){const tinted=document.createElement("canvas"),target=tinted.getContext("2d");tinted.width=surface.width;tinted.height=surface.height;target.drawImage(surface,0,0);target.globalCompositeOperation="source-in";target.fillStyle=color;target.fillRect(0,0,tinted.width,tinted.height);target.globalCompositeOperation="source-over";return tinted;}
     function sfxCardPreviewLayout(style,canvasW=152,canvasH=120){
       const number=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback,
@@ -2274,7 +2360,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     async function loadUserPresets(){try{const response=await fetch(`${apiBase}/presets`);if(!response.ok)throw new Error(`Preset list failed (${response.status})`);const result=await response.json();userPresets=Array.isArray(result.presets)?result.presets:[];renderPresetBrowser();}catch(error){console.warn("Speech Bubble user presets unavailable",error);}}
     async function saveSelectedUserPreset(saveAs=false){const item=state.elements.find(element=>element.id===state.selected);if(!item||item.type!=="bubble"||item.locked||state.selection.length!==1)return;const updating=Boolean(item.user_preset_id&&!saveAs),name=prompt(updating?uiText("ユーザープリセット名を変更:","Update user preset name:"):uiText("新しいユーザープリセット名:","New user preset name:"),item.user_preset_name||presetLabel(item));if(!name?.trim())return;try{const preset=userPresetPayload(item,name.trim());if(saveAs)delete preset.id;const result=await updateUserPresets({action:"upsert",preset}),saved=(preset.id&&result.presets?.find(entry=>entry.id===preset.id))||result.presets?.at(-1);if(saved){pushUndo();item.user_preset_id=saved.id;item.user_preset_name=saved.name;syncProperties();render();}}catch(error){alert(`${uiText("ユーザープリセットを保存できませんでした。","Could not save the user preset.")}\n${error.message}`);}}
     async function deleteUserPreset(presetId){const preset=userPresets.find(item=>item.id===presetId);if(!preset||!confirm(`Delete user preset “${preset.name}”?`))return;try{await updateUserPresets({action:"delete",id:presetId});}catch(error){alert(`Could not delete the user preset.\n${error.message}`);}}
-    function insertUserPreset(presetId,point=null){const preset=userPresets.find(entry=>entry.id===presetId);if(!preset)return;pushUndo();const item=defaultBubble(preset.base_preset_id||"base-oval"),shapeData=preset.shape_data||{},ratio=Math.max(.1,Math.min(10,Number(preset.aspect_ratio)||item.w/item.h)),area=item.w*item.h;item.w=Math.round(Math.sqrt(area*ratio));item.h=Math.round(area/item.w);item.shape=shapeData.shape||item.shape;for(const key of USER_SHAPE_KEYS)if(shapeData[key]!==undefined)item[key]=shapeData[key];if(Array.isArray(shapeData.path_points))item.path_points=clonePath(shapeData.path_points);item.user_preset_id=preset.id;item.user_preset_name=preset.name;const target=comicEditor?.isActive()?bubbleComicTarget():null;if(!applyComicPanelTarget(item,target,point))placeInsertedItem(item,point);state.elements.push(item);setSelection([item.id],item.id);document.getElementById("shapeDrawer").classList.remove("open");syncProperties();render();}
+    function insertUserPreset(presetId,point=null){const preset=userPresets.find(entry=>entry.id===presetId);if(!preset)return;pushUndo();const item=defaultBubble(preset.base_preset_id||"base-oval"),shapeData=preset.shape_data||{},ratio=Math.max(.1,Math.min(10,Number(preset.aspect_ratio)||item.w/item.h)),area=item.w*item.h;item.w=Math.round(Math.sqrt(area*ratio));item.h=Math.round(area/item.w);item.shape=shapeData.shape||item.shape;for(const key of USER_SHAPE_KEYS)if(shapeData[key]!==undefined)item[key]=shapeData[key];if(Array.isArray(shapeData.path_points))item.path_points=clonePath(shapeData.path_points);item.user_preset_id=preset.id;item.user_preset_name=preset.name;const target=activeStructuralEditor()?bubbleComicTarget():null;if(!applyComicPanelTarget(item,target,point))placeInsertedItem(item,point);state.elements.push(item);setSelection([item.id],item.id);document.getElementById("shapeDrawer").classList.remove("open");syncProperties();render();}
     function makeUserPresetCard(preset){const wrapper=document.createElement("div"),button=document.createElement("button"),preview=document.createElement("canvas"),name=document.createElement("span"),remove=document.createElement("button"),shapeData=preset.shape_data||{};wrapper.className="user-preset-card";wrapper.dataset.preset=preset.id;wrapper.dataset.category="user";wrapper.dataset.search=`${preset.name} user custom`.toLowerCase();button.type="button";button.className="shape-card";button.title=`${preset.name} — click or drag to canvas`;name.className="shape-name";name.textContent=preset.name;button.append(preview,name);button.onclick=()=>insertUserPreset(preset.id);enablePresetDrag(button,{kind:"user-bubble",id:preset.id});remove.type="button";remove.className="user-preset-delete";remove.title="Delete user preset";remove.textContent="×";remove.onclick=event=>{event.stopPropagation();deleteUserPreset(preset.id);};wrapper.append(button,remove);drawPresetThumbnail(preview,{shape:shapeData.shape||"custom",path_points:shapeData.path_points||defaultVectorPath("oval"),tail:"none"});return wrapper;}
     function makeBubblePresetSection(label,presets,{user=false,open=true}={}){const section=document.createElement("details"),summary=document.createElement("summary"),grid=document.createElement("div");section.id=user?"userPresetSection":"builtinPresetSection";section.className="user-preset-section";section.dataset.bubblePresetSection=user?"user":"builtin";section.open=open;summary.textContent=`${label} (${presets.length})`;grid.className="palette";if(presets.length)grid.append(...presets.map(user?makeUserPresetCard:makePresetCard));else{const empty=document.createElement("div");empty.className="sfx-library-empty";empty.textContent=uiText("Built-inを選んで編集し、Propertiesからユーザープリセットとして保存できます。","Choose a Built-in shape, edit it, then save it as a user preset from Properties.");grid.append(empty);}section.append(summary,grid);return section;}
     function renderPresetBrowser(){const all=document.getElementById("allShapes"),total=BUBBLE_PRESETS.length+userPresets.length,previousUser=document.getElementById("userPresetSection"),previousBuiltin=document.getElementById("builtinPresetSection");document.getElementById("shapeDrawerTitle").textContent=`Speech Bubbles (${total})`;document.getElementById("shapeSearch").placeholder=uiText(`${total}件の吹き出しを検索…`,`Search ${total} speech bubbles…`);all.replaceChildren(makeBubblePresetSection("My Presets",userPresets,{user:true,open:previousUser?.open!==false}),makeBubblePresetSection("Built-in",BUBBLE_PRESETS,{open:previousBuiltin?.open!==false}));filterPresetCards();}
@@ -2351,7 +2437,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     function currentLayoutJson(){
       flushPendingEmphasisRegeneration();
       captureActiveWorkspace();
-      const payload=projectSchema.build({activeWorkspace,workspaces,comic:comicEditor?.serialize()||null});
+      const payload=projectSchema.build({activeWorkspace,workspaces,comic:comicEditor?.serialize()||null,generalComic:generalComicEditor?.serialize()||null});
       return JSON.stringify(payload,null,2);
     }
     async function hashImageBlob(blob){
@@ -2465,7 +2551,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
         item.x*=sx;item.y*=sy;item.w*=sx;item.h*=sy;
         if(item.font_size)item.font_size=integerFontSize(item.font_size*Math.min(sx,sy));
       });
-      state.width=width;state.height=height;comicEditor?.scale(sx,sy);
+      state.width=width;state.height=height;if(generalComicEditor?.isActive())generalComicEditor.scale(sx,sy);else if(comicEditor?.isActive())comicEditor.scale(sx,sy);
       state.elements.forEach(item=>{if(item.type==="frame"&&item.fit_to_canvas)syncFrameToCanvas(item);else if(item.type==="emphasis_lines"){if(item.fit_to_canvas)syncEmphasisToCanvas(item);else regenerateEmphasisRays(item);}});
     }
     function applyLayoutForCurrentImage(raw,{dirty=false}={}){
@@ -2646,7 +2732,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       postHost("speech_bubble:export_started",{image_hash:imageHash,document_id:documentId});
       try{
         let response,captureMs=0,requestMs=0,compositeBytes=0,overlayBytes=0,folderTimings=null;
-        if(exportTransport==="multipart_canvas_v1"||comicEditor?.isActive()){
+        if(exportTransport==="multipart_canvas_v1"||activeStructuralEditor()){
           const captureStarted=performance.now();
           const rendered=await captureWysiwygExport(),metadata={render_mode:"browser_canvas_v1",layout_json:rendered.layoutJson,name:sourceName||"speech_bubble",image_hash:imageHash,document_id:documentId,source_tab:sourceTab,client_save:Boolean(directory),desktop_output_dir:desktopOutputDir},form=new FormData();
           captureMs=performance.now()-captureStarted;compositeBytes=rendered.compositeBlob.size;overlayBytes=rendered.overlayBlob?.size||0;
@@ -2894,7 +2980,12 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       const started=DEBUG_RENDER?performance.now():0;
       normalizePinnedFrameOrder();
       setCanvasSize(); ctx.clearRect(0,0,state.width,state.height);
-      if(comicEditor?.isActive()){
+      if(generalComicEditor?.isActive()){
+        generalComicEditor.drawUnderlay(ctx,{overlay:comicOverlayExport,phase:"base"});
+        generalComicEditor.drawUnderlay(ctx,{overlay:comicOverlayExport,phase:"images"});
+        state.elements.forEach(drawElement);
+        generalComicEditor.drawUnderlay(ctx,{overlay:comicOverlayExport,phase:"borders"});
+      }else if(comicEditor?.isActive()){
         comicEditor.drawUnderlay(ctx,{overlay:comicOverlayExport,phase:"base"});
         state.elements.filter(item=>item.comic_scope==="panel"&&item.comic_stack==="below_image").forEach(drawElement);
         comicEditor.drawUnderlay(ctx,{overlay:comicOverlayExport,phase:"images"});
@@ -2907,6 +2998,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       }
       if(cleanSceneCanvas.width!==canvas.width)cleanSceneCanvas.width=canvas.width;if(cleanSceneCanvas.height!==canvas.height)cleanSceneCanvas.height=canvas.height;cleanSceneContext.clearRect(0,0,cleanSceneCanvas.width,cleanSceneCanvas.height);cleanSceneContext.drawImage(canvas,0,0);
       comicEditor?.drawOverlay(ctx);
+      generalComicEditor?.drawOverlay(ctx);
       const items=selectedItems(),selected=state.elements.find(e=>e.id===state.selected),editableItems=items.filter(canvasItemEditable),editableSelected=editableItems.find(item=>item.id===state.selected)||editableItems.at(-1),selectionItem=editableItems.length>1?selectionBounds(editableItems):editableSelected,canvasSelectionEditable=editableItems.length>0;
       const altOverride=state.drag?.altOverride&&items.length===1&&selected?.id===state.drag.items?.[0]?.item?.id;
        if(selectionItem&&!(items.length===1&&selected?.type==="emphasis_lines")&&(canvasSelectionEditable||altOverride)&&(!selectionItem.locked||altOverride)&&(!selected||state.vectorEditId!==selected.id))drawSelection(selectionItem);
@@ -2923,20 +3015,31 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     function refreshLayers(){
       const host=document.getElementById("layers");host.innerHTML="";
       [...state.elements].reverse().forEach(item=>{
-        const row=document.createElement("div");row.className=`layer ${state.selection.includes(item.id)?"selected":""} ${item.group_id?"grouped":""}`;row.draggable=!item.locked&&!isPinnedFrame(item);row.dataset.layerId=item.id;if(comicEditor?.isActive()&&item.comic_scope==="panel"){row.classList.add("comic-layer-nested");row.dataset.comicPanelTarget=item.comic_panel_id||"";row.dataset.comicStack=item.comic_stack==="below_image"?"below_image":"above_image";}
+        const row=document.createElement("div");row.className=`layer ${state.selection.includes(item.id)?"selected":""} ${item.group_id?"grouped":""}`;row.draggable=!item.locked&&!isPinnedFrame(item);row.dataset.layerId=item.id;if(comicEditor?.isActive()&&item.comic_scope==="panel"){row.classList.add("comic-layer-nested");row.dataset.comicPanelTarget=item.comic_panel_id||"";row.dataset.comicStack=item.comic_stack==="below_image"?"below_image":"above_image";}else if(generalComicEditor?.isActive()&&item.general_comic_scope==="panel"){row.classList.add("general-comic-layer-nested");row.dataset.generalComicPanelTarget=item.general_comic_panel_id||"";}
         row.onclick=event=>{if(event.altKey){setSelection(selectionIdsFor(item,false,true),item.id);layerSelectionAnchorId=item.id;}else selectLayerRow(item,event);syncProperties();render();};
         row.addEventListener("dragstart",event=>{row.classList.add("dragging");event.dataTransfer.setData("text/plain",item.id);event.dataTransfer.effectAllowed="move";});
         row.addEventListener("dragend",()=>row.classList.remove("dragging"));
         row.addEventListener("dragover",event=>event.preventDefault());
-        row.addEventListener("drop",event=>{event.preventDefault();const draggedId=event.dataTransfer.getData("text/plain");if(!draggedId||draggedId===item.id)return;pushUndo();const from=state.elements.findIndex(layer=>layer.id===draggedId);if(from<0)return;const dragged=state.elements.splice(from,1)[0];const target=state.elements.findIndex(layer=>layer.id===item.id);state.elements.splice(target+1,0,dragged);if(comicEditor?.isActive()&&dragged.type!=="frame"){if(item.comic_scope==="panel"){dragged.comic_scope="panel";dragged.comic_panel_id=item.comic_panel_id||"";dragged.comic_stack=item.comic_stack==="below_image"?"below_image":"above_image";}else{dragged.comic_scope=dragged.type==="emphasis_lines"?"page":"free";dragged.comic_panel_id="";dragged.comic_stack="above_image";}}normalizePinnedFrameOrder();render();});
+        row.addEventListener("drop",event=>{event.preventDefault();const draggedId=event.dataTransfer.getData("text/plain");if(!draggedId||draggedId===item.id)return;pushUndo();const from=state.elements.findIndex(layer=>layer.id===draggedId);if(from<0)return;const dragged=state.elements.splice(from,1)[0];const target=state.elements.findIndex(layer=>layer.id===item.id);state.elements.splice(target+1,0,dragged);if(comicEditor?.isActive()&&dragged.type!=="frame"){if(item.comic_scope==="panel"){dragged.comic_scope="panel";dragged.comic_panel_id=item.comic_panel_id||"";dragged.comic_stack=item.comic_stack==="below_image"?"below_image":"above_image";}else{dragged.comic_scope=dragged.type==="emphasis_lines"?"page":"free";dragged.comic_panel_id="";dragged.comic_stack="above_image";}}else if(generalComicEditor?.isActive()&&dragged.type!=="frame")generalComicEditor.assignElementTarget?.(dragged,item.general_comic_scope==="panel"?{scope:"panel",panelId:item.general_comic_panel_id}:{scope:"page"});normalizePinnedFrameOrder();render();});
         const eye=document.createElement("button");eye.className="eye";eye.textContent=item.visible===false?"○":"◉";eye.title="Show / Hide";eye.onclick=event=>{event.stopPropagation();const targets=state.selection.length>1&&state.selection.includes(item.id)?selectedItems():[item],visible=item.visible===false;pushUndo();targets.forEach(layer=>layer.visible=visible);render();};
         const kind=document.createElement("span"),assetPreset=item.type==="sfx"?SFX_BY_ID.get(item.asset_id):null,kindName=item.type==="image"?"image":item.type==="text"?"text":item.type==="sfx"?(isComicStamp(assetPreset)?"stamp":"sfx"):item.type==="frame"?"frame":item.type==="emphasis_lines"?"emphasis":"bubble";row.dataset.layerKind=kindName;kind.className=`kind ${kindName}`;kind.textContent=item.type==="image"?"▧":item.type==="text"?"T":item.type==="sfx"?(kindName==="stamp"?"ST":"FX"):item.type==="frame"?"▣":item.type==="emphasis_lines"?"✺":"";
-        const name=document.createElement("span"),emphasisPreset=EMPHASIS_BY_ID.get(item.preset);name.className="name";name.textContent=item.type==="image"?`${uiText("画像","Image")}: ${item.image_name||"Image"}`:item.type==="text"?(item.text||"Text"):item.type==="sfx"?builtinAssetDisplayLabel(item):item.type==="frame"?`${item.frame_label||"Frame Border"}${isPinnedFrame(item)?" · TOP":""}`:item.type==="emphasis_lines"?`Emphasis — ${emphasisPreset?.label||"Center"}`:presetLabel(item);if(comicEditor?.isActive()&&item.comic_scope==="panel"){const target=comicEditor.elementTargetValue?.(item),option=comicEditor.elementTargetOptions?.(item).find(candidate=>candidate.value===target);name.textContent+=` · ${option?.label||uiText("コマ内","Inside Panel")}`;}
+        const name=document.createElement("span"),emphasisPreset=EMPHASIS_BY_ID.get(item.preset);name.className="name";name.textContent=item.type==="image"?`${uiText("画像","Image")}: ${item.image_name||"Image"}`:item.type==="text"?(item.text||"Text"):item.type==="sfx"?builtinAssetDisplayLabel(item):item.type==="frame"?`${item.frame_label||"Frame Border"}${isPinnedFrame(item)?" · TOP":""}`:item.type==="emphasis_lines"?`Emphasis — ${emphasisPreset?.label||"Center"}`:presetLabel(item);if(comicEditor?.isActive()&&item.comic_scope==="panel"){const target=comicEditor.elementTargetValue?.(item),option=comicEditor.elementTargetOptions?.(item).find(candidate=>candidate.value===target);name.textContent+=` · ${option?.label||uiText("コマ内","Inside Panel")}`;}else if(generalComicEditor?.isActive()&&item.general_comic_scope==="panel"){const target=generalComicEditor.elementTargetValue?.(item),option=generalComicEditor.elementTargetOptions?.(item).find(candidate=>candidate.value===target);name.textContent+=` · ${option?.label||uiText("コマ内","Inside Panel")}`;}
         const lock=document.createElement("button");lock.className="lock";lock.textContent=item.locked?"🔒":"🔓";lock.title="Lock / Unlock";lock.onclick=event=>{event.stopPropagation();const targets=state.selection.length>1&&state.selection.includes(item.id)?selectedItems():[item],locked=!item.locked;pushUndo();targets.forEach(layer=>layer.locked=locked);syncProperties();render();};
         const more=document.createElement("button");more.className="more";more.textContent="⋮";more.title="Layer options";more.onclick=event=>{event.stopPropagation();if(state.selection.length>1&&state.selection.includes(item.id))state.selected=item.id;else setSelection(selectionIdsFor(item),item.id);syncProperties();render();updateLayerMenuState();const menu=document.getElementById("layerMenu");menu.style.left=`${Math.min(event.clientX,window.innerWidth-165)}px`;menu.style.top=`${Math.min(event.clientY,window.innerHeight-155)}px`;menu.classList.add("open");};
         row.append(eye,kind,name,lock,more);host.append(row);
       });
-      if(comicEditor?.isActive()){
+      if(generalComicEditor?.isActive()){
+        generalComicEditor.renderLayers(host);
+        const panelRows=[...host.querySelectorAll('[data-general-comic-layer="panel"]')],nestedRows=[...host.querySelectorAll("[data-general-comic-panel-target]")];
+        for(const row of nestedRows.reverse()){
+          const imageRow=host.querySelector(`[data-general-comic-layer="image"][data-general-comic-panel-id="${CSS.escape(row.dataset.generalComicPanelTarget)}"]`);
+          const panelRow=panelRows.find(candidate=>candidate.dataset.generalComicPanelId===row.dataset.generalComicPanelTarget);
+          (imageRow||panelRow)?.insertAdjacentElement("afterend",row);
+        }
+        const pageRow=host.querySelector('[data-general-comic-layer="page"]'),pageLayerRows=[...host.querySelectorAll('[data-layer-id]:not([data-general-comic-panel-target])')];
+        if(pageRow){host.prepend(pageRow);for(const row of pageLayerRows.reverse())pageRow.insertAdjacentElement("afterend",row);}
+      }
+      else if(comicEditor?.isActive()){
         comicEditor.renderLayers(host);
         const panelRows=[...host.querySelectorAll('[data-comic-layer="panel"]')],nestedRows=[...host.querySelectorAll("[data-comic-panel-target]")];
         for(const row of nestedRows.filter(candidate=>candidate.dataset.comicStack!=="below_image").reverse()){
@@ -2958,20 +3061,24 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     function showBackgroundLayerMenu(x,y){let menu=document.getElementById("backgroundLayerMenu");if(!menu){menu=document.createElement("div");menu.id="backgroundLayerMenu";menu.className="context-menu open";menu.innerHTML='<button type="button" data-background-action="replace">Replace Image</button><button type="button" data-background-action="reset">Reset Position</button><button type="button" data-background-action="remove">Remove Image</button>';menu.onclick=event=>{const action=event.target.dataset.backgroundAction;if(action==="replace")backgroundInput.click();else if(action==="reset")resetBackgroundPosition();else if(action==="remove")removeBackgroundImage();menu.classList.remove("open");};document.body.append(menu);}menu.style.left=`${Math.min(x,innerWidth-170)}px`;menu.style.top=`${Math.min(y,innerHeight-120)}px`;menu.classList.add("open");}
     function syncFrameAttachedDecorationControls(item,preset){const host=document.getElementById("frameAttachedDecorations"),list=document.getElementById("frameAttachedDecorationList"),decorations=preset?.attached_decorations||[];if(!host||!list)return;host.hidden=!item||item.type!=="frame"||!decorations.length;if(host.hidden){list.replaceChildren();return;}const enabled=new Set(Array.isArray(item.attached_decorations)?item.attached_decorations:decorations.map(decoration=>decoration.id));list.replaceChildren(...decorations.map(decoration=>{const label=document.createElement("label"),input=document.createElement("input"),text=document.createElement("span");input.type="checkbox";input.dataset.frameDecoration=decoration.id;input.checked=enabled.has(decoration.id);input.disabled=!!item.locked;text.textContent=decoration.label;label.append(text,input);return label;}));}
     function syncComicTargetControls(item){
+      const generalMode=generalComicEditor?.isActive()===true,assetLabel=document.getElementById("comicLayerScopeLabel"),emphasisLabel=document.getElementById("emphasisComicScopeLabel");
+      if(assetLabel)assetLabel.textContent=generalMode?uiText("コミック内の配置","Comic Placement"):uiText("4コマ内の配置","4-Panel Placement");
+      if(emphasisLabel)emphasisLabel.textContent=generalMode?uiText("コミック内の適用先","Comic Target"):uiText("4コマ内の適用先","4-Panel Target");
       document.querySelectorAll("[data-comic-target]").forEach(select=>{
-        const kind=select.dataset.comicTarget,relevant=comicEditor?.isActive()&&item&&(kind==="emphasis"?item.type==="emphasis_lines":!["emphasis_lines","frame"].includes(item.type));
+        const editor=activeStructuralEditor(),kind=select.dataset.comicTarget,relevant=Boolean(editor)&&item&&(kind==="emphasis"?item.type==="emphasis_lines":item.type!=="emphasis_lines"&&(generalMode||item.type!=="frame"));
         select.disabled=!relevant;
         if(!relevant)return;
-        const options=comicEditor.elementTargetOptions?.(item)||[],signature=options.map(option=>`${option.value}:${option.label}`).join("|");
+        const options=editor.elementTargetOptions?.(item)||[],signature=options.map(option=>`${option.value}:${option.label}`).join("|");
         if(select.dataset.optionSignature!==signature){
           select.replaceChildren(...options.map(option=>{const node=document.createElement("option");node.value=option.value;node.textContent=option.label;return node;}));
           select.dataset.optionSignature=signature;
         }
-        select.value=comicEditor.elementTargetValue?.(item)||options[0]?.value||"";
+        select.value=editor.elementTargetValue?.(item)||options[0]?.value||"";
       });
     }
     function syncProperties(){
-      if(!comicEditor?.isActive()&&state.selected===BACKGROUND_LAYER_ID){const panel=document.getElementById("properties"),empty=document.getElementById("empty");panel.querySelectorAll('[id$="Props"]').forEach(node=>node.hidden=true);document.getElementById("transformDetails").hidden=true;document.getElementById("shadowEffects").hidden=true;document.getElementById("comicLayerScopeRow").hidden=true;document.getElementById("canvasBackgroundProps").hidden=false;panel.classList.remove("disabled");empty.hidden=true;rebuildCanvasBackgroundProperties();return;}
+      if(activeWorkspace==="single"&&state.selected===BACKGROUND_LAYER_ID){const panel=document.getElementById("properties"),empty=document.getElementById("empty");panel.querySelectorAll('[id$="Props"]').forEach(node=>node.hidden=true);document.getElementById("transformDetails").hidden=true;document.getElementById("shadowEffects").hidden=true;document.getElementById("comicLayerScopeRow").hidden=true;document.getElementById("canvasBackgroundProps").hidden=false;panel.classList.remove("disabled");empty.hidden=true;rebuildCanvasBackgroundProperties();return;}
+      if(generalComicEditor?.isActive()&&!state.selection.length){generalComicEditor.syncProperties();return;}
       if(comicEditor?.syncProperties())return;
       document.getElementById("backgroundProps").hidden=true;
       document.getElementById("canvasBackgroundProps").hidden=true;
@@ -2980,13 +3087,13 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       empty.textContent=locked?"Unlock the selected layer to edit it.":"Select a layer to edit it.";empty.hidden=Boolean(item)&&!locked;panel.classList.toggle("disabled",!item||locked);
       document.getElementById("groupProps").hidden=!multiple;document.getElementById("selectionCount").textContent=uiText(`${items.length}レイヤーを選択中`,`${items.length} layers selected`);document.getElementById("selectionStatusHint").textContent=lockedCount?uiText(`${lockedCount}個のロック済みレイヤーを除外して変形します。`,`${lockedCount} locked layer${lockedCount===1?"":"s"} excluded from transforms.`):uiText("キャンバスのハンドルでまとめて移動・拡大縮小・回転できます。","Drag the canvas handles to move, resize, or rotate them together.");
       document.getElementById("bubbleProps").hidden=multiple||item?.type!=="bubble";document.getElementById("shapeTuningProps").hidden=multiple||isFixedPathItem(item)||!shapeTuningForItem(item);document.getElementById("textProps").hidden=multiple||item?.type!=="text";document.getElementById("sfxProps").hidden=multiple||item?.type!=="sfx";document.getElementById("frameProps").hidden=multiple||item?.type!=="frame";document.getElementById("emphasisProps").hidden=multiple||item?.type!=="emphasis_lines";const sfxPreset=item?.type==="sfx"?SFX_BY_ID.get(item.asset_id):null,isSfx=item?.type==="sfx"&&!multiple,userSfx=isSfx&&Boolean(String(item.user_asset_id||"").replace(/^user:/,"")),maskSfx=isSfx?Boolean(item.mask_mode??sfxPreset?.mask):false;if(isSfx&&!maskSfx&&compactSwatchTargets.asset==="fill")compactSwatchTargets.asset="stroke";document.getElementById("sfxUserColorMode").hidden=!userSfx;document.querySelectorAll("[data-sfx-color-mode]").forEach(button=>{const active=userSfx&&button.dataset.sfxColorMode===(maskSfx?"fill":"original");button.classList.toggle("active",active);button.setAttribute("aria-pressed",String(active));});document.getElementById("sfxMaskProps").hidden=!isSfx;document.getElementById("sfxFillColorRow").hidden=!maskSfx;document.getElementById("sfxFillSwatchTarget").hidden=!maskSfx;document.getElementById("sfxStrokeSwatchTarget").textContent=maskSfx?"Outline":"Border";document.getElementById("sfxOutlineColorLabel").textContent=maskSfx?"Outline Color":"Border Color";document.getElementById("sfxOutlineWidthLabel").textContent=maskSfx?"Outline Width":"Border Width";document.getElementById("sfxFormatHint").textContent=userSfx?(maskSfx?"User asset Fill: fill / outline editable":"User asset Original: original colors / border editable"):(maskSfx?"Mask: fill / outline editable":"Raster asset: border editable");document.getElementById("shadowEffects").hidden=multiple||!item||item.type==="frame"||item.type==="emphasis_lines";
-      const emphasisScopeRow=document.getElementById("emphasisComicScopeRow");if(emphasisScopeRow)emphasisScopeRow.hidden=!["desktop","desktop-file"].includes(hostMode)||!comicEditor?.isActive()||multiple||item?.type!=="emphasis_lines";
-      const comicLayerScopeRow=document.getElementById("comicLayerScopeRow");if(comicLayerScopeRow)comicLayerScopeRow.hidden=!comicEditor?.isActive()||multiple||!item||["emphasis_lines","frame"].includes(item.type);
+      const emphasisScopeRow=document.getElementById("emphasisComicScopeRow");if(emphasisScopeRow)emphasisScopeRow.hidden=!["desktop","desktop-file"].includes(hostMode)||!activeStructuralEditor()||multiple||item?.type!=="emphasis_lines";
+      const comicLayerScopeRow=document.getElementById("comicLayerScopeRow");if(comicLayerScopeRow)comicLayerScopeRow.hidden=!activeStructuralEditor()||multiple||!item||item.type==="emphasis_lines"||(item.type==="frame"&&!generalComicEditor?.isActive());
        const basicSymbolKind=basicSymbolKindFor(item),basicSymbolProps=document.getElementById("basicSymbolProps"),symbolTopWidthRow=document.getElementById("symbolTopWidthRow"),symbolSkewRow=document.getElementById("symbolSkewRow");if(basicSymbolProps)basicSymbolProps.hidden=!(["square","trapezoid"].includes(basicSymbolKind));if(symbolTopWidthRow)symbolTopWidthRow.hidden=basicSymbolKind!=="trapezoid";if(symbolSkewRow)symbolSkewRow.hidden=basicSymbolKind!=="square";
        const fixedPath=isFixedPathItem(item),tuning=shapeTuningForItem(item),family=tuning?.family,roundnessLabel=document.querySelector("#roundnessProps label");document.getElementById("roundnessProps").hidden=!["oval","box"].includes(family);if(roundnessLabel)roundnessLabel.childNodes[0].nodeValue=family==="oval"?"Oval Fullness":"Corner Roundness";document.getElementById("jaggedShapeProps").hidden=!["jagged","soft"].includes(family);document.getElementById("cloudShapeProps").hidden=family!=="cloud"||fixedPath;document.getElementById("valleyConcavityRow").hidden=family!=="jagged"||item?.valley_style==="straight";document.getElementById("shapeIntensityRow").hidden=["oval","box"].includes(family);document.getElementById("shapeIntensityLabel").textContent=family==="cloud"?"Cloudiness":family==="heart"?"Heart Fullness":"Shape Intensity";document.getElementById("shapeTuningHint").textContent=family==="oval"?"Adjust oval fullness; it remains an oval.":family==="box"?"Adjust corner radius; it remains a box.":family==="jagged"?(item?.valley_style==="straight"?"Sharp asymmetric manga spikes":"Curved inward manga spikes"):family==="soft"?"Rounded asymmetric burst; never collapses to an oval.":family==="cloud"?"Asymmetric manga thinking-cloud lobes.":family==="heart"?"Adjust within the heart family.":"Edit Path: direct Bézier editing";
       document.getElementById("transformDetails").hidden=!item||locked||multiple;document.getElementById("groupSelection").disabled=items.filter(layer=>!layer.locked).length<2;document.getElementById("ungroupSelection").disabled=!items.some(layer=>layer.group_id);const selectedFrame=item?.type==="frame",decorativeFrame=selectedFrame&&(item.frame_kind==="decorative"||item.frame_mode!=="border"||!!item.asset_src),framePreset=selectedFrame?(FRAME_BY_ID.get(item.frame_preset_id)||FRAME_PRESETS[0]):null,frameFitModeProps=document.getElementById("frameFitModeProps"),frameAssetWarning=document.getElementById("frameAssetWarning");if(frameBorderProps)frameBorderProps.hidden=!selectedFrame||decorativeFrame;if(frameDecorativeProps)frameDecorativeProps.hidden=!selectedFrame||!decorativeFrame;if(frameFitModeProps)frameFitModeProps.hidden=!selectedFrame||(item.frame_mode||framePreset?.frame_mode)!=="full-overlay";syncFrameAttachedDecorationControls(selectedFrame?item:null,framePreset);if(frameAssetWarning){const status=selectedFrame?frameAssetScaleStatus(item,framePreset):null;frameAssetWarning.hidden=!status;frameAssetWarning.textContent=status?.text||"";frameAssetWarning.dataset.level=status?.level||"";}if(deleteFrameBtn)deleteFrameBtn.disabled=!isFrameSelected(item);
       const edit=document.getElementById("editVector"),addPoint=document.getElementById("addVectorPoint"),deletePoint=document.getElementById("deleteVectorPoint"),vectorTools=document.querySelector(".vector-tools"),vectorHint=document.querySelector(".vector-tools + .hint"),vectorEditing=state.vectorEditId===item?.id;if(fixedPath&&vectorEditing){state.vectorEditId=null;state.vectorAnchorIndex=null;state.vectorAddMode=false;}const editingPath=!fixedPath&&state.vectorEditId===item?.id;if(vectorTools)vectorTools.hidden=fixedPath;if(vectorHint)vectorHint.hidden=fixedPath;edit.disabled=fixedPath;edit.textContent=editingPath?"Finish Path":"Edit Path";edit.classList.toggle("active",editingPath);addPoint.classList.toggle("active",state.vectorAddMode);addPoint.disabled=!editingPath;deletePoint.disabled=!editingPath||state.vectorAnchorIndex===null||(item?.path_points?.length||0)<=3;
-      if(!item){syncComicTargetControls(null);syncEmphasisCenterGapMaster(null);updateSfxSwatches(null);updateCompactColorSwatches(null);updateFontPicker(null);return;}if(item.type==="text"){item.writing=item.writing==="vertical"?"vertical":"horizontal";item.align=["left","right"].includes(item.align)?item.align:"center";}if(item.type!=="emphasis_lines"&&item.type!=="frame")item.comic_scope=item.comic_scope==="panel"?"panel":"free";const values=multiple?selectionBounds(items):item;panel.querySelectorAll("[data-key]").forEach(input=>{const key=input.dataset.key,value=key==="sfx_scale"&&item.type==="sfx"?sfxScalePercent(item):values?.[key];if(input.type==="checkbox")input.checked=!!value;else if(input.type==="number")input.value=numericDisplayValue(key,value,rangeSpecs[key]?.[0]??0);else input.value=value??"";});panel.querySelectorAll("[data-range-key]").forEach(input=>{const key=input.dataset.rangeKey,value=key==="sfx_scale"&&item.type==="sfx"?sfxScalePercent(item):values?.[key];input.value=numericDisplayValue(key,value,rangeSpecs[key]?.[0]??0);});syncComicTargetControls(item);syncEmphasisCenterGapMaster(item);updateSfxSwatches(item);updateCompactColorSwatches(item);
+      if(!item){syncComicTargetControls(null);syncEmphasisCenterGapMaster(null);updateSfxSwatches(null);updateCompactColorSwatches(null);updateFontPicker(null);return;}if(item.type==="text"){item.writing=item.writing==="vertical"?"vertical":"horizontal";item.align=["left","right"].includes(item.align)?item.align:"center";}if(item.type!=="emphasis_lines"&&item.type!=="frame")item.comic_scope=item.comic_scope==="panel"?"panel":"free";item.general_comic_scope=item.general_comic_scope==="panel"?"panel":"page";item.general_comic_panel_id=item.general_comic_scope==="panel"?String(item.general_comic_panel_id||""):null;const values=multiple?selectionBounds(items):item;panel.querySelectorAll("[data-key]").forEach(input=>{const key=input.dataset.key,value=key==="sfx_scale"&&item.type==="sfx"?sfxScalePercent(item):values?.[key];if(input.type==="checkbox")input.checked=!!value;else if(input.type==="number")input.value=numericDisplayValue(key,value,rangeSpecs[key]?.[0]??0);else input.value=value??"";});panel.querySelectorAll("[data-range-key]").forEach(input=>{const key=input.dataset.rangeKey,value=key==="sfx_scale"&&item.type==="sfx"?sfxScalePercent(item):values?.[key];input.value=numericDisplayValue(key,value,rangeSpecs[key]?.[0]??0);});syncComicTargetControls(item);syncEmphasisCenterGapMaster(item);updateSfxSwatches(item);updateCompactColorSwatches(item);
       document.querySelectorAll("[data-writing]").forEach(button=>{const active=button.dataset.writing===item.writing;button.classList.toggle("active",active);button.setAttribute("aria-pressed",String(active));});document.querySelectorAll("[data-text-align]").forEach(button=>{const active=button.dataset.textAlign===(item.align||"center");button.classList.toggle("active",active);button.setAttribute("aria-pressed",String(active));});document.querySelectorAll("[data-toggle-key]").forEach(button=>{const active=!!item[button.dataset.toggleKey];button.classList.toggle("active",active);button.setAttribute("aria-pressed",String(active));});const savePreset=document.getElementById("saveUserPreset"),savePresetAs=document.getElementById("saveUserPresetAs");savePreset.textContent=item.user_preset_id?uiText("変更を保存…","Save Changes…"):uiText("ユーザープリセットとして保存…","Save as User Preset…");savePresetAs.hidden=!item.user_preset_id;savePresetAs.textContent=uiText("別名で保存…","Save As…");
       updateFontPicker(item);if(document.getElementById("fontBrowser").classList.contains("open"))renderFontBrowser();
     }
@@ -3117,6 +3224,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
         selected:state.selected,
         selection:state.selection,
         comic:comicEditor?.serialize(),
+        generalComic:generalComicEditor?.serialize(),
       });
     }
     let paletteSyncApplying=false,paletteSyncTimer=null,lastPaletteSyncSnapshot="";
@@ -3150,8 +3258,8 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     function restoreScene(snapshot){
       const data=JSON.parse(snapshot);
       if(data.workspaces&&typeof data.workspaces==="object"){
-        for(const name of ["single","comic"]){
-          const fallback=name==="comic"?{width:720,height:2200}:{width:1024,height:1024};
+        for(const name of ["single","comic","comic_layout"]){
+          const fallback=name==="comic"?{width:720,height:2200}:name==="comic_layout"?{width:2480,height:3508}:{width:1024,height:1024};
           const saved=data.workspaces[name]||{};
           workspaces[name]={
             width:Math.max(1,Math.round(Number(saved.width)||fallback.width)),
@@ -3163,7 +3271,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
             view:normalizedWorkspaceView(saved.view)||normalizedWorkspaceView(storedWorkspaceViews()[name]),
           };
         }
-        activeWorkspace=data.activeWorkspace==="comic"?"comic":"single";
+        activeWorkspace=["single","comic","comic_layout"].includes(data.activeWorkspace)?data.activeWorkspace:"single";
         const active=workspaces[activeWorkspace];
         state.width=active.width;state.height=active.height;state.backgroundVisible=active.backgroundVisible;state.canvasBackground=normalizedCanvasBackground(active.canvasBackground);state.backgroundImage=normalizedBackgroundImage(active.backgroundImage);state.elements=active.elements;
       }else{
@@ -3176,6 +3284,8 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       state.selection=Array.isArray(data.selection)?data.selection.filter(itemId=>state.elements.some(item=>item.id===itemId)):(state.selected&&state.selected!==BACKGROUND_LAYER_ID?[state.selected]:[]);
       state.vectorEditId=null;state.vectorAnchorIndex=null;state.vectorAddMode=false;
       comicEditor?.restore(data.comic,{hydrate:false,keepMode:true});
+      generalComicEditor?.restore(data.generalComic,{hydrate:false,keepMode:true});
+      syncEditorModeFromWorkspace();
       restoreWorkspaceView(workspaces[activeWorkspace],false);
     }
     function storeUndo(snapshot){if(!snapshot||state.undo[state.undo.length-1]===snapshot)return;state.undo.push(snapshot);if(state.undo.length>50)state.undo.shift();state.redo=[];}
@@ -3194,13 +3304,14 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
      function deleteSelected(){const ids=new Set(selectedItems().filter(item=>!item.locked).map(item=>item.id));if(!ids.size)return;pushUndo();const first=state.elements.findIndex(item=>ids.has(item.id));state.elements=state.elements.filter(item=>!ids.has(item.id));const next=state.elements[Math.min(first,state.elements.length-1)]?.id||null;setSelection(next?[next]:[],next);state.vectorEditId=null;syncProperties();render();}
     function deleteSelectedFrame(){const item=state.elements.find(element=>element.id===state.selected);if(!isFrameSelected(item))return false;deleteSelected();return true;}
     function nudgeSelected(dx,dy){const items=selectedItems().filter(canvasItemEditable);if(!items.length)return;pushUndo();items.forEach(item=>{item.x+=dx;item.y+=dy;if(item.type==="frame")item.fit_to_canvas=false;});syncProperties();render();}
-     function findHit(point,allowLocked=false){const candidates=[...state.elements].reverse().filter(e=>e.visible!==false&&!comicEditor?.shouldSkipPanelScopedItem?.(e)&&canvasHitEnabled(e)&&(allowLocked||canvasItemEditable(e)));for(const group of [candidates.filter(e=>e.type!=="image"),candidates.filter(e=>e.type==="image")])for(const e of group){const local=itemLocalPoint(e,point);if(local.x>=e.x&&local.x<=e.x+e.w&&local.y>=e.y&&local.y<=e.y+e.h)return e;}return null;}
+     function findHit(point,allowLocked=false){const structuralEditor=activeStructuralEditor(),candidates=[...state.elements].reverse().filter(e=>e.visible!==false&&!structuralEditor?.shouldSkipPanelScopedItem?.(e)&&canvasHitEnabled(e)&&(allowLocked||canvasItemEditable(e)));for(const group of [candidates.filter(e=>e.type!=="image"),candidates.filter(e=>e.type==="image")])for(const e of group){const clip=generalComicEditor?.isActive()?elementClipShape(e):null;if(clip&&!pointInClipShape(point,clip))continue;const local=itemLocalPoint(e,point);if(local.x>=e.x&&local.x<=e.x+e.w&&local.y>=e.y&&local.y<=e.y+e.h)return e;}return null;}
     viewport.addEventListener("pointerdown",(event)=>{if(event.button!==1&&!(event.button===0&&state.spaceDown))return;event.preventDefault();event.stopPropagation();state.drag={mode:"pan",sx:event.clientX,sy:event.clientY,px:state.panX,py:state.panY};canvas.style.cursor="grabbing";viewport.style.cursor="grabbing";viewport.setPointerCapture(event.pointerId);},true);
     viewport.addEventListener("pointermove",(event)=>{const d=state.drag;if(!d||d.mode!=="pan")return;state.panX=d.px+(event.clientX-d.sx);state.panY=d.py+(event.clientY-d.sy);applyViewTransform();});
     canvas.addEventListener("pointerdown",(event)=>{
       if(event.button!==0)return;document.getElementById("shapeDrawer").classList.remove("open");closeFontBrowser();const p=imagePoint(event);
-      if(!comicEditor?.isActive()&&state.selected===BACKGROUND_LAYER_ID&&state.backgroundImage.attached&&!state.backgroundImage.locked&&!findHit(p,true)){pushUndo();state.drag={mode:"background-move",sx:p.x,sy:p.y,x:state.backgroundImage.offsetX,y:state.backgroundImage.offsetY};canvas.setPointerCapture(event.pointerId);event.preventDefault();return;}
+      if(activeWorkspace==="single"&&state.selected===BACKGROUND_LAYER_ID&&state.backgroundImage.attached&&!state.backgroundImage.locked&&!findHit(p,true)){pushUndo();state.drag={mode:"background-move",sx:p.x,sy:p.y,x:state.backgroundImage.offsetX,y:state.backgroundImage.offsetY};canvas.setPointerCapture(event.pointerId);event.preventDefault();return;}
       const items=selectedItems(),item=state.elements.find(e=>e.id===state.selected),editableItems=items.filter(canvasItemEditable),editableItem=editableItems.find(layer=>layer.id===state.selected)||editableItems.at(-1),selectionItem=editableItems.length>1?selectionBounds(editableItems):editableItem,canvasSelectionEditable=editableItems.length>0,standardHandles=!(items.length===1&&item?.type==="emphasis_lines"),emphasisCenterHandle=canvasSelectionEditable&&items.length===1?findEmphasisCenterHandle(item,p):null,vectorHandle=canvasSelectionEditable&&items.length===1&&item&&state.vectorEditId===item.id?findVectorHandle(item,p):null,frameMoveHandleHit=canvasSelectionEditable&&items.length===1&&item?.type==="frame"?findFrameMoveHandle(item,p):null,tailHandle=canvasSelectionEditable&&items.length===1&&item&&!state.vectorEditId?findTailHandle(item,p):null,rotateHandle=standardHandles&&canvasSelectionEditable&&selectionItem&&state.vectorEditId!==item?.id?findRotationHandle(selectionItem,p):null,handle=standardHandles&&canvasSelectionEditable&&selectionItem&&state.vectorEditId!==item?.id?findHandle(selectionItem,p):null,selectedInteractionHit=emphasisCenterHandle||vectorHandle||frameMoveHandleHit||tailHandle||rotateHandle||handle;
+      if(!selectedInteractionHit&&generalComicEditor?.isActive()&&generalComicEditor.handlePointerDown(p,event)){canvas.setPointerCapture(event.pointerId);return;}
       if(!selectedInteractionHit&&comicEditor?.handlePointerDown(event,p)){canvas.setPointerCapture(event.pointerId);return;}
        if(event.altKey){const preferred=state.elements.find(e=>e.id===state.selected),preferredPoint=preferred?itemLocalPoint(preferred,p):null,isolated=preferred&&canvasHitEnabled(preferred)&&preferred.visible!==false&&preferredPoint.x>=preferred.x&&preferredPoint.x<=preferred.x+preferred.w&&preferredPoint.y>=preferred.y&&preferredPoint.y<=preferred.y+preferred.h?preferred:findHit(p,true);if(isolated){setSelection([isolated.id],isolated.id);pushUndo();state.drag={mode:"move",items:[{item:isolated,x:isolated.x,y:isolated.y}],sx:p.x,sy:p.y,altOverride:true};syncProperties();render();canvas.setPointerCapture(event.pointerId);return;}}
       if(state.vectorAddMode&&item&&state.vectorEditId===item.id){pushUndo();addVectorPointAt(item,p);syncProperties();render();canvas.setPointerCapture(event.pointerId);return;}
@@ -3215,7 +3326,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     });
     canvas.addEventListener("contextmenu",event=>{if(!comicEditor?.isActive()){const hit=findHit(imagePoint(event),true);if(hit){event.preventDefault();setSelection([hit.id],hit.id);syncProperties();updateLayerMenuState();const menu=document.getElementById("layerMenu");menu.style.left=`${Math.min(event.clientX,window.innerWidth-190)}px`;menu.style.top=`${Math.min(event.clientY,window.innerHeight-220)}px`;menu.classList.add("open");return;}}if(comicEditor?.handleContextMenu(event,imagePoint(event))){event.preventDefault();event.stopPropagation();}});
     canvas.addEventListener("pointermove",(event)=>{
-      const p=imagePoint(event),comicCursor=comicEditor?.pointerCursorAt?.(p)||"";if(!state.drag){const cursor=comicCursor||(state.spaceDown?"grab":"default");canvas.style.cursor=cursor;viewport.style.cursor=cursor;}if(comicEditor?.handlePointerMove(event,p))return;const d=state.drag;if(!d||d.mode==="pan")return;
+      const p=imagePoint(event),structuralEditor=activeStructuralEditor(),structuralCursor=structuralEditor?.pointerCursorAt?.(p)||"";if(!state.drag){const cursor=structuralCursor||(state.spaceDown?"grab":"default");canvas.style.cursor=cursor;viewport.style.cursor=cursor;}if(generalComicEditor?.isActive()&&generalComicEditor.handlePointerMove(p,event))return;if(comicEditor?.handlePointerMove(event,p))return;const d=state.drag;if(!d||d.mode==="pan")return;
       if(d.mode==="background-move"){state.backgroundImage.offsetX=Math.round(d.x+p.x-d.sx);state.backgroundImage.offsetY=Math.round(d.y+p.y-d.sy);}
       else if(d.mode==="move"){const dx=p.x-d.sx,dy=p.y-d.sy;d.items.forEach(original=>{original.item.x=Math.round(original.x+dx);original.item.y=Math.round(original.y+dy);if(original.item.type==="frame")original.item.fit_to_canvas=false;});}
       else if(d.mode==="rotate"){let delta=Math.atan2(p.y-d.center.y,p.x-d.center.x)*180/Math.PI-d.start,angle=d.startRotation+delta;if(event.shiftKey)angle=Math.round(angle/15)*15;d.item.rotation=Math.round(((angle+180)%360+360)%360-180);if(d.item.type==="frame")d.item.fit_to_canvas=false;}
@@ -3231,12 +3342,13 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       if(d.mode==="group-rotate")d.items.forEach(original=>{if(original.item.type==="emphasis_lines")original.item.fit_to_canvas=false;});
       syncProperties();requestRender({canvas:true});
     });
-    function endPointer(){if(comicEditor?.handlePointerEnd()){canvas.style.cursor=state.spaceDown?"grab":"default";viewport.style.cursor=state.spaceDown?"grab":"default";return;}const panned=state.drag?.mode==="pan",changed=Boolean(state.drag&&!panned);state.drag=null;if(panned)captureActiveWorkspace();canvas.style.cursor=state.spaceDown?"grab":"default";viewport.style.cursor=state.spaceDown?"grab":"default";if(changed)requestRender({canvas:true,layers:true,preview:true});}
+    function endPointer(event){if(generalComicEditor?.isActive()&&generalComicEditor.handlePointerEnd(event)||comicEditor?.handlePointerEnd(event)){canvas.style.cursor=state.spaceDown?"grab":"default";viewport.style.cursor=state.spaceDown?"grab":"default";return;}const panned=state.drag?.mode==="pan",changed=Boolean(state.drag&&!panned);state.drag=null;if(panned)captureActiveWorkspace();canvas.style.cursor=state.spaceDown?"grab":"default";viewport.style.cursor=state.spaceDown?"grab":"default";if(changed)requestRender({canvas:true,layers:true,preview:true});}
     canvas.addEventListener("pointerup",endPointer); canvas.addEventListener("pointercancel",endPointer);
     viewport.addEventListener("pointerup",endPointer); viewport.addEventListener("pointercancel",endPointer);
     viewport.addEventListener("auxclick",event=>{if(event.button===1)event.preventDefault();});
     viewport.addEventListener("wheel",(event)=>{
       event.preventDefault();
+      if(event.target===canvas&&generalComicEditor?.isActive()&&generalComicEditor.handleWheel(event,imagePoint(event)))return;
       if(event.target===canvas&&comicEditor?.handleWheel(event,imagePoint(event)))return;
       if(event.target===canvas&&event.ctrlKey&&!comicEditor?.isActive()){const item=selectedImageLayer();if(item&&!item.locked){pushUndo();const center=itemCenter(item),scale=Math.max(.1,Math.min(8,imageLayerScale(item)/100*(event.deltaY<0?1.05:.95)));item.w=item.base_width*scale;item.h=item.base_height*scale;item.x=center.x-item.w/2;item.y=center.y-item.h/2;syncProperties();requestRender({canvas:true,layers:true,preview:true});return;}}
       state.zoom=Math.max(.25,Math.min(4,state.zoom*(event.deltaY<0?1.1:.9)));
@@ -3251,16 +3363,16 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     backgroundDropSurface.addEventListener("dragenter",event=>{if(!transferHasFiles(event.dataTransfer))return;event.preventDefault();setBackgroundDropHighlight(true);},true);
     backgroundDropSurface.addEventListener("dragover",event=>{if(!transferHasFiles(event.dataTransfer))return;event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect="copy";setBackgroundDropHighlight(true);},true);
     backgroundDropSurface.addEventListener("dragleave",event=>{if(!backgroundDropSurface.contains(event.relatedTarget))setBackgroundDropHighlight(false);},true);
-    backgroundDropSurface.addEventListener("drop",event=>{if(!transferHasFiles(event.dataTransfer))return;event.preventDefault();event.stopPropagation();setBackgroundDropHighlight(false);const files=Array.from(event.dataTransfer?.files||[]).filter(isSupportedImageFile);if(comicEditor?.isActive()){const point=event.target===canvas||canvas.contains(event.target)?imagePoint(event):null;comicEditor.importFiles(files,{point});return;}const file=files[0]||imageFileFromTransfer(event.dataTransfer);if(file)requestBackgroundFile(file);else setSaveState("PNG / JPEG / WebP画像をドロップしてください","error");},true);
-    canvas.addEventListener("dragover",event=>{if(imageFileFromTransfer(event.dataTransfer))return;const comicImage=event.dataTransfer.types.includes(window.SpeechBubbleComicEditor?.IMAGE_DRAG_TYPE||"application/x-speech-bubble-comic-image");if(!comicImage&&!event.dataTransfer.types.includes(EDITOR_DRAG_TYPE))return;event.preventDefault();event.dataTransfer.dropEffect="copy";canvas.classList.add("drop-target");});
+    backgroundDropSurface.addEventListener("drop",event=>{if(!transferHasFiles(event.dataTransfer))return;event.preventDefault();event.stopPropagation();setBackgroundDropHighlight(false);const files=Array.from(event.dataTransfer?.files||[]).filter(isSupportedImageFile),point=event.target===canvas||canvas.contains(event.target)?imagePoint(event):null;if(generalComicEditor?.isActive()){generalComicEditor.handleImageDrop(event.dataTransfer,point||{x:-1,y:-1});return;}if(comicEditor?.isActive()){comicEditor.importFiles(files,{point});return;}const file=files[0]||imageFileFromTransfer(event.dataTransfer);if(file)requestBackgroundFile(file);else setSaveState("PNG / JPEG / WebP画像をドロップしてください","error");},true);
+    canvas.addEventListener("dragover",event=>{if(imageFileFromTransfer(event.dataTransfer))return;const comicImage=event.dataTransfer.types.includes(window.SpeechBubbleComicEditor?.IMAGE_DRAG_TYPE||"application/x-speech-bubble-comic-image"),generalImage=event.dataTransfer.types.includes(window.SpeechBubbleGeneralComicEditor?.IMAGE_DRAG_TYPE||"application/x-speech-bubble-general-comic-image");if(!comicImage&&!generalImage&&!event.dataTransfer.types.includes(EDITOR_DRAG_TYPE))return;event.preventDefault();event.dataTransfer.dropEffect="copy";canvas.classList.add("drop-target");});
     canvas.addEventListener("dragleave",event=>{if(!canvas.contains(event.relatedTarget))canvas.classList.remove("drop-target");});
-    canvas.addEventListener("drop",event=>{if(imageFileFromTransfer(event.dataTransfer))return;canvas.classList.remove("drop-target");const point=imagePoint(event);if(comicEditor?.handleImageDrop(event.dataTransfer,point)){event.preventDefault();return;}const raw=event.dataTransfer.getData(EDITOR_DRAG_TYPE);if(!raw)return;event.preventDefault();let payload;try{payload=JSON.parse(raw);}catch{return;}if(payload.kind==="bubble")insertPreset(payload.id,point);else if(payload.kind==="user-bubble")insertUserPreset(payload.id,point);else if(payload.kind==="sfx")insertSfx(payload.id,point);else if(payload.kind==="frame")insertFrame(payload.id,point);else if(payload.kind==="emphasis-lines")insertEmphasisLines(payload.id,point);});
+    canvas.addEventListener("drop",event=>{if(imageFileFromTransfer(event.dataTransfer))return;canvas.classList.remove("drop-target");const point=imagePoint(event);if(generalComicEditor?.isActive()&&generalComicEditor.handleImageDrop(event.dataTransfer,point)){event.preventDefault();return;}if(comicEditor?.handleImageDrop(event.dataTransfer,point)){event.preventDefault();return;}const raw=event.dataTransfer.getData(EDITOR_DRAG_TYPE);if(!raw)return;event.preventDefault();let payload;try{payload=JSON.parse(raw);}catch{return;}if(payload.kind==="bubble")insertPreset(payload.id,point);else if(payload.kind==="user-bubble")insertUserPreset(payload.id,point);else if(payload.kind==="sfx")insertSfx(payload.id,point);else if(payload.kind==="frame")insertFrame(payload.id,point);else if(payload.kind==="emphasis-lines")insertEmphasisLines(payload.id,point);});
     window.addEventListener("dragend",()=>setBackgroundDropHighlight(false));
-    document.addEventListener("paste",event=>{const editing=["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);if(editing)return;if(layerClipboard?.length){event.preventDefault();pasteLayers();return;}const item=Array.from(event.clipboardData?.items||[]).find(entry=>entry.kind==="file"&&String(entry.type||"").startsWith("image/"));const file=item?.getAsFile?.();if(file){event.preventDefault();if(comicEditor?.isActive())comicEditor.importFiles([file]);else requestBackgroundFile(file);}});
+    document.addEventListener("paste",event=>{const editing=["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);if(editing)return;if(layerClipboard?.length){event.preventDefault();pasteLayers();return;}const item=Array.from(event.clipboardData?.items||[]).find(entry=>entry.kind==="file"&&String(entry.type||"").startsWith("image/"));const file=item?.getAsFile?.();if(file){event.preventDefault();if(generalComicEditor?.isActive())generalComicEditor.importFiles([file]);else if(comicEditor?.isActive())comicEditor.importFiles([file]);else requestBackgroundFile(file);}});
      function addTextLayer(){
        pushUndo();
-       const item=defaultText(),selected=state.elements.find(element=>element.id===state.selected),selectedBubble=selected?.type==="bubble"?selected:null,explicitTarget=selectedBubble&&selectedBubble.comic_scope==="panel"?comicEditor?.panelInsertionTarget?.(selectedBubble.comic_panel_id):(comicEditor?.selectedInsertionTarget?.()||null),target=selectedBubble?.comic_scope==="panel"?explicitTarget:(explicitTarget?.scope==="panel"?explicitTarget:null);
-       if(target?.scope==="panel"){item.comic_scope="panel";item.comic_panel_id=target.panelId;item.comic_stack="above_image";}
+       const editor=activeStructuralEditor(),item=defaultText(),selected=state.elements.find(element=>element.id===state.selected),selectedBubble=selected?.type==="bubble"?selected:null,selectedPanelId=generalComicEditor?.isActive()?selectedBubble?.general_comic_scope==="panel"&&selectedBubble.general_comic_panel_id:comicEditor?.isActive()?selectedBubble?.comic_scope==="panel"&&selectedBubble.comic_panel_id:null,explicitTarget=selectedPanelId?editor?.panelInsertionTarget?.(selectedPanelId):(editor?.selectedInsertionTarget?.()||null),target=selectedPanelId?explicitTarget:(explicitTarget?.scope==="panel"?explicitTarget:null);
+       if(target?.scope==="panel"){if(generalComicEditor?.isActive())generalComicEditor.assignElementTarget?.(item,target);else{item.comic_scope="panel";item.comic_panel_id=target.panelId;item.comic_stack="above_image";}}else if(generalComicEditor?.isActive())generalComicEditor.assignElementTarget?.(item,{scope:"page"});
        const visible=visibleCanvasDocumentRect(),placementRect=target?.rect?intersectDocumentRects(visible,target.rect):visible;
        if(selectedBubble){
          const bubbleRect={x:selectedBubble.x,y:selectedBubble.y,w:selectedBubble.w,h:selectedBubble.h},visibleBubble=intersectDocumentRects(placementRect,bubbleRect);
@@ -3324,7 +3436,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     document.getElementById("plus").onclick=()=>{state.zoom=Math.min(4,state.zoom*1.2);captureActiveWorkspace();requestRender({canvas:true});}; document.getElementById("minus").onclick=()=>{state.zoom=Math.max(.25,state.zoom/1.2);captureActiveWorkspace();requestRender({canvas:true});}; document.getElementById("fit").onclick=fitView;
     document.getElementById("undo").onclick=undoAction; document.getElementById("redo").onclick=redoAction;
      function saveEditorWindowState(){const availableWidth=Number(screen.availWidth)||window.outerWidth||window.innerWidth,availableHeight=Number(screen.availHeight)||window.outerHeight||window.innerHeight,availableLeft=Number(screen.availLeft)||0,availableTop=Number(screen.availTop)||0,width=Math.round(window.outerWidth||window.innerWidth),height=Math.round(window.outerHeight||window.innerHeight),left=Math.round(Number.isFinite(window.screenX)?window.screenX:window.screenLeft||availableLeft),top=Math.round(Number.isFinite(window.screenY)?window.screenY:window.screenTop||availableTop),tolerance=32,maximized=Math.abs(width-availableWidth)<=tolerance&&Math.abs(height-availableHeight)<=tolerance&&Math.abs(left-availableLeft)<=tolerance&&Math.abs(top-availableTop)<=tolerance,stateSnapshot={mode:maximized?"maximized":"windowed",width,height,left,top,updatedAt:Date.now()};try{localStorage.setItem(EDITOR_WINDOW_STATE_KEY,JSON.stringify(stateSnapshot));window.pywebview?.api?.save_window_state?.({window_width:width,window_height:height,window_left:left,window_top:top,window_maximized:maximized});}catch{}}
-     function cleanupTransientState(){clearTimeout(livePreviewTimer);livePreviewTimer=null;clearTimeout(autoSaveTimer);autoSaveTimer=null;try{localStorage.removeItem(jsonKey);}catch{}comicEditor?.dispose();clearSingleImageAssets();if(sourceObjectUrl){URL.revokeObjectURL(sourceObjectUrl);sourceObjectUrl=null;}}
+     function cleanupTransientState(){clearTimeout(livePreviewTimer);livePreviewTimer=null;clearTimeout(autoSaveTimer);autoSaveTimer=null;try{localStorage.removeItem(jsonKey);}catch{}comicEditor?.dispose();generalComicEditor?.dispose();clearSingleImageAssets();if(sourceObjectUrl){URL.revokeObjectURL(sourceObjectUrl);sourceObjectUrl=null;}}
     async function prepareNativeClose(options={}){if(nativeClosePrepared){return{ok:true};}if(nativeCloseInFlight){return{ok:false,error:uiText("終了処理中です","Close is already in progress")};}nativeCloseInFlight=true;let result={ok:false,error:""};try{if(layoutDirty){const action=await window.SpeechBubbleDesktopShell?.confirmUnsavedChanges?.("close")||"cancel";if(action==="cancel"){result={ok:false,cancelled:true};return result;}if(action==="save"&&!(await window.SpeechBubbleDesktopShell?.saveProject?.())){result={ok:false,cancelled:true};return result;}if(action==="discard"){discardChanges(false);await persistDesktopRecovery(true,true);}}saveEditorWindowState();nativeClosePrepared=true;result={ok:true};return result;}catch(error){result={ok:false,error:error?.message||uiText("終了前の保存に失敗しました","Could not save before closing")};setSaveState(result.error,"error");return result;}finally{nativeCloseInFlight=false;if(options?.fromNative){try{await window.pywebview?.api?.native_close_ready?.(result.ok,result.error||"",Boolean(result.cancelled));}catch(error){console.warn("Speech Bubble native close acknowledgement failed",error);}}}}
     async function closeEditor(){if(editorClosed)return;const result=await prepareNativeClose({fromNative:false});if(!result.ok)return;postHost("speech_bubble:editor_closing",{...editorConnectionState(),image_hash:imageHash,document_id:documentId});editorClosed=true;cleanupTransientState();postHost("speech_bubble:editor_closed",{image_hash:imageHash,document_id:documentId});if(window.pywebview?.api?.native_close_ready)await window.pywebview.api.native_close_ready(true,"",false);else window.close();}
     document.getElementById("discardChanges").onclick=discardChanges;
@@ -3392,10 +3504,10 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     properties.addEventListener("change",event=>{
       const input=event.target,comicTarget=input.dataset.comicTarget;
       if(comicTarget){
-        const item=state.elements.find(element=>element.id===state.selected);
-        if(!item||item.locked||state.selection.length!==1||!comicEditor?.isActive())return;
+        const editor=activeStructuralEditor(),item=state.elements.find(element=>element.id===state.selected);
+        if(!item||item.locked||state.selection.length!==1||!editor)return;
         pushUndo();
-        comicEditor.assignElementTarget?.(item,input.value);
+        if(item.type==="frame"&&generalComicEditor?.isActive()&&input.value.startsWith("panel:")){item.fit_to_canvas=false;applyComicPanelTarget(item,{scope:"panel",panelId:input.value.slice(6)});}else editor.assignElementTarget?.(item,input.value);
         if(item.type==="emphasis_lines"){
           item.fit_to_canvas=true;
           item.center_x=.5;
@@ -3484,16 +3596,16 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     }
     const DESKTOP_SINGLE_BACKGROUND_ID="__single_background__";
     async function desktopSnapshot(){
-      const images=await comicEditor?.exportProjectImages?.()||[];
+      const images=[...(await comicEditor?.exportProjectImages?.()||[]),...(await generalComicEditor?.exportProjectImages?.()||[])];
       const usedSingleAssets=new Set(workspaces.single.elements.filter(item=>item.type==="image").map(item=>item.image_asset_id));for(const asset of singleImageAssets.values())if(usedSingleAssets.has(asset.id))images.push({id:asset.id,name:asset.name||"single-image",mime:asset.mime||asset.blob.type||"image/png",data_url:await blobToDataUrl(asset.blob)});
       if(!singleImageAssets.size&&imageLoaded&&(sourceBlob||imageUrl)){const blob=await sourceImageBlob();images.push({id:DESKTOP_SINGLE_BACKGROUND_ID,name:sourceName||"single-image",mime:blob.type||"image/png",data_url:await blobToDataUrl(blob)});}
       return{title:sourceName||"speech-bubble-project",project_path:currentProjectPath,layout:JSON.parse(currentLayoutJson()),images};
     }
     async function loadDesktopPayload(payload,{recovery=false}={}){
-      const prepared=projectSchema.preflightPayload(payload),records=await Promise.all(prepared.images.map(async record=>{const response=await fetch(record.data_url);if(!response.ok)throw new Error(`Image load failed: ${record.id}`);const blob=await response.blob();if(!String(blob.type||"").startsWith("image/"))throw new Error(`Image data is invalid: ${record.id}`);const url=URL.createObjectURL(blob);try{await loadSingleImageElement(url);}finally{URL.revokeObjectURL(url);}return{...record,blob};})),singleRecords=records.filter(record=>record.id===DESKTOP_SINGLE_BACKGROUND_ID||record.id.startsWith(SINGLE_IMAGE_ASSET_PREFIX)),savedSingleElements=prepared.layout.workspaces.single.elements||prepared.layout.elements||[],preferredId=savedSingleElements.find(item=>item?.type==="image"&&item.source_role==="original")?.image_asset_id||savedSingleElements.find(item=>item?.type==="image")?.image_asset_id||singleRecords[0]?.id;
+      const prepared=projectSchema.preflightPayload(payload),records=await Promise.all(prepared.images.map(async record=>{const response=await fetch(record.data_url);if(!response.ok)throw new Error(`Image load failed: ${record.id}`);const blob=await response.blob();if(!String(blob.type||"").startsWith("image/"))throw new Error(`Image data is invalid: ${record.id}`);const url=URL.createObjectURL(blob);try{await loadSingleImageElement(url);}finally{URL.revokeObjectURL(url);}return{...record,blob};})),singleRecords=records.filter(record=>record.id===DESKTOP_SINGLE_BACKGROUND_ID||record.id.startsWith(SINGLE_IMAGE_ASSET_PREFIX)),generalRecords=records.filter(record=>record.id.startsWith(generalComicEditor?.IMAGE_PREFIX||"general-comic-image:")),comicRecords=records.filter(record=>!singleRecords.includes(record)&&!generalRecords.includes(record)),savedSingleElements=prepared.layout.workspaces.single.elements||prepared.layout.elements||[],preferredId=savedSingleElements.find(item=>item?.type==="image"&&item.source_role==="original")?.image_asset_id||savedSingleElements.find(item=>item?.type==="image")?.image_asset_id||singleRecords[0]?.id;
       const nextId=`standalone:${createUuid()}`;setStandaloneContext(nextId);clearDocumentCanvas();sourceName=String(prepared.manifest?.title||"speech-bubble-project");currentProjectPath=String(prepared.path||prepared.manifest?.project_path||"");dirtyTrackingEnabled=false;
       for(const record of singleRecords){const assetId=record.id===DESKTOP_SINGLE_BACKGROUND_ID?`${SINGLE_IMAGE_ASSET_PREFIX}legacy-original`:record.id;if(record.id===preferredId||(!imageLoaded&&record===singleRecords[0]))await displayImageBlob(record.blob,{name:record.name||sourceName,assetId});else await registerSingleImageAsset(record.blob,record.name||"Image",assetId);}
-      loadState(JSON.stringify(prepared.layout),{strict:true});if(activeWorkspace==="single")ensurePrimarySingleImageLayer();await comicEditor?.importProjectImages?.(records.filter(record=>record.id!==DESKTOP_SINGLE_BACKGROUND_ID&&!record.id.startsWith(SINGLE_IMAGE_ASSET_PREFIX)).map(({blob,...record})=>record));
+      loadState(JSON.stringify(prepared.layout),{strict:true});if(activeWorkspace==="single")ensurePrimarySingleImageLayer();await comicEditor?.importProjectImages?.(comicRecords.map(({blob,...record})=>record));await generalComicEditor?.importProjectImages?.(generalRecords.map(({blob,...record})=>record));
       lastSavedLayout=currentLayoutJson();hasExplicitSavedLayout=!recovery;layoutDirty=recovery;state.undo=[];state.redo=[];dirtyTrackingEnabled=true;
       restoreWorkspaceView(workspaces[activeWorkspace],false);syncProperties();requestRender({canvas:true,layers:true,preview:false});updateActionState();
     }
@@ -3521,7 +3633,10 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     async function initializeEditor(){
       const initialTheme=params.get("theme");
       document.documentElement.dataset.theme=initialTheme==="light"?"light":initialTheme==="dark"?"dark":(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark");
+      initializeModeController();
       initializeComicEditor();
+      initializeGeneralComicEditor();
+      registerEditorModes();
       initializeComicConverter();
       initializeBackgroundRemoval();
       initializePresetUI();initializeSfxSwatches();initializeCompactColorSwatches();initializeCanvasBackgroundSwatches();refreshQuickSfx();refreshQuickFrames();refreshQuickEmphasisLines();initializeDrawerResize();initializeAccordionState();initializeLeftSectionState();initializeRightDockFloating();initializeFontBrowserDrag();enhanceNumericInputs();initializeUserAssetBroadcast();loadUserPresets();
@@ -3554,9 +3669,9 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
         // legacy browser/localStorage resume prompt after the user chose New.
         startupResult=await startStandaloneDocument(standaloneId,{offerResume:!isDesktop,behavior:isDesktop?"new":"ask"});
       }
-      if(["desktop","desktop-file"].includes(hostMode)&&startupResult!=="resume"&&(params.get("comic")==="1"||directFileMode)&&!comicEditor?.isActive())comicEditor?.setEditMode("comic");
+      if(["desktop","desktop-file"].includes(hostMode)&&startupResult!=="resume"&&(params.get("comic")==="1"||directFileMode)&&!comicEditor?.isActive())await modeController?.setMode("comic");
     }
-    window.addEventListener("speech-bubble:language-change",()=>{refreshLayers();syncProperties();renderFontBrowser();comicEditor?.refreshLanguage?.();updateActionState();});
+    window.addEventListener("speech-bubble:language-change",()=>{refreshLayers();syncProperties();renderFontBrowser();comicEditor?.refreshLanguage?.();generalComicEditor?.refreshLanguage?.();modeController?.sync?.();updateActionState();});
     initializeEditor();
   </script>
 </body>

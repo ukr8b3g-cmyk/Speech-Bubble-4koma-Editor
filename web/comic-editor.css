@@ -349,7 +349,7 @@
 
 .comic-properties-title {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   margin-bottom: 7px;
 }
@@ -363,6 +363,7 @@
 
 .comic-heading-title-toggle {
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
   gap: 4px;
   color: var(--text);
@@ -371,7 +372,15 @@
   white-space: nowrap;
 }
 
+/* Keep the page/header title checkbox on one row.  This must override the
+   generic .comic-properties label grid rule below. */
+.comic-properties-title .comic-heading-title-toggle {
+  display: inline-flex;
+}
+
 .comic-heading-title-toggle input {
+  width: 16px;
+  height: 16px;
   margin: 0;
 }
 

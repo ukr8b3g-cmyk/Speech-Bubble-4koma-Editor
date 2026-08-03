@@ -54,7 +54,9 @@ def current_layout(
     active_workspace: str = "single",
     single_elements: list[dict] | None = None,
     comic_elements: list[dict] | None = None,
+    general_elements: list[dict] | None = None,
     comic: dict | None = None,
+    general_comic: dict | None = None,
 ) -> dict:
     single = {
         "canvas": {"width": 1024, "height": 1024},
@@ -67,18 +69,30 @@ def current_layout(
         "background_visible": True,
         "elements": list(comic_elements or []),
     }
-    active = single if active_workspace == "single" else comic_workspace
+    general_workspace = {
+        "canvas": {"width": 2480, "height": 3508},
+        "background_visible": True,
+        "elements": list(general_elements or []),
+    }
+    workspaces = {
+        "single": single,
+        "comic": comic_workspace,
+        "comic_layout": general_workspace,
+    }
+    active = workspaces[active_workspace]
     result = {
         "format": "speech-bubble-editor-layout",
-        "version": 4,
+        "version": 5,
         "active_workspace": active_workspace,
         "canvas": dict(active["canvas"]),
         "background_visible": active["background_visible"],
         "elements": list(active["elements"]),
-        "workspaces": {"single": single, "comic": comic_workspace},
+        "workspaces": workspaces,
     }
     if comic is not None:
         result["comic"] = comic
+    if general_comic is not None:
+        result["general_comic"] = general_comic
     return result
 
 
@@ -324,6 +338,42 @@ class DesktopCoreTest(unittest.TestCase):
             self.assertEqual(loaded["layout"]["canvas"], {"width": 720, "height": 1600})
             self.assertEqual(len(loaded["images"]), 1)
 
+            general_path = root / "general-comic.sbeproj"
+            general_payload = {
+                "title": "general-comic",
+                "layout": current_layout(
+                    active_workspace="comic_layout",
+                    general_elements=[
+                        {
+                            "id": "general-bubble",
+                            "type": "bubble",
+                            "general_comic_scope": "panel",
+                            "general_comic_panel_id": "general-panel-1",
+                        }
+                    ],
+                    general_comic={
+                        "version": 1,
+                        "enabled": True,
+                        "created": True,
+                        "template_id": "standard_five",
+                    },
+                ),
+                "images": [
+                    {
+                        "id": "general-comic-image:1",
+                        "name": "general-panel.png",
+                        "mime": "image/png",
+                        "data_url": png_data_url(),
+                    }
+                ],
+            }
+            ProjectStore().save(general_path, general_payload)
+            general_loaded = ProjectStore().load(general_path)
+            self.assertEqual(general_loaded["layout"]["version"], 5)
+            self.assertEqual(general_loaded["layout"]["active_workspace"], "comic_layout")
+            self.assertEqual(general_loaded["layout"]["general_comic"]["template_id"], "standard_five")
+            self.assertEqual(general_loaded["images"][0]["id"], "general-comic-image:1")
+
             duplicate_path = root / "duplicate-image-roles.sbeproj"
             duplicate_payload = {
                 **payload,
@@ -510,7 +560,7 @@ class DesktopCoreTest(unittest.TestCase):
             restored = store.load()
             self.assertTrue(restored["available"] if "available" in restored else restored["ok"])
             self.assertEqual(restored["fallback_generation"], 1)
-            self.assertEqual(restored["layout"]["version"], 4)
+            self.assertEqual(restored["layout"]["version"], 5)
 
     def test_unsafe_project_path_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

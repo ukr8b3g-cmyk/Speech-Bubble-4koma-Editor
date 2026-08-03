@@ -6,6 +6,7 @@ const fs = require("fs");
 const html = fs.readFileSync("web/speech-bubble-editor.html", "utf8");
 const script = fs.readFileSync("web/background-removal.js", "utf8");
 const selection = fs.readFileSync("web/background-removal-selection.js", "utf8");
+const edge = fs.readFileSync("web/background-removal-edge.js", "utf8");
 const css = fs.readFileSync("web/background-removal.css", "utf8");
 const shell = fs.readFileSync("web/desktop/desktop-shell.js", "utf8");
 const settingsStore = fs.readFileSync("desktop_app/settings_store.py", "utf8");
@@ -14,8 +15,9 @@ const service = fs.readFileSync("desktop_app/background_removal.py", "utf8");
 const spec = fs.readFileSync("SpeechBubble4komaEditor.spec", "utf8");
 const requirements = fs.readFileSync("requirements-desktop.txt", "utf8");
 
-for (const asset of ["background-removal.css", "background-removal-selection.js", "background-removal.js"]) assert.match(html, new RegExp(asset.replace(".", "\\.")));
+for (const asset of ["background-removal.css", "background-removal-selection.js", "background-removal-edge.js", "background-removal.js"]) assert.match(html, new RegExp(asset.replace(".", "\\.")));
 assert.ok(html.indexOf("background-removal-selection.js") < html.indexOf("background-removal.js"), "selection core must load before the background removal UI");
+assert.ok(html.indexOf("background-removal-edge.js") < html.indexOf("background-removal.js"), "edge correction core must load before the background removal UI");
 assert.match(html, /data-background-removal-open/);
 assert.match(html, /initializeBackgroundRemoval/);
 assert.match(html, /getComicSources:[\s\S]*getConversionSources/);
@@ -39,12 +41,33 @@ for (const feature of [
   "data-br-morph",
   "data-br-feather",
   "data-br-view",
+  "data-br-defringe-width",
+  "data-br-action=\"apply-defringe\"",
+  "data-br-decontaminate",
+  "data-br-action=\"apply-decontaminate\"",
+  "data-br-action=\"remove-white-matte\"",
+  "data-br-action=\"remove-black-matte\"",
+  "data-br-action=\"reset-edge-correction\"",
   "DEFAULT_HISTORY_LIMIT = 24",
   "Right-drag: change size",
 ]) assert.ok(script.includes(feature), `background removal UI must include ${feature}`);
 
 assert.match(script, /function clientToImagePoint/);
 assert.match(script, /const selectionCore = root\.SpeechBubbleBackgroundSelection/);
+assert.match(script, /const edgeCore = root\.SpeechBubbleBackgroundEdge/);
+assert.match(edge, /function applyEdgeCorrection/);
+assert.match(edge, /function buildDonorMap/);
+assert.match(script, /edgeCorrection: edgeCore\.normalizeSettings\(edgeCorrection\)/);
+assert.match(script, /edgeCorrection = edgeCore\.normalizeSettings\(snapshot\?\.edgeCorrection\)/);
+assert.match(script, /function correctedResultPixels\(alpha\)/);
+assert.match(script, /edgeCore\.applyEdgeCorrection\(sourcePixels\.data, alpha/);
+assert.ok((script.match(/correctedResultPixels\(alpha\)/g) || []).length >= 3, "preview and PNG export must share corrected RGBA");
+assert.match(script, /processedMaskCache = \{ key: "", value: null \}/);
+assert.match(script, /correctedPixelsCache = \{ key: "", value: null \}/);
+assert.match(script, /const output = new ImageData\(new Uint8ClampedArray\(correctedResultPixels\(alpha\)\)/);
+assert.match(script, /edgeCorrection = edgeCore\.defaultSettings\(\);[\s\S]*markSourceChanged\(\)/);
+assert.match(css, /\.background-removal-edge-correction/);
+assert.match(css, /background-removal-edge-correction button\.active/);
 assert.match(script, /data-br-edit-tool="brush"/);
 assert.match(script, /data-br-edit-tool="wand"/);
 assert.ok(script.indexOf('data-br-edit-tool="wand"') < script.indexOf('data-br-edit-tool="brush"'), "magic wand must be the left editing tool");
@@ -87,6 +110,7 @@ assert.match(script, /requestRevision !== inferenceRevision[\s\S]*maskMode !== t
 assert.match(script, /自動マスクを初期状態に戻す/);
 assert.match(script, /範囲指定をリセット/);
 assert.match(script, /function resetMaskCorrections\(\)/);
+assert.match(script, /decontaminateAmount: edgeCorrection\.decontaminateAmount > 0 \? 0 : decontaminateDisplay \/ 100/);
 assert.match(script, /thresholdInput\.value = thresholdNumber\.value = "1"/);
 assert.match(script, /morphInput\.value = morphNumber\.value = "0"/);
 assert.match(script, /featherInput\.value = featherNumber\.value = "0"/);

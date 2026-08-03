@@ -345,7 +345,9 @@
       const header = document.querySelector("body > header");
       const modeHost = header?.querySelector("[data-toolbar-mode-host]");
       const spacer = header?.querySelector(".spacer");
-      if (header && (modeHost || spacer)) {
+      if (options.modeController?.element) {
+        elements.modeToggle = options.modeController.element;
+      } else if (header && (modeHost || spacer)) {
         const toggle = document.createElement("div");
         toggle.className = "comic-mode-toggle segmented";
         toggle.setAttribute("role", "group");
@@ -516,11 +518,13 @@
       document.body.append(contextMenu);
       elements.contextMenu = contextMenu;
 
-      elements.modeToggle?.addEventListener("click", (event) => {
-        const button = event.target.closest("[data-comic-mode]");
-        if (!button) return;
-        setEditMode(button.dataset.comicMode);
-      });
+      if (!options.modeController) {
+        elements.modeToggle?.addEventListener("click", (event) => {
+          const button = event.target.closest("[data-comic-mode]");
+          if (!button) return;
+          setEditMode(button.dataset.comicMode);
+        });
+      }
       elements.tray?.addEventListener("click", (event) => {
         const actionButton = event.target.closest("[data-comic-action]");
         const action = actionButton?.dataset.comicAction;
@@ -552,7 +556,14 @@
           input.dataset.comicEditing = "1";
         }
         const key = input.dataset.comicPage;
-        if (input.type === "checkbox") comic.page[key] = input.checked;
+        if (input.type === "checkbox") {
+          comic.page[key] = input.checked;
+          if (key === "margin_linked" && input.checked) {
+            const linked = comic.page.margin_top ?? comic.page.margin ?? 0;
+            for (const marginKey of ["margin_top", "margin_right", "margin_bottom", "margin_left"]) comic.page[marginKey] = linked;
+            comic.page.margin = linked;
+          }
+        }
         else if (input.type === "color") comic.page[key] = input.value;
         else {
           const maximum = key === "gutter" || key === "heading_gap" ? 1024 : key.startsWith("margin_") ? 2048 : 64;
@@ -847,18 +858,20 @@
       });
     }
 
-    function setEditMode(requested) {
-      const enableComic = requested !== "single";
+    function setActive(enable, control = {}) {
+      const enableComic = Boolean(enable);
+      const switchWorkspace = control.switchWorkspace !== false;
+      const recordUndo = control.recordUndo !== false;
       if (comic.enabled === enableComic) {
-        options.switchWorkspace?.(enableComic ? "comic" : "single");
+        if (switchWorkspace) options.switchWorkspace?.(enableComic ? "comic" : "single");
         updateUi();
         options.syncProperties?.();
         options.syncActionState?.();
-        requestAnimationFrame(() => options.fitView?.(false));
-        return;
+        if (control.fitView !== false) requestAnimationFrame(() => options.fitView?.(false));
+        return true;
       }
-      options.pushUndo();
-      options.switchWorkspace?.(enableComic ? "comic" : "single");
+      if (recordUndo) options.pushUndo();
+      if (switchWorkspace) options.switchWorkspace?.(enableComic ? "comic" : "single");
       if (enableComic && !used) {
         options.resizeCanvas?.(720, 2200);
         comic = core.defaultState(720, 2200, uuid);
@@ -883,17 +896,24 @@
       updateUi();
       options.syncProperties?.();
       options.syncActionState?.();
-      requestAnimationFrame(() => options.fitView?.(false));
-      changed();
+      if (control.fitView !== false) requestAnimationFrame(() => options.fitView?.(false));
+      if (control.notify !== false) changed();
+      return true;
+    }
+
+    function setEditMode(requested, control = {}) {
+      return setActive(requested === "comic", control);
     }
 
     function updateUi() {
       ensureSourceMetadata();
-      elements.modeToggle?.querySelectorAll("[data-comic-mode]").forEach((button) => {
-        const active = button.dataset.comicMode === "single" ? !comic.enabled : comic.enabled;
-        button.classList.toggle("active", active);
-        button.setAttribute("aria-pressed", String(active));
-      });
+      if (!options.modeController) {
+        elements.modeToggle?.querySelectorAll("[data-comic-mode]").forEach((button) => {
+          const active = button.dataset.comicMode === "single" ? !comic.enabled : comic.enabled;
+          button.classList.toggle("active", active);
+          button.setAttribute("aria-pressed", String(active));
+        });
+      }
       if (elements.tray) elements.tray.hidden = !comic.enabled;
       document.querySelector(".canvas-panel")?.classList.toggle("comic-active", comic.enabled);
       renderTray();
@@ -1000,7 +1020,7 @@
       const collapseHint = elements.properties.querySelector("[data-comic-panel-collapse-hint]");
       if (collapsePanel) {
         const collapsed = panel?.collapsed === true;
-        collapsePanel.textContent = collapsed ? tr("コマを再表示", "Restore Panel") : tr("コマを折りたたむ", "Collapse Panel");
+        collapsePanel.textContent = collapsed ? tr("コマを表示", "Show Panel") : tr("コマを非表示", "Hide Panel");
         collapsePanel.classList.toggle("is-restoring", collapsed);
         collapsePanel.disabled = !panel || structureLocked || Boolean(drag) || (!collapsed && core.countExpandedPanels(comic.tree) <= 1);
         collapsePanel.title = structureLocked
@@ -1010,8 +1030,8 @@
             : "";
       }
       if (collapseHint) collapseHint.textContent = tr(
-        "内容を保持したままコマと間隔を折りたたみ、残りのコマを自動的に詰めます。",
-        "Temporarily hides the panel and its gutter while preserving its content. The remaining panels reflow automatically.",
+        "内容を保持したままコマを非表示にし、残りのコマを自動的に詰めます。",
+        "Hides the panel while preserving its content. The remaining panels reflow automatically.",
       );
       const resetPanelHeights = elements.properties.querySelector('[data-comic-action="reset-panel-heights"]');
       if (resetPanelHeights) {
@@ -1279,7 +1299,7 @@
           comicLayerRow({
             target: "panel",
             panelId: panel.id,
-            name: collapsed ? tr(`コマ ${index + 1}（折りたたみ）`, `Panel ${index + 1} (Collapsed)`) : tr(`コマ ${index + 1}`, `Panel ${index + 1}`),
+            name: collapsed ? tr(`コマ ${index + 1}（非表示）`, `Panel ${index + 1} (Hidden)`) : tr(`コマ ${index + 1}`, `Panel ${index + 1}`),
             kind: "frame",
             visible: panel.visible !== false,
             nested: true,
@@ -2610,6 +2630,7 @@
       renderLayers,
       refreshLanguage: updateUi,
       clearSelection,
+      setActive,
       setEditMode,
       dispose,
     };

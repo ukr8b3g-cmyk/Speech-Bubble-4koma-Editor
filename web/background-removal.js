@@ -4,8 +4,12 @@
   const GEOMETRY_KEY = "speech-bubble-editor:background-removal-geometry:v1";
   const DEFAULT_HISTORY_LIMIT = 24;
   const selectionCore = root.SpeechBubbleBackgroundSelection;
+  const edgeCore = root.SpeechBubbleBackgroundEdge;
   if (!selectionCore) {
     throw new Error("SpeechBubbleBackgroundSelection must be loaded before background-removal.js");
+  }
+  if (!edgeCore) {
+    throw new Error("SpeechBubbleBackgroundEdge must be loaded before background-removal.js");
   }
 
   function isEnglish() {
@@ -231,6 +235,18 @@
               <label class="background-removal-control-row"><span data-br-text="feather">境界ぼかし</span><input data-br-feather type="range" min="0" max="12" value="0"><input data-br-feather-number type="number" min="0" max="12" value="0" aria-label="境界ぼかし"></label>
               <div class="background-removal-checks"><label><input data-br-fill-holes type="checkbox"><span data-br-text="fillHoles">穴埋め</span></label><label><input data-br-remove-small type="checkbox"><span data-br-text="removeSmall">小領域除去</span></label></div>
             </div>
+            <h3 data-br-text="edgeCorrection">エッジカラー補正</h3>
+            <div class="background-removal-edge-correction">
+              <div class="background-removal-edge-row">
+                <label><span data-br-text="defringeWidth">フリンジ幅</span><span class="background-removal-edge-number"><input data-br-defringe-width type="number" min="1" max="10" step="1" value="1"><span>px</span></span></label>
+                <button type="button" data-br-action="apply-defringe" data-br-text="applyDefringe" disabled>フリンジ削除</button>
+              </div>
+              <label class="background-removal-control-row"><span data-br-text="decontaminateColors">不要なカラーの除去</span><input data-br-decontaminate type="range" min="0" max="100" step="1" value="50"><input data-br-decontaminate-number type="number" min="0" max="100" step="1" value="50" aria-label="不要なカラーの除去（%）"></label>
+              <button type="button" data-br-action="apply-decontaminate" data-br-text="applyDecontaminate" disabled>不要色を除去</button>
+              <div class="background-removal-edge-matte-row"><button type="button" data-br-action="remove-white-matte" data-br-text="removeWhiteMatte" disabled>白マット削除</button><button type="button" data-br-action="remove-black-matte" data-br-text="removeBlackMatte" disabled>黒マット削除</button></div>
+              <p class="background-removal-edge-state" data-br-edge-state data-state="neutral">エッジ補正なし</p>
+              <button type="button" data-br-action="reset-edge-correction" data-br-text="resetEdgeCorrection" disabled>エッジ補正を解除</button>
+            </div>
             <h3 data-br-text="operations">操作</h3>
             <div class="background-removal-operation-pair">
               <button type="button" data-br-action="undo" data-br-text="undo" disabled>元に戻す</button>
@@ -264,6 +280,7 @@
       keepAction: ["残す", "Keep"], eraseAction: ["消す", "Remove"], keepBrush: ["復元ブラシ", "Restore Brush"], eraseBrush: ["消しゴムツール", "Eraser Tool"], brushTool: ["ブラシ", "Brush"], wandTool: ["自動選択", "Magic Wand"], wandTolerance: ["許容値", "Tolerance"], wandHelp: ["クリック位置からつながる近い色を選択します。色むらは残った部分を追加クリックしてください。", "Selects similar connected colors from the clicked point. Click remaining shades again when needed."], brushSize: ["ブラシサイズ", "Brush Size"], brushHardness: ["ブラシの硬さ", "Brush Hardness"], rightDrag: ["右ドラッグ：サイズ変更", "Right-drag: change size"],
       viewMode: ["表示モード", "View Mode"], result: ["透過結果", "Transparent Result"], redOverlay: ["赤マスク重ね表示", "Red Mask Overlay"], maskOnly: ["マスクのみ", "Mask Only"],
       maskCorrection: ["マスク補正", "Mask Correction"], morph: ["マスク拡張・縮小", "Grow / Shrink Mask"], feather: ["境界ぼかし", "Feather Edge"], fillHoles: ["穴埋め", "Fill Holes"], removeSmall: ["小領域除去", "Remove Small Regions"],
+      edgeCorrection: ["エッジカラー補正", "Edge Color Correction"], defringeWidth: ["フリンジ幅", "Defringe Width"], applyDefringe: ["フリンジ削除", "Defringe"], decontaminateColors: ["不要なカラーの除去", "Decontaminate Colors"], applyDecontaminate: ["不要色を除去", "Remove Color Fringe"], removeWhiteMatte: ["白マット削除", "Remove White Matte"], removeBlackMatte: ["黒マット削除", "Remove Black Matte"], resetEdgeCorrection: ["エッジ補正を解除", "Clear Edge Correction"], edgeCorrectionNone: ["エッジ補正なし", "No edge correction"],
       details: ["詳細", "Details"], threshold: ["マスクしきい値", "Mask Threshold"], overlayOpacity: ["赤マスク濃度", "Red Overlay Opacity"], operations: ["操作", "Operations"],
       guideKeep: ["残す", "Keep"], guideRemove: ["消す", "Remove"], runGuided: ["指定を反映して背景削除", "Apply Selection and Remove Background"], rerunGuided: ["指定を反映して再実行", "Apply Selection and Run Again"], runningGuided: ["背景を解析しています…", "Analyzing Background…"],
       runAutomatic: ["自動背景削除を実行", "Run Automatic Background Removal"], rerunAutomatic: ["自動処理を再実行", "Run Automatic Processing Again"],
@@ -298,6 +315,10 @@
     const featherNumber = dialog.querySelector("[data-br-feather-number]");
     const fillHolesInput = dialog.querySelector("[data-br-fill-holes]");
     const removeSmallInput = dialog.querySelector("[data-br-remove-small]");
+    const defringeWidthInput = dialog.querySelector("[data-br-defringe-width]");
+    const decontaminateInput = dialog.querySelector("[data-br-decontaminate]");
+    const decontaminateNumber = dialog.querySelector("[data-br-decontaminate-number]");
+    const edgeState = dialog.querySelector("[data-br-edge-state]");
     const viewSelect = dialog.querySelector("[data-br-view]");
     const brushCursor = dialog.querySelector("[data-br-cursor]");
     const sourcePicker = dialog.querySelector("[data-br-source-picker]");
@@ -333,6 +354,13 @@
     let pollTimer = null;
     let candidateUrls = [];
     let sourceThumbUrl = null;
+    let edgeCorrection = edgeCore.defaultSettings();
+    let sourceRevision = 0;
+    let maskRevision = 0;
+    let processedMaskCache = { key: "", value: null };
+    let correctedPixelsCache = { key: "", value: null };
+    let edgeControlEditing = false;
+    let decontaminateDisplay = 50;
 
     function historyLimit() { return DEFAULT_HISTORY_LIMIT; }
 
@@ -347,6 +375,8 @@
         const pair = text[element.dataset.brText];
         if (pair) element.textContent = pair[isEnglish() ? 1 : 0];
       });
+      defringeWidthInput.setAttribute("aria-label", tr("フリンジ幅（px）", "Defringe width (px)"));
+      decontaminateNumber.setAttribute("aria-label", tr("不要なカラーの除去（%）", "Decontaminate colors (%)"));
       dialog.querySelector('[data-br-tool="keep"]').title = tr("消した領域を復元します (B)", "Restore erased areas (B)");
       dialog.querySelector('[data-br-tool="erase"]').title = tr("領域を透明にします (E)", "Erase areas to transparency (E)");
       if (source) updateSourceBar();
@@ -358,6 +388,7 @@
       applyButton.textContent = options.getMode() === "comic" ? tr("ページ画像へ追加", "Add to Page Images") : tr("一枚画像へ適用", "Apply to Single Image");
       updateMaskModeUi();
       updateEditToolUi();
+      syncEdgeCorrectionUi();
       updateResultCaption();
     }
 
@@ -436,6 +467,74 @@
       removeSmallInput.checked = false;
     }
 
+    function invalidateCorrectedPixels() {
+      correctedPixelsCache = { key: "", value: null };
+    }
+
+    function markMaskChanged() {
+      maskRevision += 1;
+      processedMaskCache = { key: "", value: null };
+      invalidateCorrectedPixels();
+    }
+
+    function markSourceChanged() {
+      sourceRevision += 1;
+      markMaskChanged();
+    }
+
+    function edgeWidthActive(settings = edgeCorrection) {
+      return settings.defringe || settings.decontaminateAmount > 0;
+    }
+
+    function syncEdgeCorrectionUi() {
+      edgeCorrection = edgeCore.normalizeSettings(edgeCorrection);
+      if (document.activeElement !== defringeWidthInput) defringeWidthInput.value = String(edgeCorrection.width);
+      const percent = Math.round(edgeCorrection.decontaminateAmount * 100);
+      if (edgeCorrection.decontaminateAmount > 0) decontaminateDisplay = percent;
+      if (document.activeElement !== decontaminateInput) decontaminateInput.value = String(decontaminateDisplay);
+      if (document.activeElement !== decontaminateNumber) decontaminateNumber.value = String(decontaminateDisplay);
+
+      const defringeButton = dialog.querySelector('[data-br-action="apply-defringe"]');
+      const decontaminateButton = dialog.querySelector('[data-br-action="apply-decontaminate"]');
+      const whiteButton = dialog.querySelector('[data-br-action="remove-white-matte"]');
+      const blackButton = dialog.querySelector('[data-br-action="remove-black-matte"]');
+      defringeButton.classList.toggle("active", edgeCorrection.defringe);
+      decontaminateButton.classList.toggle("active", edgeCorrection.decontaminateAmount > 0);
+      whiteButton.classList.toggle("active", edgeCorrection.matte === "white");
+      blackButton.classList.toggle("active", edgeCorrection.matte === "black");
+      defringeButton.setAttribute("aria-pressed", String(edgeCorrection.defringe));
+      decontaminateButton.setAttribute("aria-pressed", String(edgeCorrection.decontaminateAmount > 0));
+      whiteButton.setAttribute("aria-pressed", String(edgeCorrection.matte === "white"));
+      blackButton.setAttribute("aria-pressed", String(edgeCorrection.matte === "black"));
+
+      const labels = [];
+      if (edgeCorrection.defringe) labels.push(tr(`フリンジ ${edgeCorrection.width}px`, `Defringe ${edgeCorrection.width}px`));
+      if (edgeCorrection.decontaminateAmount > 0) labels.push(tr(`不要色 ${percent}%`, `Decontaminate ${percent}%`));
+      if (edgeCorrection.matte === "white") labels.push(tr("白マット", "White Matte"));
+      if (edgeCorrection.matte === "black") labels.push(tr("黒マット", "Black Matte"));
+      edgeState.textContent = labels.length ? labels.join(" / ") : text.edgeCorrectionNone[isEnglish() ? 1 : 0];
+      edgeState.dataset.state = labels.length ? "applied" : "neutral";
+
+      const disabled = !sourcePixels || !editedMask;
+      for (const button of [defringeButton, decontaminateButton, whiteButton, blackButton, dialog.querySelector('[data-br-action="reset-edge-correction"]')]) button.disabled = disabled;
+    }
+
+    function commitEdgeCorrection(next, message) {
+      if (!sourcePixels || !editedMask) {
+        setStatus(tr("先に背景削除を実行してください。", "Run background removal first."), "error");
+        return false;
+      }
+      const normalized = edgeCore.normalizeSettings(next);
+      if (JSON.stringify(normalized) === JSON.stringify(edgeCorrection)) return false;
+      pushHistory();
+      edgeCorrection = normalized;
+      invalidateCorrectedPixels();
+      syncEdgeCorrectionUi();
+      scheduleRender();
+      setStatus(message, "ready");
+      return true;
+    }
+
     function copyMask(mask) {
       return mask ? new Uint8ClampedArray(mask) : null;
     }
@@ -447,6 +546,7 @@
         guideRemove: copyMask(guideRemoveMask),
         guidedProcessed,
         guidedDirty,
+        edgeCorrection: edgeCore.normalizeSettings(edgeCorrection),
       };
     }
 
@@ -457,6 +557,7 @@
         guideRemove: copyMask(snapshot.guideRemove),
         guidedProcessed: Boolean(snapshot.guidedProcessed),
         guidedDirty: Boolean(snapshot.guidedDirty),
+        edgeCorrection: edgeCore.normalizeSettings(snapshot.edgeCorrection),
       } : null;
     }
 
@@ -470,6 +571,10 @@
       guideRemoveMask = copyMask(snapshot?.guideRemove);
       guidedProcessed = Boolean(snapshot?.guidedProcessed);
       guidedDirty = Boolean(snapshot?.guidedDirty);
+      edgeCorrection = edgeCore.normalizeSettings(snapshot?.edgeCorrection);
+      if (edgeCorrection.decontaminateAmount <= 0) decontaminateDisplay = 50;
+      markMaskChanged();
+      syncEdgeCorrectionUi();
     }
 
     function saveActiveMaskModeState() {
@@ -519,6 +624,7 @@
       reset.textContent = text[guided ? "resetGuidedMask" : "resetAutoMask"][isEnglish() ? 1 : 0];
       selectTool(tool);
       updateHistoryButtons();
+      syncEdgeCorrectionUi();
     }
 
     function selectTool(nextTool) {
@@ -562,7 +668,10 @@
       if (maskMode === "guided") inferenceRevision += 1;
       restoreMaskModeState(maskModeStates[maskMode]);
       if (maskMode === "guided" && sourcePixels) initializeGuideMasks();
-      if (!editedMask && maskMode === "auto" && aiMask) editedMask = new Uint8ClampedArray(aiMask);
+      if (!editedMask && maskMode === "auto" && aiMask) {
+        editedMask = new Uint8ClampedArray(aiMask);
+        markMaskChanged();
+      }
       selectTool(maskMode === "guided" ? "keep" : "erase");
       applyButton.disabled = maskMode === "guided" ? !guidedProcessed || guidedDirty : !editedMask;
       updateMaskModeUi();
@@ -636,6 +745,7 @@
         applyButton.disabled = false;
       }
 
+      markMaskChanged();
       updateMaskModeUi();
       scheduleRender();
       setStatus(
@@ -649,9 +759,12 @@
     function processedMask() {
       if (!editedMask) return null;
       const threshold = Number(thresholdInput.value);
+      const morph = Number(morphInput.value) || 0;
+      const feather = Number(featherInput.value) || 0;
+      const key = [maskRevision, threshold, morph, feather, fillHolesInput.checked ? 1 : 0, removeSmallInput.checked ? 1 : 0].join("|");
+      if (processedMaskCache.key === key && processedMaskCache.value) return processedMaskCache.value;
       let output = new Uint8ClampedArray(editedMask.length);
       for (let index = 0; index < editedMask.length; index += 1) output[index] = editedMask[index] >= threshold ? editedMask[index] : 0;
-      const morph = Number(morphInput.value) || 0;
       if (morph) output = morphMask(output, resultCanvas.width, resultCanvas.height, morph);
       if (fillHolesInput.checked) {
         const binary = new Uint8Array(output.length);
@@ -659,9 +772,18 @@
         output = fillBinaryHoles(binary, resultCanvas.width, resultCanvas.height);
       }
       if (removeSmallInput.checked) output = removeSmallComponents(output, resultCanvas.width, resultCanvas.height, Math.max(64, Math.round(output.length * 0.0005)));
-      const feather = Number(featherInput.value) || 0;
       if (feather) output = featherMask(output, resultCanvas.width, resultCanvas.height, feather);
+      processedMaskCache = { key, value: output };
       return output;
+    }
+
+    function correctedResultPixels(alpha) {
+      const settings = edgeCore.normalizeSettings(edgeCorrection);
+      const key = [sourceRevision, processedMaskCache.key, settings.width, settings.defringe ? 1 : 0, settings.decontaminateAmount, settings.matte].join("|");
+      if (correctedPixelsCache.key === key && correctedPixelsCache.value) return correctedPixelsCache.value;
+      const value = edgeCore.applyEdgeCorrection(sourcePixels.data, alpha, sourceCanvas.width, sourceCanvas.height, settings);
+      correctedPixelsCache = { key, value };
+      return value;
     }
 
     function scheduleRender() {
@@ -701,7 +823,10 @@
         return;
       }
       const alpha = processedMask();
-      const output = new ImageData(new Uint8ClampedArray(sourcePixels.data), sourceCanvas.width, sourceCanvas.height);
+      const basePixels = viewMode === "mask"
+        ? new Uint8ClampedArray(sourcePixels.data)
+        : new Uint8ClampedArray(correctedResultPixels(alpha));
+      const output = new ImageData(basePixels, sourceCanvas.width, sourceCanvas.height);
       const opacity = Number(opacityInput.value) / 100;
       for (let pixel = 0, offset = 0; pixel < alpha.length; pixel += 1, offset += 4) {
         if (viewMode === "result") {
@@ -839,6 +964,7 @@
           }
         }
       }
+      markMaskChanged();
     }
 
     async function setSource(next) {
@@ -853,6 +979,9 @@
       sourceContext.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
       sourceContext.drawImage(sourceBitmap, 0, 0);
       sourcePixels = sourceContext.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+      edgeCorrection = edgeCore.defaultSettings();
+      decontaminateDisplay = 50;
+      markSourceChanged();
       inferenceRevision += 1;
       aiMask = editedMask = null;
       maskModeStates = { auto: null, guided: null };
@@ -866,6 +995,7 @@
       panTool = false;
       dialog.querySelectorAll('[data-br-action="pan"]').forEach((button) => button.classList.remove("active"));
       updateEditToolUi();
+      syncEdgeCorrectionUi();
       updateHistoryButtons();
       updateSourceBar();
       sourcePicker.hidden = true;
@@ -998,6 +1128,7 @@
         editedMask[index] = Math.max(editedMask[index], guideKeepMask[index]);
         editedMask[index] = Math.min(editedMask[index], 255 - guideRemoveMask[index]);
       }
+      markMaskChanged();
       guidedProcessed = true;
       guidedDirty = false;
       applyButton.disabled = false;
@@ -1054,6 +1185,7 @@
         maskBitmap.close?.();
         if (targetMode === "guided") return applyGuidedResult();
         editedMask = new Uint8ClampedArray(aiMask);
+        markMaskChanged();
         maskModeStates.auto = null;
         history = [];
         redo = [];
@@ -1072,8 +1204,7 @@
 
     function maskBlob() {
       const alpha = processedMask();
-      const output = new ImageData(new Uint8ClampedArray(sourcePixels.data), sourceCanvas.width, sourceCanvas.height);
-      for (let pixel = 0, offset = 3; pixel < alpha.length; pixel += 1, offset += 4) output.data[offset] = alpha[pixel];
+      const output = new ImageData(new Uint8ClampedArray(correctedResultPixels(alpha)), sourceCanvas.width, sourceCanvas.height);
       const canvas = document.createElement("canvas");
       canvas.width = sourceCanvas.width;
       canvas.height = sourceCanvas.height;
@@ -1183,6 +1314,34 @@
         panTool = !panTool;
         dialog.querySelectorAll('[data-br-action="pan"]').forEach((button) => button.classList.toggle("active", panTool));
         updateEditToolUi();
+      } else if (action === "apply-defringe") {
+        commitEdgeCorrection({
+          ...edgeCorrection,
+          width: Number(defringeWidthInput.value),
+          defringe: true,
+        }, tr("フリンジ削除を適用しました。", "Defringe applied."));
+      } else if (action === "apply-decontaminate") {
+        decontaminateDisplay = Math.round(clamp(Number(decontaminateInput.value) || 0, 0, 100));
+        commitEdgeCorrection({
+          ...edgeCorrection,
+          width: Number(defringeWidthInput.value),
+          decontaminateAmount: edgeCorrection.decontaminateAmount > 0 ? 0 : decontaminateDisplay / 100,
+        }, edgeCorrection.decontaminateAmount > 0
+          ? tr("不要なカラーの補正を解除しました。", "Color decontamination cleared.")
+          : tr("不要なカラーを補正しました。", "Edge colors were decontaminated."));
+      } else if (action === "remove-white-matte") {
+        commitEdgeCorrection({
+          ...edgeCorrection,
+          matte: edgeCorrection.matte === "white" ? "none" : "white",
+        }, tr("白マット補正を更新しました。", "White matte correction updated."));
+      } else if (action === "remove-black-matte") {
+        commitEdgeCorrection({
+          ...edgeCorrection,
+          matte: edgeCorrection.matte === "black" ? "none" : "black",
+        }, tr("黒マット補正を更新しました。", "Black matte correction updated."));
+      } else if (action === "reset-edge-correction") {
+        decontaminateDisplay = 50;
+        commitEdgeCorrection(edgeCore.defaultSettings(), tr("エッジカラー補正を解除しました。", "Edge color correction cleared."));
       } else if (action === "undo" && history.length) {
         redo.push(editSnapshot());
         restoreEditSnapshot(history.pop());
@@ -1202,6 +1361,7 @@
         if (maskMode === "auto" && aiMask) {
           pushHistory();
           editedMask = new Uint8ClampedArray(aiMask);
+          markMaskChanged();
           resetMaskCorrections();
           updateMaskModeUi();
           scheduleRender();
@@ -1210,6 +1370,7 @@
           pushHistory();
           editedMask = null;
           guideKeepMask = guideRemoveMask = null;
+          markMaskChanged();
           guidedProcessed = false;
           guidedDirty = false;
           initializeGuideMasks();
@@ -1257,6 +1418,41 @@
     bindRangeAndNumber(morphInput, morphNumber, -10, 10, scheduleRender);
     bindRangeAndNumber(featherInput, featherNumber, 0, 12, scheduleRender);
     for (const input of [fillHolesInput, removeSmallInput]) input.addEventListener("change", scheduleRender);
+    defringeWidthInput.addEventListener("change", () => {
+      const width = Math.round(clamp(Number(defringeWidthInput.value) || 1, 1, edgeCore.MAX_EDGE_WIDTH));
+      defringeWidthInput.value = String(width);
+      if (edgeWidthActive() && width !== edgeCorrection.width) {
+        commitEdgeCorrection({ ...edgeCorrection, width }, tr("フリンジ幅を更新しました。", "Edge width updated."));
+      } else {
+        edgeCorrection = edgeCore.normalizeSettings({ ...edgeCorrection, width });
+      }
+    });
+    const updateDecontaminateControl = (value) => {
+      decontaminateDisplay = Math.round(clamp(Number(value) || 0, 0, 100));
+      decontaminateInput.value = String(decontaminateDisplay);
+      decontaminateNumber.value = String(decontaminateDisplay);
+      if (edgeCorrection.decontaminateAmount <= 0) return;
+      const nextAmount = decontaminateDisplay / 100;
+      if (nextAmount === edgeCorrection.decontaminateAmount) return;
+      if (!edgeControlEditing) {
+        pushHistory();
+        edgeControlEditing = true;
+      }
+      edgeCorrection = edgeCore.normalizeSettings({
+        ...edgeCorrection,
+        width: Number(defringeWidthInput.value),
+        decontaminateAmount: nextAmount,
+      });
+      invalidateCorrectedPixels();
+      syncEdgeCorrectionUi();
+      scheduleRender();
+    };
+    decontaminateInput.addEventListener("input", () => updateDecontaminateControl(decontaminateInput.value));
+    decontaminateNumber.addEventListener("input", () => updateDecontaminateControl(decontaminateNumber.value));
+    const finishEdgeControlEdit = () => { edgeControlEditing = false; syncEdgeCorrectionUi(); };
+    decontaminateInput.addEventListener("change", finishEdgeControlEdit);
+    decontaminateNumber.addEventListener("change", finishEdgeControlEdit);
+    decontaminateNumber.addEventListener("blur", finishEdgeControlEdit);
     viewSelect.addEventListener("change", () => {
       viewMode = viewSelect.value;
       dialog.querySelector("[data-br-overlay-row]").hidden = viewMode !== "overlay";
@@ -1376,6 +1572,9 @@
       closeBitmap();
       source = null;
       aiMask = editedMask = sourcePixels = null;
+      edgeCorrection = edgeCore.defaultSettings();
+      decontaminateDisplay = 50;
+      markSourceChanged();
       maskModeStates = { auto: null, guided: null };
       guideKeepMask = guideRemoveMask = null;
       guidedProcessed = false;
@@ -1390,6 +1589,7 @@
       resultContext.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
       updateSourceBar();
       updateMaskModeUi();
+      syncEdgeCorrectionUi();
       applyButton.disabled = true;
     });
     document.addEventListener("keydown", (event) => {
