@@ -34,6 +34,8 @@
     const panelOrder = () => core.collectPanels(comic.tree);
     const selectedImagePanels = () => panelOrder().filter((panel) => panel.image_id && (selectedImagePanelIds.has(panel.id) || selection.kind === "image" && selection.id === panel.id));
     const selectedDivider = () => selection.kind === "divider" ? layout().dividers.find((item) => item.id === selection.id) || null : null;
+    const panelEditable = (panel) => panel?.kind === "panel" && panel.locked !== true;
+    const dividerEditable = (divider) => !comic.page.structure_locked && core.collectPanels(divider?.node).every((panel) => panel.locked !== true);
     const panelLayoutItem = (id, includeHidden = false) => { const item = layout().panels.find((candidate) => candidate.id === id); return item && (includeHidden || item.node.visible !== false) ? item : null; };
     const panelRect = (id, includeHidden = false) => panelLayoutItem(id, includeHidden)?.rect || null;
     const panelShape = (id) => { const item = panelLayoutItem(id); return item ? { kind: "polygon", points: core.clone(item.polygon || core.rectPolygon(item.rect)) } : null; };
@@ -103,7 +105,7 @@
       typeSelect.value = type.id;
       presetSelect.replaceChildren(...type.presets.map((item) => new Option(tr(item.ja, item.en), item.id)));
       presetSelect.value = value.preset;
-      for (const input of elements.properties.querySelectorAll("[data-general-panel-pattern-color]")) input.value = value[input.dataset.generalPanelPatternColor];
+      for (const input of elements.properties.querySelectorAll("[data-general-panel-pattern-color]")) { input.value = value[input.dataset.generalPanelPatternColor]; input.disabled = !panelEditable(panel); }
       const gradient = type.id === "linear-gradient" || type.id === "radial-gradient", solid = type.id === "solid";
       elements.properties.querySelector('[data-general-panel-pattern-color-label="patternColor"]').hidden = solid;
       elements.properties.querySelector('[data-general-panel-pattern-color-label="color2"]').hidden = !gradient;
@@ -117,13 +119,14 @@
       const fields = elements.properties.querySelector("[data-general-panel-pattern-fields]");
       fields.replaceChildren(...type.fields.map((key) => { const definition = patterns.FIELDS[key], label = document.createElement("label"), row = document.createElement("div"), range = document.createElement("input"), output = document.createElement("output"); label.className = "canvas-background-field"; label.append(tr(definition.ja, definition.en)); row.className = "range-output-row"; range.type = "range"; range.min = definition.min; range.max = definition.max; range.step = definition.step; range.value = value[key]; range.dataset.generalPanelPatternField = key; output.textContent = String(value[key]); row.append(range, output); label.append(row); return label; }));
       elements.properties.querySelector('[data-general-action="randomize-panel-pattern"]').hidden = !type.fields.includes("seed");
+      for (const control of elements.properties.querySelectorAll("[data-general-panel-pattern-select],[data-general-panel-pattern-field],[data-general-panel-pattern-color-target],[data-general-action=\"randomize-panel-pattern\"],[data-general-action=\"choose-panel-image\"],[data-general-action=\"split-x\"],[data-general-action=\"split-y\"]")) control.disabled = !panelEditable(panel);
       const swatches = elements.properties.querySelector('[data-general-color-scope="panel-pattern"]');
       if (swatches) swatches.dataset.generalColorKey = activePanelPatternColor;
     }
 
     function handlePanelPatternInput(event) {
       const input = event.target.closest("[data-general-panel-pattern-color],[data-general-panel-pattern-field]"), panel = selectedPanel();
-      if (!input || !panel) return;
+      if (!input || !panelEditable(panel)) return;
       beginEdit(input);
       const value = panelBackgroundPattern(panel), key = input.dataset.generalPanelPatternColor || input.dataset.generalPanelPatternField;
       value[key] = input.type === "color" ? input.value : Number(input.value);
@@ -134,8 +137,8 @@
 
     function handlePanelPatternChange(event) {
       const input = event.target.closest("[data-general-panel-pattern-color],[data-general-panel-pattern-field]"), select = event.target.closest("[data-general-panel-pattern-select]"), panel = selectedPanel(), patterns = backgroundPatterns();
-      if (input) { delete input.dataset.generalEditing; changed(); syncUi(); return; }
-      if (!select || !panel || !patterns) return;
+      if (input) { if (!panelEditable(panel)) return; delete input.dataset.generalEditing; changed(); syncUi(); return; }
+      if (!select || !panelEditable(panel) || !patterns) return;
       options.pushUndo?.();
       const value = panelBackgroundPattern(panel);
       if (select.dataset.generalPanelPatternSelect === "type") setPanelBackgroundPattern(panel, { type: select.value, color: value.color, patternColor: value.patternColor, color2: value.color2 });
@@ -189,12 +192,12 @@
           const hidden = panel.visible === false;
           visibility.textContent = hidden ? tr("コマを表示", "Show Panel") : tr("コマを非表示", "Hide Panel");
           visibility.classList.toggle("is-restoring", hidden);
-          visibility.disabled = comic.page.structure_locked || (!hidden && panelOrder().filter((item) => item.visible !== false).length <= 1);
-          visibility.title = comic.page.structure_locked ? tr("漫画ページのロックを解除してください", "Unlock the comic page to change panel visibility.") : "";
+          visibility.disabled = comic.page.structure_locked || !panelEditable(panel) || (!hidden && panelOrder().filter((item) => item.visible !== false).length <= 1);
+          visibility.title = comic.page.structure_locked ? tr("漫画ページのロックを解除してください", "Unlock the comic page to change panel visibility.") : !panelEditable(panel) ? tr("コマのロックを解除してください", "Unlock the panel to edit it.") : "";
           elements.properties.querySelector("[data-general-panel-visibility-hint]").textContent = tr("内容を保持したままコマを非表示にし、残りのコマを自動的に詰めます。", "Hides the panel while preserving its content and automatically reflows the remaining panels.");
         }
         if (selection.kind === "image" && panel) {
-          for (const input of elements.properties.querySelectorAll("[data-general-image]")) { const key = input.dataset.generalImage; input.disabled = imagePanels.length > 1; if (document.activeElement !== input) input.value = panel[key]; }
+          for (const input of elements.properties.querySelectorAll("[data-general-image]")) { const key = input.dataset.generalImage; input.disabled = imagePanels.length > 1 || !panelEditable(panel) || panel.image_locked; if (document.activeElement !== input) input.value = panel[key]; }
           const output = elements.properties.querySelector('[data-general-image-output="image_scale"]'); if (output) output.textContent = `${Math.round(panel.image_scale * 100)}%`;
           const metadata = comic.images.find((item) => item.id === panel.image_id), thumbnail = elements.properties.querySelector("[data-general-selected-thumbnail]"), imageName = elements.properties.querySelector("[data-general-image-name]");
           thumbnail.replaceChildren();
@@ -219,7 +222,7 @@
       if (!pageInput && !canvasInput && !imageInput && !dividerInput) return;
       if (pageInput) { beginEdit(pageInput); const key = pageInput.dataset.generalPage; if (key === "template_id") return; if (pageInput.type === "checkbox") { comic.page[key] = pageInput.checked; if (key === "margin_linked" && pageInput.checked) { const linked = comic.page.margin_top; for (const side of ["top","right","bottom","left"]) comic.page[`margin_${side}`] = linked; } } else if (pageInput.type === "color") comic.page[key] = pageInput.value; else { comic.page[key] = core.clamp(pageInput.value, 0, key === "border_width" ? 128 : 2048); if (key.startsWith("margin_") && comic.page.margin_linked) for (const side of ["top","right","bottom","left"]) comic.page[`margin_${side}`] = comic.page[key]; } requestRender({ canvas: true, layers: true }); }
       if (canvasInput) { beginEdit(canvasInput); const width = canvasInput.dataset.generalCanvas === "width" ? core.clamp(canvasInput.value, 320, 32768) : comic.page.width, height = canvasInput.dataset.generalCanvas === "height" ? core.clamp(canvasInput.value, 480, 32768) : comic.page.height; options.resizeCanvas?.(Math.round(width), Math.round(height)); }
-      if (imageInput) { const panel = selectedPanel(); if (!panel || selection.kind !== "image" || selectedImagePanels().length > 1) return; beginEdit(imageInput); const key = imageInput.dataset.generalImage; panel[key] = key === "image_scale" ? core.clamp(imageInput.value, .05, 5) : Number(imageInput.value) || 0; requestRender({ canvas: true, layers: true }); }
+      if (imageInput) { const panel = selectedPanel(); if (!panelEditable(panel) || panel.image_locked || selection.kind !== "image" || selectedImagePanels().length > 1) return; beginEdit(imageInput); const key = imageInput.dataset.generalImage; panel[key] = key === "image_scale" ? core.clamp(imageInput.value, .05, 5) : Number(imageInput.value) || 0; requestRender({ canvas: true, layers: true }); }
       if (dividerInput) { const divider = selectedDivider(); if (!divider || comic.page.structure_locked) return; beginEdit(dividerInput); const nextCenter = Number(dividerInput.value) / 100, delta = nextCenter - divider.ratio, range = core.ratioRange(divider.node, divider.parentRect, comic.page.gutter), minimumDelta = Math.max(range.minimum - divider.startRatio, range.minimum - divider.endRatio), maximumDelta = Math.min(range.maximum - divider.startRatio, range.maximum - divider.endRatio), shift = core.clamp(delta, minimumDelta, maximumDelta), result = core.setSplitRatios(comic.tree, divider.id, divider.startRatio + shift, divider.endRatio + shift); if (result.changed) comic.tree = result.tree; requestRender({ canvas: true, layers: true }); }
       syncUi();
     }
@@ -231,7 +234,7 @@
       if (pageColorTarget) { activePageColor = pageColorTarget; syncUi(); return; }
       if (panelColorTarget) { activePanelPatternColor = panelColorTarget; syncUi(); return; }
       if (colorButton && colorHost) {
-        const panel = selectedPanel(); options.pushUndo?.();
+        const panel = selectedPanel(); if (colorHost.dataset.generalColorScope !== "page" && !panelEditable(panel)) return; options.pushUndo?.();
         if (colorHost.dataset.generalColorScope === "page") comic.page[activePageColor] = colorButton.dataset.color;
         else if (panel) { const value = panelBackgroundPattern(panel); value[activePanelPatternColor] = colorButton.dataset.color; setPanelBackgroundPattern(panel, value); }
         changed(); syncUi(); return;
@@ -242,23 +245,45 @@
       else if (action === "split-y") splitSelected("y");
       else if (action === "merge-first") mergeSelectedDivider("first");
       else if (action === "merge-second") mergeSelectedDivider("second");
-      else if (action === "choose-panel-image") { const panel = selectedPanel(); if (panel) { pendingPanelId = panel.id; elements.imageInput.click(); } }
-      else if (action === "toggle-panel-visibility") { const panel = selectedPanel(); if (!panel || comic.page.structure_locked) return; if (panel.visible !== false && panelOrder().filter((item) => item.visible !== false).length <= 1) return; options.pushUndo?.(); panel.visible = panel.visible === false; changed(); syncUi(); }
-      else if (action === "randomize-panel-pattern") { const panel = selectedPanel(), patterns = backgroundPatterns(); if (!panel || !patterns) return; options.pushUndo?.(); setPanelBackgroundPattern(panel, { ...panelBackgroundPattern(panel), seed: patterns.randomSeed() }); changed(); syncUi(); }
-      else if (action === "remove-panel-image") { const panel = selectedPanel(); if (panel?.image_id) { options.pushUndo?.(); panel.image_id = null; selectedImagePanelIds.delete(panel.id); selection = { kind: "panel", id: panel.id }; changed(); syncUi(); } }
-      else if (action === "reset-image") { const panel = selectedPanel(); if (panel?.image_id) { options.pushUndo?.(); panel.image_scale = 1; panel.image_offset_x = panel.image_offset_y = 0; changed(); syncUi(); } }
+      else if (action === "choose-panel-image") { const panel = selectedPanel(); if (panelEditable(panel)) { pendingPanelId = panel.id; elements.imageInput.click(); } }
+      else if (action === "toggle-panel-visibility") { const panel = selectedPanel(); if (!panelEditable(panel) || comic.page.structure_locked) return; if (panel.visible !== false && panelOrder().filter((item) => item.visible !== false).length <= 1) return; options.pushUndo?.(); panel.visible = panel.visible === false; changed(); syncUi(); }
+      else if (action === "randomize-panel-pattern") { const panel = selectedPanel(), patterns = backgroundPatterns(); if (!panelEditable(panel) || !patterns) return; options.pushUndo?.(); setPanelBackgroundPattern(panel, { ...panelBackgroundPattern(panel), seed: patterns.randomSeed() }); changed(); syncUi(); }
+      else if (action === "remove-panel-image") { const panel = selectedPanel(); if (panelEditable(panel) && panel.image_id) { options.pushUndo?.(); panel.image_id = null; selectedImagePanelIds.delete(panel.id); selection = { kind: "panel", id: panel.id }; changed(); syncUi(); } }
+      else if (action === "reset-image") { const panel = selectedPanel(); if (panelEditable(panel) && panel.image_id && !panel.image_locked) { options.pushUndo?.(); panel.image_scale = 1; panel.image_offset_x = panel.image_offset_y = 0; changed(); syncUi(); } }
     }
 
     function applyTemplate(templateId) { if (!core.PUBLIC_TEMPLATE_IDS.has(templateId)) return false; const hasContent = core.collectPanels(comic.tree).some((panel) => panel.image_id) || options.hasPanelTargetedLayers?.(); if (hasContent && !confirm(tr("現在のコマ割りを置き換えますか？\nコマ内レイヤーはページ上へ移し、画像素材はトレイに残します。", "Replace the current panel layout?\nPanel layers move to the page and image assets remain in the tray."))) { syncUi(); return false; } options.pushUndo?.(); options.detachPanelTargetsToPage?.(); comic.tree = core.createTemplate(templateId, uuid); comic.template_id = templateId; selection = { kind: "page", id: null }; selectedImagePanelIds.clear(); imageSelectionAnchorId = null; changed(); syncUi(); return true; }
-    function splitSelected(axis) { const panel = selection.kind === "panel" ? selectedPanel() : null; if (!panel || panel.visible === false || comic.page.structure_locked) return false; const result = core.splitPanel(comic.tree, panel.id, axis, uuid); if (!result.changed) return false; options.pushUndo?.(); comic.tree = result.tree; selection = { kind: "panel", id: result.panelId }; lastPanelId = result.panelId; changed(); syncUi(); return true; }
-    function mergeSelectedDivider(keep = "first") { const divider = selectedDivider(); if (!divider || comic.page.structure_locked) return false; const result = core.mergeDivider(comic.tree, divider.id, keep); if (!result.changed) return false; options.pushUndo?.(); comic.tree = result.tree; options.reassignPanelTargets?.(result.removedPanelIds, result.keptPanelId); selection = { kind: "panel", id: result.keptPanelId }; lastPanelId = result.keptPanelId; changed(); syncUi(); return true; }
+    function splitSelected(axis) { const panel = selection.kind === "panel" ? selectedPanel() : null; if (!panelEditable(panel) || panel.visible === false || comic.page.structure_locked) return false; const result = core.splitPanel(comic.tree, panel.id, axis, uuid); if (!result.changed) return false; options.pushUndo?.(); comic.tree = result.tree; selection = { kind: "panel", id: result.panelId }; lastPanelId = result.panelId; changed(); syncUi(); return true; }
+    function mergeSelectedDivider(keep = "first") { const divider = selectedDivider(); if (!dividerEditable(divider)) return false; const result = core.mergeDivider(comic.tree, divider.id, keep); if (!result.changed) return false; options.pushUndo?.(); comic.tree = result.tree; options.reassignPanelTargets?.(result.removedPanelIds, result.keptPanelId); selection = { kind: "panel", id: result.keptPanelId }; lastPanelId = result.keptPanelId; changed(); syncUi(); return true; }
 
     function ratioFromPoint(divider, point) { const rect = divider.parentRect, dimension = divider.axis === "x" ? rect.w : rect.h, offset = divider.axis === "x" ? point.x - rect.x : point.y - rect.y, raw = (offset - comic.page.gutter / 2) / Math.max(1, dimension - comic.page.gutter), range = core.ratioRange(divider.node, rect, comic.page.gutter); return core.clamp(raw, range.minimum, range.maximum); }
-    function handlePointerDown(point, event = {}) { if (!active || !comic.created || event.button > 0 || options.layerAt?.(point)) return false; const computed = layout(), zoom = Math.max(.1, canvasState().zoom || 1), endpoint = !comic.page.structure_locked ? core.dividerHandleAtPoint(computed, point, 16 / zoom) : null, divider = endpoint?.divider || (!comic.page.structure_locked ? core.dividerAtPoint(computed, point, 10 / zoom) : null); if (divider) { options.pushUndo?.(); setSelection("divider", divider.id); drag = endpoint ? { kind: "divider-endpoint", id: divider.id, endpoint: endpoint.endpoint, changed: false } : { kind: "divider", id: divider.id, sx: point.x, sy: point.y, startRatio: divider.startRatio, endRatio: divider.endRatio, changed: false }; return true; } const hit = core.panelAtPoint(computed, point); if (hit) { if (hit.node.image_id) { const preserve = selectedImagePanelIds.size > 1 && selectedImagePanelIds.has(hit.id) && !(event.shiftKey || event.ctrlKey || event.metaKey); if (!preserve) selectPanelImage(hit.id, event); else { selection = { kind: "image", id: hit.id }; lastPanelId = hit.id; syncUi(); } const movable = selectedImagePanels().filter((panel) => !panel.image_locked); if (!(event.shiftKey || event.ctrlKey || event.metaKey) && movable.length) { options.pushUndo?.(); drag = { kind: "image", panels: movable.map((panel) => ({ panel, x: panel.image_offset_x, y: panel.image_offset_y })), sx: point.x, sy: point.y, changed: false }; } } else selectPanel(hit.id); return true; } if (core.pointInRect(point, { x: 0, y: 0, w: comic.page.width, h: comic.page.height })) { selectPage(); return true; } return false; }
+    function handlePointerDown(point, event = {}) {
+      if (!active || !comic.created || event.button > 0 || options.layerAt?.(point)) return false;
+      const computed = layout(), zoom = Math.max(.1, canvasState().zoom || 1), endpoint = !comic.page.structure_locked ? core.dividerHandleAtPoint(computed, point, 16 / zoom) : null;
+      const candidate = endpoint?.divider || (!comic.page.structure_locked ? core.dividerAtPoint(computed, point, 10 / zoom) : null), divider = dividerEditable(candidate) ? candidate : null;
+      if (divider) {
+        options.pushUndo?.(); setSelection("divider", divider.id);
+        drag = endpoint ? { kind: "divider-endpoint", id: divider.id, endpoint: endpoint.endpoint, changed: false } : { kind: "divider", id: divider.id, sx: point.x, sy: point.y, startRatio: divider.startRatio, endRatio: divider.endRatio, changed: false };
+        return true;
+      }
+      const hit = core.panelAtPoint(computed, point);
+      if (hit) {
+        if (hit.node.image_id) {
+          const preserve = selectedImagePanelIds.size > 1 && selectedImagePanelIds.has(hit.id) && !(event.shiftKey || event.ctrlKey || event.metaKey);
+          if (!preserve) selectPanelImage(hit.id, event);
+          else { selection = { kind: "image", id: hit.id }; lastPanelId = hit.id; syncUi(); }
+          const movable = selectedImagePanels().filter((panel) => panelEditable(panel) && !panel.image_locked);
+          if (!(event.shiftKey || event.ctrlKey || event.metaKey) && movable.length) { options.pushUndo?.(); drag = { kind: "image", panels: movable.map((panel) => ({ panel, x: panel.image_offset_x, y: panel.image_offset_y })), sx: point.x, sy: point.y, changed: false }; }
+        } else selectPanel(hit.id);
+        return true;
+      }
+      if (core.pointInRect(point, { x: 0, y: 0, w: comic.page.width, h: comic.page.height })) { selectPage(); return true; }
+      return false;
+    }
     function handlePointerMove(point, event = {}) { if (!active) return false; if (!drag) { const computed = layout(), zoom = Math.max(.1, canvasState().zoom || 1), handle = !comic.page.structure_locked ? core.dividerHandleAtPoint(computed, point, 16 / zoom) : null, divider = handle?.divider || (!comic.page.structure_locked ? core.dividerAtPoint(computed, point, 10 / zoom) : null), next = divider?.id || ""; if (next !== hoverDividerId) { hoverDividerId = next; requestRender({ canvas: true }); } return false; } if (drag.kind === "divider-endpoint") { const divider = layout().dividers.find((item) => item.id === drag.id); if (!divider) return false; let next = ratioFromPoint(divider, point), start = divider.startRatio, end = divider.endRatio; if (event.shiftKey) { const snapped = core.snapDividerEndpointToAngle(divider, drag.endpoint, next, comic.page.gutter, 15); next = snapped.ratio; drag.snapLabel = `${Math.round(snapped.angle)}°`; } else drag.snapLabel = !event.altKey && core.dividerStraightDistancePx({ ...divider, startRatio: drag.endpoint === "start" ? next : start, endRatio: drag.endpoint === "end" ? next : end }, canvasState().zoom || 1, comic.page.gutter) <= 5 ? (divider.axis === "x" ? "90°" : "0°") : ""; if (drag.endpoint === "start") start = next; else end = next; const result = core.setSplitRatios(comic.tree, drag.id, start, end); if (result.changed) { comic.tree = result.tree; drag.changed = true; } requestRender({ canvas: true }); return true; } if (drag.kind === "divider") { const divider = layout().dividers.find((item) => item.id === drag.id); if (!divider) return false; const rect = divider.parentRect, dimension = divider.axis === "x" ? rect.w : rect.h, delta = (divider.axis === "x" ? point.x - drag.sx : point.y - drag.sy) / Math.max(1, dimension - comic.page.gutter), range = core.ratioRange(divider.node, rect, comic.page.gutter), minimumDelta = Math.max(range.minimum - drag.startRatio, range.minimum - drag.endRatio), maximumDelta = Math.min(range.maximum - drag.startRatio, range.maximum - drag.endRatio), shift = core.clamp(delta, minimumDelta, maximumDelta), result = core.setSplitRatios(comic.tree, drag.id, drag.startRatio + shift, drag.endRatio + shift); if (result.changed) { comic.tree = result.tree; drag.changed = true; requestRender({ canvas: true }); } return true; } if (drag.kind === "image") { for (const initial of drag.panels) { initial.panel.image_offset_x = initial.x + point.x - drag.sx; initial.panel.image_offset_y = initial.y + point.y - drag.sy; } drag.changed = true; requestRender({ canvas: true }); return true; } return false; }
     function handlePointerEnd(event = {}) { if (!drag) return false; const completed = drag, changedValue = completed.changed; if (completed.kind === "divider-endpoint" && changedValue && event.type !== "pointercancel" && !event.altKey) { const divider = layout().dividers.find((item) => item.id === completed.id); if (divider && core.dividerStraightDistancePx(divider, canvasState().zoom || 1, comic.page.gutter) <= 5) { const center = (divider.startRatio + divider.endRatio) / 2, result = core.setSplitRatios(comic.tree, divider.id, center, center); if (result.changed) comic.tree = result.tree; } } drag = null; if (changedValue) changed(); syncUi(); return true; }
     function pointerCursorAt(point) { if (!active || comic.page.structure_locked) return ""; const computed = layout(), zoom = Math.max(.1, canvasState().zoom || 1); if (core.dividerHandleAtPoint(computed, point, 16 / zoom)) return "crosshair"; const divider = core.dividerAtPoint(computed, point, 10 / zoom); return divider ? divider.axis === "x" ? "col-resize" : "row-resize" : ""; }
-    function handleWheel(event, point) { if (!active || !(event.ctrlKey || event.metaKey) || selection.kind !== "image") return false; const panels = selectedImagePanels().filter((panel) => !panel.image_locked); if (!panels.length) return false; if (point) { const hit = core.panelAtPoint(layout(), point); if (!hit || !selectedImagePanelIds.has(hit.id) && hit.id !== selection.id) return false; } options.pushUndo?.(); const factor = event.deltaY < 0 ? 1.08 : .92; panels.forEach((panel) => panel.image_scale = core.clamp(panel.image_scale * factor, .05, 5)); changed(); syncUi(); return true; }
+    function handleWheel(event, point) { if (!active || !(event.ctrlKey || event.metaKey) || selection.kind !== "image") return false; const panels = selectedImagePanels().filter((panel) => panelEditable(panel) && !panel.image_locked); if (!panels.length) return false; if (point) { const hit = core.panelAtPoint(layout(), point); if (!hit || !selectedImagePanelIds.has(hit.id) && hit.id !== selection.id) return false; } options.pushUndo?.(); const factor = event.deltaY < 0 ? 1.08 : .92; panels.forEach((panel) => panel.image_scale = core.clamp(panel.image_scale * factor, .05, 5)); changed(); syncUi(); return true; }
 
     async function importFiles(files) { const valid = files.filter(supportedImage); if (!valid.length) { options.setStatus?.(tr("PNG / JPEG / WebPを選択してください", "Choose PNG, JPEG, or WebP"), "error"); return []; } if (comic.images.length + valid.length > MAX_IMAGES) { options.setStatus?.(tr("ページ画像は100枚までです", "Up to 100 page images are supported"), "error"); return []; } const ids = []; for (const file of valid) { if (file.size > MAX_IMAGE_BYTES) { options.setStatus?.(tr("画像が大きすぎます", "The image is too large"), "error"); continue; } const metadata = { id: `${IMAGE_PREFIX}${uuid()}`, name: String(file.name || "image").replace(/\.[^.]+$/, ""), mime: file.type || "image/png", width: 1, height: 1, sha256: "", source: "stored" }; await attachBlob(metadata, file); comic.images.push(metadata); await storeImageBlob(documentId(), metadata, file); ids.push(metadata.id); } if (ids.length) { used = true; selectedTrayImageId = ids.at(-1); changed(); renderTray(); } return ids; }
     async function getConversionSources() {
@@ -286,8 +311,8 @@
       changed(); syncUi();
       return addedId;
     }
-    function assignImage(panelId, imageId) { const panel = core.findNode(comic.tree, panelId); if (!panel || panel.kind !== "panel" || !comic.images.some((item) => item.id === imageId)) return false; options.pushUndo?.(); panel.image_id = imageId; panel.image_scale = 1; panel.image_offset_x = panel.image_offset_y = 0; panel.image_visible = true; selectedImagePanelIds.clear(); selectedImagePanelIds.add(panelId); selection = { kind: "image", id: panelId }; lastPanelId = panelId; changed(); syncUi(); return true; }
-    async function removeTrayImage(imageId) { const usedPanels = core.collectPanels(comic.tree).filter((panel) => panel.image_id === imageId); if (usedPanels.length && !confirm(tr(`この画像は${usedPanels.length}個のコマで使用中です。削除しますか？`, `This image is used in ${usedPanels.length} panel(s). Remove it?`))) return; options.pushUndo?.(); usedPanels.forEach((panel) => { panel.image_id = null; selectedImagePanelIds.delete(panel.id); }); if (selection.kind === "image" && !core.findNode(comic.tree, selection.id)?.image_id) selection = { kind: "panel", id: selection.id }; comic.images = comic.images.filter((item) => item.id !== imageId); runtimeBlobs.delete(imageId); const image = runtimeImages.get(imageId), url = image?.dataset?.generalComicObjectUrl; if (url) { URL.revokeObjectURL(url); objectUrls.delete(url); } runtimeImages.delete(imageId); await deleteImageBlob(documentId(), imageId); changed(); syncUi(); }
+    function assignImage(panelId, imageId) { const panel = core.findNode(comic.tree, panelId); if (!panelEditable(panel) || !comic.images.some((item) => item.id === imageId)) return false; options.pushUndo?.(); panel.image_id = imageId; panel.image_scale = 1; panel.image_offset_x = panel.image_offset_y = 0; panel.image_visible = true; selectedImagePanelIds.clear(); selectedImagePanelIds.add(panelId); selection = { kind: "image", id: panelId }; lastPanelId = panelId; changed(); syncUi(); return true; }
+    async function removeTrayImage(imageId) { const usedPanels = core.collectPanels(comic.tree).filter((panel) => panel.image_id === imageId); if (usedPanels.some((panel) => !panelEditable(panel))) return; if (usedPanels.length && !confirm(tr(`この画像は${usedPanels.length}個のコマで使用中です。削除しますか？`, `This image is used in ${usedPanels.length} panel(s). Remove it?`))) return; options.pushUndo?.(); usedPanels.forEach((panel) => { panel.image_id = null; selectedImagePanelIds.delete(panel.id); }); if (selection.kind === "image" && !core.findNode(comic.tree, selection.id)?.image_id) selection = { kind: "panel", id: selection.id }; comic.images = comic.images.filter((item) => item.id !== imageId); /* Keep the Blob and runtime image until the document is closed so Undo can restore this image. */ changed(); syncUi(); }
     function renderTray() {
       if (!elements.trayList) return;
       const usedIds = new Set(core.collectPanels(comic.tree).map((panel) => panel.image_id).filter(Boolean));
@@ -492,7 +517,52 @@
     const assetClipRect = (item) => active && item?.general_comic_scope === "panel" ? panelRect(item.general_comic_panel_id) : null;
     const emphasisClipRect = assetClipRect;
 
-    function layerRow({ kind, id = "", name, visible = true, locked = null, nested = false }) { const row = document.createElement("div"); const selected = kind === "image" ? selectedImagePanelIds.has(id) || selection.kind === "image" && selection.id === id : selection.kind === kind && (!id || selection.id === id); row.className = `layer${nested ? " general-comic-layer-nested" : ""}${selected ? " selected" : ""}`; row.dataset.generalComicLayer = kind; if (id) row.dataset.generalComicPanelId = id; const eye = document.createElement("button"); eye.className = "eye"; eye.textContent = kind === "page" ? "" : visible ? "◉" : "○"; if (kind === "page") { eye.disabled = true; eye.tabIndex = -1; eye.setAttribute("aria-hidden", "true"); } const icon = document.createElement("span"); icon.className = `kind ${kind === "image" ? "image" : "frame"}`; icon.textContent = kind === "page" ? "▦" : kind === "image" ? "▧" : "□"; const label = document.createElement("span"); label.className = "name"; label.textContent = name; row.append(eye, icon, label); row.onclick = (event) => kind === "page" ? selectPage() : kind === "image" ? selectPanelImage(id, event) : selectPanel(id); if (kind !== "page") eye.onclick = (event) => { event.stopPropagation(); const panel = core.findNode(comic.tree, id); if (!panel) return; if (kind === "panel" && panel.visible !== false && panelOrder().filter((item) => item.visible !== false).length <= 1) return; options.pushUndo?.(); if (kind === "panel") panel.visible = panel.visible === false; else panel.image_visible = !visible; changed(); syncUi(); }; if (locked !== null) { const lock = document.createElement("button"); lock.className = "lock"; lock.textContent = locked ? "🔒" : "🔓"; lock.onclick = (event) => { event.stopPropagation(); options.pushUndo?.(); if (kind === "page") comic.page.structure_locked = !locked; else if (kind === "panel") core.findNode(comic.tree, id).locked = !locked; else core.findNode(comic.tree, id).image_locked = !locked; changed(); syncUi(); }; row.append(lock); } if (kind === "page" || kind === "panel") { row.addEventListener("dragover", (event) => { if (event.dataTransfer.types.includes("text/plain")) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } }); row.addEventListener("drop", (event) => { const layerId = event.dataTransfer.getData("text/plain"); if (!layerId || layerId.startsWith(IMAGE_PREFIX)) return; event.preventDefault(); event.stopPropagation(); options.assignLayerGeneralComicTarget?.(layerId, kind === "panel" ? id : null); }); } return row; }
+    function layerRow({ kind, id = "", name, visible = true, locked = null, nested = false }) {
+      const row = document.createElement("div"), selected = kind === "image" ? selectedImagePanelIds.has(id) || selection.kind === "image" && selection.id === id : selection.kind === kind && (!id || selection.id === id);
+      row.className = `layer${nested ? " general-comic-layer-nested" : ""}${selected ? " selected" : ""}`;
+      row.dataset.generalComicLayer = kind;
+      if (id) row.dataset.generalComicPanelId = id;
+      const eye = document.createElement("button");
+      eye.className = "eye";
+      eye.textContent = kind === "page" ? "" : visible ? "◉" : "○";
+      if (kind === "page") { eye.disabled = true; eye.tabIndex = -1; eye.setAttribute("aria-hidden", "true"); }
+      const icon = document.createElement("span");
+      icon.className = `kind ${kind === "image" ? "image" : "frame"}`;
+      icon.textContent = kind === "page" ? "▦" : kind === "image" ? "▧" : "□";
+      const label = document.createElement("span");
+      label.className = "name";
+      label.textContent = name;
+      row.append(eye, icon, label);
+      row.onclick = (event) => kind === "page" ? selectPage() : kind === "image" ? selectPanelImage(id, event) : selectPanel(id);
+      if (kind !== "page") eye.onclick = (event) => {
+        event.stopPropagation();
+        const panel = core.findNode(comic.tree, id);
+        if (!panel || !panelEditable(panel) || kind === "image" && panel.image_locked) return;
+        if (kind === "panel" && panel.visible !== false && panelOrder().filter((item) => item.visible !== false).length <= 1) return;
+        options.pushUndo?.();
+        if (kind === "panel") panel.visible = panel.visible === false;
+        else panel.image_visible = !visible;
+        changed(); syncUi();
+      };
+      if (locked !== null) {
+        const lock = document.createElement("button");
+        lock.className = "lock";
+        lock.textContent = locked ? "🔒" : "🔓";
+        lock.onclick = (event) => {
+          event.stopPropagation(); options.pushUndo?.();
+          if (kind === "page") comic.page.structure_locked = !locked;
+          else if (kind === "panel") core.findNode(comic.tree, id).locked = !locked;
+          else core.findNode(comic.tree, id).image_locked = !locked;
+          changed(); syncUi();
+        };
+        row.append(lock);
+      }
+      if (kind === "page" || kind === "panel") {
+        row.addEventListener("dragover", (event) => { if (event.dataTransfer.types.includes("text/plain")) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } });
+        row.addEventListener("drop", (event) => { const layerId = event.dataTransfer.getData("text/plain"); if (!layerId || layerId.startsWith(IMAGE_PREFIX) || kind === "panel" && !panelEditable(core.findNode(comic.tree, id))) return; event.preventDefault(); event.stopPropagation(); options.assignLayerGeneralComicTarget?.(layerId, kind === "panel" ? id : null); });
+      }
+      return row;
+    }
     function renderLayers(host) { if (!active || !comic.created || !host) return false; host.append(layerRow({ kind: "page", name: tr("漫画ページ", "Comic Page"), locked: comic.page.structure_locked })); panelOrder().forEach((panel, index) => { const hidden = panel.visible === false; host.append(layerRow({ kind: "panel", id: panel.id, name: hidden ? tr(`コマ ${index + 1}（非表示）`, `Panel ${index + 1} (Hidden)`) : tr(`コマ ${index + 1}`, `Panel ${index + 1}`), visible: !hidden, locked: panel.locked, nested: true })); if (panel.image_id) { const metadata = comic.images.find((image) => image.id === panel.image_id); host.append(layerRow({ kind: "image", id: panel.id, name: metadata?.name || tr("コマ画像", "Panel Image"), visible: panel.image_visible !== false, locked: panel.image_locked, nested: true })); } }); return true; }
 
     function scale(scaleX, scaleY) { const lineScale = Math.sqrt(scaleX * scaleY); comic.page.width = canvasState().width; comic.page.height = canvasState().height; comic.page.margin_left *= scaleX; comic.page.margin_right *= scaleX; comic.page.margin_top *= scaleY; comic.page.margin_bottom *= scaleY; comic.page.gutter *= lineScale; comic.page.border_width *= lineScale; core.collectPanels(comic.tree).forEach((panel) => { panel.image_offset_x *= scaleX; panel.image_offset_y *= scaleY; }); }

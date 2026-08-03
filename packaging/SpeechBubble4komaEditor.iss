@@ -1,5 +1,8 @@
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.6"
+  #define MyAppVersion "0.1.7"
+#endif
+#ifndef MyAppWindowsVersion
+  #define MyAppWindowsVersion "0.1.7.0"
 #endif
 #ifndef MySourceDir
   #define MySourceDir "..\dist\SpeechBubble4komaEditor"
@@ -12,6 +15,8 @@
 AppId={{92DFBD37-CA51-4F1B-B890-7CC15D830FCE}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppWindowsVersion}
+VersionInfoProductVersion={#MyAppWindowsVersion}
 AppPublisher=ukr8b3g-cmyk
 AppPublisherURL=https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor
 AppSupportURL=https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/issues

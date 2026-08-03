@@ -43,6 +43,7 @@ exe = EXE(
     upx=True,
     console=False,
     icon=str(root / "web" / "assets" / "speech-bubble-4koma.ico"),
+    version=str(root / "packaging" / "windows_version_info.txt"),
 )
 
 coll = COLLECT(

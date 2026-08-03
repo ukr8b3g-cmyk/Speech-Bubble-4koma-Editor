@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.6",
+    [string]$Version = "0.1.7",
     [string]$IsccPath = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
     [switch]$InstallerOnly
 )
@@ -59,7 +59,8 @@ try {
         Compress-Archive -LiteralPath $portableDir -DestinationPath $portableZip -CompressionLevel Optimal
     }
 
-    & $IsccPath "/DMyAppVersion=$Version" "/DMySourceDir=$portableDir" (Join-Path $root "packaging\SpeechBubble4komaEditor.iss")
+    $windowsVersion = (($Version -replace '[-+].*$', '') + '.0')
+    & $IsccPath "/DMyAppVersion=$Version" "/DMyAppWindowsVersion=$windowsVersion" "/DMySourceDir=$portableDir" (Join-Path $root "packaging\SpeechBubble4komaEditor.iss")
     if ($LASTEXITCODE -ne 0) {
         throw "Installer build failed with exit code $LASTEXITCODE."
     }
