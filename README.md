@@ -365,6 +365,8 @@ SettingsのUser Presetsを開き、登録先をSFXまたはStampから選びま�
 
 ShapeのBuilt-inから吹き出しを配置し、Propertiesでベジェ曲線のアンカー／ハンドル、形状調整、縦横比を編集します。`Finish Path`でパス編集を確定した後、「ユーザープリセットとして保存…」を選ぶとShapeの`My Presets`へ追加され、クリックまたはCanvasへのドラッグで再利用できます。Built-inは読み取り専用で上書きされません。
 
+<img src="docs/images/speech-bubble-bezier-preset.png" width="680" alt="ベジェ曲線で吹き出し形状を編集しユーザープリセットとして保存する画面">
+
 My Presetsから配置した吹き出しは「変更を保存…」で元のユーザープリセットを更新し、「別名で保存…」で複製できます。Settingsの「吹き出しプリセット管理」では名前変更、複製、削除、JSON読み込み／書き出しを行えます。ここには画像ドロップ登録欄はありません。
 
 Save Layoutと`.sbeproj`は現在の作品配置を保存する機能です。吹き出しを別の作品でも再利用する場合は、Propertiesから吹き出しユーザープリセットとして保存してください。
