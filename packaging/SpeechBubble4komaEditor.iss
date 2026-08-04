@@ -1,8 +1,8 @@
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.7"
+  #define MyAppVersion "0.1.8"
 #endif
 #ifndef MyAppWindowsVersion
-  #define MyAppWindowsVersion "0.1.7.0"
+  #define MyAppWindowsVersion "0.1.8.0"
 #endif
 #ifndef MySourceDir
   #define MySourceDir "..\dist\SpeechBubble4komaEditor"

@@ -12,8 +12,8 @@
 
 ## ダウンロード
 
-- [インストーラー版（Windows x64）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.6/SpeechBubble4komaEditor-v0.1.6-win-x64-setup.exe)
-- [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.6/SHA256SUMS.txt)
+- [インストーラー版（Windows x64）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.8/SpeechBubble4komaEditor-v0.1.8-win-x64-setup.exe)
+- [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.8/SHA256SUMS.txt)
 - [過去のリリース](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases)
 
 - GitHub: https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor
@@ -35,11 +35,18 @@
 
 通常はEXE版、または`start.cmd`から起動してください。EXE版ではシステムフォント、日本語フォント、Settings、`.sbeproj`、指定フォルダーへの画像書き出しなど、Desktop APIを使う機能を利用できます。
 
-現行リリース（v0.1.6）の配布物はWindows x64セットアップEXEのみです。ソースから起動する場合は`setup_and_start.cmd`で専用`.venv`を準備し、以後は`start.cmd`を使用してください。
+現行リリース（v0.1.8）の配布物はWindows x64セットアップEXEのみです。ソースから起動する場合は`setup_and_start.cmd`で専用`.venv`を準備し、以後は`start.cmd`を使用してください。
 
 `web\speech-bubble-editor.html`の直接表示は旧版互換・UI確認用で、現在のDesktopリリースと同等の動作を保証しません。ブラウザーからDesktop APIへ接続しないため、システムフォント、Settings、`.sbeproj`、指定フォルダーへの書き出しなども利用できません。
 
 ## 主な機能
+
+### v0.1.8の主な修正
+
+- コミックのページ画像を削除しても、Undo時に画像Blobを再利用してサムネイル・コマ画像・プロジェクト保存を復元
+- コマ個別ロックをPropertiesの境界スライダーと結合ボタンにも反映
+- コマ割りロック中はテンプレート変更を無効化し、ページ構造の意図しない置き換えを防止
+- WindowsのFileVersion／ProductVersionを`0.1.8.0`として収録
 
 ### v0.1.6の主な追加・改善
 
