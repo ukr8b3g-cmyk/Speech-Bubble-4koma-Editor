@@ -880,6 +880,11 @@
     function sharedPageImageUsedIds(){const ids=new Set();for(const value of comicEditor?.usedImageIds?.()||[])ids.add(String(value));for(const value of generalComicEditor?.usedImageIds?.()||[])ids.add(String(value));for(const item of workspaces.single.elements||[])if(item?.type==="image"&&item.image_asset_id)ids.add(String(item.image_asset_id));return ids;}
     async function syncSharedPageImages(){if(!sharedPageImageStore)return[];const records=await sharedPageImageStore.list();await comicEditor?.syncSharedImages?.(records);await generalComicEditor?.syncSharedImages?.(records);return records;}
     function queueSharedPageImageSync(){sharedPageImageSyncPromise=sharedPageImageSyncPromise.then(syncSharedPageImages).catch(error=>console.warn("Shared Page Images sync failed",error));return sharedPageImageSyncPromise;}
+    const sharedPageImageEditorStore=sharedPageImageStore?Object.freeze({
+      put:async(metadata,blob)=>{const result=await sharedPageImageStore.put(metadata,blob,{notify:false});await queueSharedPageImageSync();return result;},
+      get:imageId=>sharedPageImageStore.get(imageId),
+      remove:imageId=>sharedPageImageStore.remove(imageId,{notify:false}),
+    }):undefined;
     async function removeSharedPageImage(imageId){if(!sharedPageImageStore||!imageId)return false;const usage=sharedPageImageUsage(imageId),total=usage.single+usage.comic+usage.comic_layout;if(total&&!confirm(uiText(`この画像は使用中です。\n一枚画像：${usage.single}\n4コマ漫画：${usage.comic}\nコミック：${usage.comic_layout}\n使用箇所から外してページ画像から削除しますか？`,`This image is in use.\nSingle Image: ${usage.single}\n4-Panel Manga: ${usage.comic}\nComic: ${usage.comic_layout}\nRemove it from all usage and Page Images?`)))return false;pushUndo();for(const item of workspaces.single.elements||[])if(item?.type==="image"&&item.image_asset_id===imageId)item.visible=false;comicEditor?.removeAssetUsage?.(imageId);generalComicEditor?.removeAssetUsage?.(imageId);await sharedPageImageStore.remove(imageId,{notify:false});await syncSharedPageImages();layoutDirty=true;scheduleAutoSave();updateActionState();requestRender({canvas:true,layers:true});return true;}
     async function sharedPageImageStorageStatus(){return sharedPageImageStore?sharedPageImageStore.status(sharedPageImageUsedIds()):{page_images:0,page_image_bytes:0,unused_page_images:0};}
     async function cleanupUnusedSharedPageImages(){if(!sharedPageImageStore)return{removed:0};const records=await sharedPageImageStore.list(),used=sharedPageImageUsedIds(),unused=records.filter(record=>!used.has(String(record.id)));if(!unused.length)return{removed:0};if(!confirm(uiText(`どのワークスペースでも使用していないページ画像${unused.length}件を削除しますか？\nこの操作は元に戻せません。`,`Delete ${unused.length} Page Image(s) unused in every workspace?\nThis cannot be undone.`)))return{removed:0,cancelled:true};for(const record of unused)await sharedPageImageStore.remove(record.id,{notify:false});await syncSharedPageImages();return{removed:unused.length};}
@@ -923,7 +928,7 @@
         getSourceImage:()=>image,
         getSourceBlob:()=>sourceImageBlob(),
          getSourceName:()=>sourceName,
-         imageStore:sharedPageImageStore||undefined,
+         imageStore:sharedPageImageEditorStore,
          removeSharedImage:removeSharedPageImage,
          pushUndo,
          clearLayerSelection:()=>setSelection([],null),
@@ -963,7 +968,7 @@
       generalComicEditor=window.SpeechBubbleGeneralComicEditor.create({
         defaultWidth:2480,defaultHeight:3508,
         getCanvasState:()=>state,getDocumentId:()=>documentId,
-        imageStore:sharedPageImageStore||undefined,removeSharedImage:removeSharedPageImage,
+        imageStore:sharedPageImageEditorStore,removeSharedImage:removeSharedPageImage,
         pushUndo,clearLayerSelection:()=>setSelection([],null),hasLayerSelection:()=>state.selection.length>0,
         layerAt:point=>findHit(point,false),
         resizeCanvas:(width,height)=>{scaleStateToImageSize(width,height);fitView(false);},
