@@ -167,7 +167,12 @@
     const runtimeImages = new Map();
     const objectUrls = new Set();
     const elements = {};
-    const imageStore = options.imageStore || {
+    const externalImageStore = options.imageStore || null;
+    const imageStore = externalImageStore ? {
+      put: (metadata, blob) => externalImageStore.put(metadata, blob),
+      get: async (imageId) => (await externalImageStore.get(imageId)) || loadImageBlob(documentId(), imageId),
+      remove: (imageId) => externalImageStore.remove?.(imageId),
+    } : {
       put: async (metadata, blob) => {
         await storeImageBlob(documentId(), metadata, blob);
         return metadata;
@@ -326,7 +331,10 @@
           .map(async (metadata) => {
             try {
               const blob = await imageStore.get(metadata.id);
-              if (blob && hydratedDocumentId === targetDocument) await attachBlob(metadata, blob);
+              if (blob && hydratedDocumentId === targetDocument) {
+                if (externalImageStore) await externalImageStore.put(metadata, blob);
+                await attachBlob(metadata, blob);
+              }
             } catch (error) {
               console.warn("Speech Bubble comic image restore failed", metadata.id, error);
             }
