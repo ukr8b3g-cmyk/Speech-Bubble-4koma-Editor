@@ -36,7 +36,7 @@ catch { console.log("desktop_browser_smoke: SKIP (playwright unavailable)"); pro
     assert.equal(typeof config.body.settings, "object");
 
     // Page Images are one document-scoped library across both comic workspaces.
-    await page.locator('[data-editor-mode="comic"]').click();
+    await page.locator('button[data-editor-mode="comic"]').click();
     await page.waitForFunction(() => document.documentElement.dataset.editorMode === "comic");
     console.log("EDITOR_DIAGNOSTIC", JSON.stringify(await page.evaluate(() => ({
       comicGlobal: Boolean(window.SpeechBubbleComicEditor),
@@ -50,7 +50,7 @@ catch { console.log("desktop_browser_smoke: SKIP (playwright unavailable)"); pro
     const onePixelPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZCxkAAAAASUVORK5CYII=", "base64");
     await page.locator("[data-comic-image-input]").setInputFiles({ name: "shared-page.png", mimeType: "image/png", buffer: onePixelPng });
     await page.waitForFunction(() => document.querySelector("[data-comic-image-count]")?.textContent?.includes("1"));
-    await page.locator('[data-editor-mode="comic_layout"]').click();
+    await page.locator('button[data-editor-mode="comic_layout"]').click();
     await page.waitForFunction(() => document.documentElement.dataset.editorMode === "comic_layout");
     await page.waitForFunction(() => document.querySelector("[data-general-image-count]")?.textContent?.includes("1"));
 
