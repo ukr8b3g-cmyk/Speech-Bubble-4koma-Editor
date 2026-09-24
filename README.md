@@ -26,7 +26,9 @@ Windows／Linux／Chromiumの自動回帰テストを追加しました。検証
 
 ## ダウンロード
 
-- [インストーラー版（Windows x64）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.8/SpeechBubble4komaEditor-v0.1.8-win-x64-setup.exe)
+> **配布版とmainの差異:** 現在公開中のインストーラーは2026-08-04のv0.1.8です。GitHub `main` には2026-09-24の保守修正が追加されており、これらは次回のWindowsバイナリ公開まではソース版（`git clone` / `setup_and_start.cmd`）でのみ利用できます。既存v0.1.8の配布物やSHA-256は上書きしていません。
+
+- [インストーラー版（Windows x64 / v0.1.8）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.8/SpeechBubble4komaEditor-v0.1.8-win-x64-setup.exe)
 - [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.8/SHA256SUMS.txt)
 - [過去のリリース](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases)
 
@@ -49,7 +51,7 @@ Windows／Linux／Chromiumの自動回帰テストを追加しました。検証
 
 通常はEXE版、または`start.cmd`から起動してください。EXE版ではシステムフォント、日本語フォント、Settings、`.sbeproj`、指定フォルダーへの画像書き出しなど、Desktop APIを使う機能を利用できます。
 
-現行リリース（v0.1.8）の配布物はWindows x64セットアップEXEのみです。ソースから起動する場合は`setup_and_start.cmd`で専用`.venv`を準備し、以後は`start.cmd`を使用してください。
+現行リリース（v0.1.8）の配布物はWindows x64セットアップEXEのみです。このEXEは2026-09-24のpost-release maintenanceより前のビルドです。最新の`main`を利用する場合は、ソースから`setup_and_start.cmd`で専用`.venv`を準備し、以後は`start.cmd`を使用してください。
 
 `web\speech-bubble-editor.html`の直接表示は旧版互換・UI確認用で、現在のDesktopリリースと同等の動作を保証しません。ブラウザーからDesktop APIへ接続しないため、システムフォント、Settings、`.sbeproj`、指定フォルダーへの書き出しなども利用できません。
 

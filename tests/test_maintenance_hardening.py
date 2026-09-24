@@ -7,11 +7,14 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from desktop_app.background_removal import BackgroundRemovalService, MODEL_SIZE
 from desktop_app.paths import DesktopPaths
+from desktop_app.project_store import _decode_project_image, _read_bounded_archive_entry
 from desktop_app.server import create_app
 from desktop_app.version import APP_VERSION
 from speech_bubble_editor import __version__ as API_VERSION
@@ -99,6 +102,63 @@ class MaintenanceHardeningTests(unittest.IsolatedAsyncioTestCase):
             images.append(layer)
         self.assertNotEqual(images[0].tobytes(), images[1].tobytes())
         self.assertNotEqual(images[0].tobytes(), images[2].tobytes())
+
+    def test_project_base64_size_is_checked_before_decode(self):
+        with mock.patch("desktop_app.project_store.MAX_IMAGE_BYTES", 3), mock.patch(
+            "desktop_app.project_store.base64.b64decode"
+        ) as decode:
+            with self.assertRaisesRegex(ValueError, "empty or too large"):
+                _decode_project_image(
+                    {
+                        "id": "image-1",
+                        "data_url": "data:image/png;base64,QUJDREVG",
+                    }
+                )
+            decode.assert_not_called()
+
+    def test_project_zip_entry_size_is_checked_before_read(self):
+        import zipfile
+
+        with tempfile.TemporaryDirectory() as temp:
+            archive_path = Path(temp) / "oversized.sbeproj"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("images/test.png", b"12345")
+            with zipfile.ZipFile(archive_path, "r") as archive, mock.patch.object(
+                archive, "read", wraps=archive.read
+            ) as read:
+                with self.assertRaisesRegex(ValueError, "empty or too large"):
+                    _read_bounded_archive_entry(
+                        archive,
+                        "images/test.png",
+                        4,
+                        label="Project image",
+                    )
+                read.assert_not_called()
+
+    def test_model_download_rejects_declared_oversize_before_read(self):
+        class FakeResponse:
+            headers = {"Content-Length": str(MODEL_SIZE + 1)}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self, *_args):
+                raise AssertionError("oversized response body must not be read")
+
+        with tempfile.TemporaryDirectory() as temp:
+            service = BackgroundRemovalService(Path(temp))
+            with mock.patch(
+                "desktop_app.background_removal.urllib.request.urlopen",
+                return_value=FakeResponse(),
+            ):
+                service._download_model()
+            status = service.status()
+            self.assertEqual(status["state"], "error")
+            self.assertIn("サイズ", status["error"])
+            self.assertFalse(service.partial_path.exists())
 
 
 if __name__ == "__main__":

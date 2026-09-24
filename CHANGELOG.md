@@ -11,6 +11,10 @@
 - Use the v0.1.8 distribution version consistently for Desktop/API/User-Agent reporting; release builds now fail when source and Windows version metadata disagree.
 - Add Windows/Linux/Chromium regression CI and maintenance documentation.
 - No project schema, model, web asset URL or mandatory runtime dependency change.
+- Reject oversized project image Base64 before decoding and oversized ZIP image entries before reading them into memory.
+- Stop background-removal model downloads as soon as the response exceeds the expected model size.
+- Remove the unused Desktop cache helper and update CI artifact upload to the current Node 24 generation.
+- Clarify that the published v0.1.8 installer predates these post-release maintenance changes; release assets and checksums are not overwritten.
 
 ## v0.1.8 - 2026-08-04
 

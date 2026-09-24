@@ -150,13 +150,6 @@ def create_app(paths: DesktopPaths, launch_token: str | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail="出力フォルダーへ書き込めません。")
         return {"ok": True, "path": str(resolved)}
 
-    def cache_files() -> list[Path]:
-        files: list[Path] = []
-        for root in (paths.recovery, paths.temp):
-            if root.is_dir():
-                files.extend(path for path in root.rglob("*") if path.is_file())
-        return files
-
     @app.get("/desktop/cache/status")
     async def cache_status(request: Request, x_sbe_token: str = Header(default="")):
         require_token(request, x_sbe_token)
