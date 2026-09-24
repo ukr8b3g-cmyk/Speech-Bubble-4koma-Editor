@@ -14,9 +14,10 @@
   <script src="./editor-mode-controller.js?v=general-comic-1"></script>
   <script src="./general-comic-core.js?v=general-comic-2"></script>
   <script src="./comic-panels.js?v=0.1.4-panel-patterns-1"></script>
-  <script src="./comic-editor.js?v=0.1.4-panel-patterns-2"></script>
-  <script src="./general-comic-editor.js?v=general-comic-2"></script>
-  <script src="./comic-converter.js?v=0.1.4-multi-image-1"></script>
+  <script src="./shared-page-images.js?v=shared-page-images-1"></script>
+  <script src="./comic-editor.js?v=shared-page-images-1"></script>
+  <script src="./general-comic-editor.js?v=shared-page-images-1"></script>
+  <script src="./comic-converter.js?v=black-white-forge-1"></script>
   <script src="./background-removal-selection.js?v=magic-wand-1"></script>
   <script src="./background-removal-edge.js?v=0.1.4-edge-matting-1"></script>
   <script src="./background-removal.js?v=0.1.4-edge-matting-1"></script>
@@ -872,7 +873,17 @@
       restoreWorkspaceView(source,false);
     }
     let modeController=null,comicEditor=null,generalComicEditor=null,comicConverter=null,backgroundRemoval=null,comicOverlayExport=false;
+    const sharedPageImageStore=window.SpeechBubbleSharedPageImages?.create({getDocumentId:()=>documentId})||null;
+    let sharedPageImageSyncPromise=Promise.resolve();
     function activeStructuralEditor(){return generalComicEditor?.isActive()?generalComicEditor:comicEditor?.isActive()?comicEditor:null;}
+    function sharedPageImageUsage(imageId){return{single:workspaces.single.elements.filter(item=>item?.type==="image"&&item.image_asset_id===imageId).length,comic:comicEditor?.imageUsageCount?.(imageId)||0,comic_layout:generalComicEditor?.imageUsageCount?.(imageId)||0};}
+    function sharedPageImageUsedIds(){const ids=new Set();for(const value of comicEditor?.usedImageIds?.()||[])ids.add(String(value));for(const value of generalComicEditor?.usedImageIds?.()||[])ids.add(String(value));for(const item of workspaces.single.elements||[])if(item?.type==="image"&&item.image_asset_id)ids.add(String(item.image_asset_id));return ids;}
+    async function syncSharedPageImages(){if(!sharedPageImageStore)return[];const records=await sharedPageImageStore.list();await comicEditor?.syncSharedImages?.(records);await generalComicEditor?.syncSharedImages?.(records);return records;}
+    function queueSharedPageImageSync(){sharedPageImageSyncPromise=sharedPageImageSyncPromise.then(syncSharedPageImages).catch(error=>console.warn("Shared Page Images sync failed",error));return sharedPageImageSyncPromise;}
+    async function removeSharedPageImage(imageId){if(!sharedPageImageStore||!imageId)return false;const usage=sharedPageImageUsage(imageId),total=usage.single+usage.comic+usage.comic_layout;if(total&&!confirm(uiText(`この画像は使用中です。\n一枚画像：${usage.single}\n4コマ漫画：${usage.comic}\nコミック：${usage.comic_layout}\n使用箇所から外してページ画像から削除しますか？`,`This image is in use.\nSingle Image: ${usage.single}\n4-Panel Manga: ${usage.comic}\nComic: ${usage.comic_layout}\nRemove it from all usage and Page Images?`)))return false;pushUndo();for(const item of workspaces.single.elements||[])if(item?.type==="image"&&item.image_asset_id===imageId)item.visible=false;comicEditor?.removeAssetUsage?.(imageId);generalComicEditor?.removeAssetUsage?.(imageId);await sharedPageImageStore.remove(imageId,{notify:false});await syncSharedPageImages();layoutDirty=true;scheduleAutoSave();updateActionState();requestRender({canvas:true,layers:true});return true;}
+    async function sharedPageImageStorageStatus(){return sharedPageImageStore?sharedPageImageStore.status(sharedPageImageUsedIds()):{page_images:0,page_image_bytes:0,unused_page_images:0};}
+    async function cleanupUnusedSharedPageImages(){if(!sharedPageImageStore)return{removed:0};const records=await sharedPageImageStore.list(),used=sharedPageImageUsedIds(),unused=records.filter(record=>!used.has(String(record.id)));if(!unused.length)return{removed:0};if(!confirm(uiText(`どのワークスペースでも使用していないページ画像${unused.length}件を削除しますか？\nこの操作は元に戻せません。`,`Delete ${unused.length} Page Image(s) unused in every workspace?\nThis cannot be undone.`)))return{removed:0,cancelled:true};for(const record of unused)await sharedPageImageStore.remove(record.id,{notify:false});await syncSharedPageImages();return{removed:unused.length};}
+    window.addEventListener("speech-bubble:page-images-changed",event=>{if(!event.detail?.documentId||event.detail.documentId===documentId)queueSharedPageImageSync();});
 
     function initializeModeController(){
       if(!["desktop","desktop-file"].includes(hostMode)||modeController||!window.SpeechBubbleEditorModeController)return modeController;
@@ -901,8 +912,8 @@
       modeController?.setCurrent(activeWorkspace);
       document.documentElement.dataset.editorMode=activeWorkspace;
     }
-    async function selectedSingleImageSource(){const layer=selectedSingleImageLayer(),asset=singleImageAssetFor(layer);if(layer&&asset){lastSingleProcessingLayerId=layer.id;return{blob:asset.blob,name:layer.image_name||asset.name,width:asset.width,height:asset.height,layer_id:layer.id,visible:layer.visible!==false};}if(!imageLoaded||!image.naturalWidth)return null;lastSingleProcessingLayerId="";return{blob:await sourceImageBlob(),name:sourceName||"speech_bubble",width:image.naturalWidth,height:image.naturalHeight};}
-    async function applyProcessedSingleImage(blob,name,role){if(!blob)return false;const source=state.elements.find(item=>item.id===lastSingleProcessingLayerId&&item.type==="image")||selectedSingleImageLayer();await addSingleImageLayerFromBlob(blob,name,{inherit:source,role,hideSource:Boolean(source)});layoutDirty=true;scheduleAutoSave();updateActionState();return true;}
+    async function selectedSingleImageSource(){const layer=selectedSingleImageLayer(),asset=singleImageAssetFor(layer);if(layer&&asset){lastSingleProcessingLayerId=layer.id;return{blob:asset.blob,name:layer.image_name||asset.name,width:asset.width,height:asset.height,layer_id:layer.id,source_kind:"layer",visible:layer.visible!==false};}if(!imageLoaded||!image.naturalWidth)return null;lastSingleProcessingLayerId="";return{blob:await sourceImageBlob(),name:sourceName||"speech_bubble",width:image.naturalWidth,height:image.naturalHeight,source_kind:"legacy-background"};}
+    async function applyProcessedSingleImage(blob,name,role,sourceContext){if(!blob)return false;const sourceId=String(sourceContext?.layer_id||"");const source=sourceId?state.elements.find(item=>item.id===sourceId&&item.type==="image"):state.elements.find(item=>item.id===lastSingleProcessingLayerId&&item.type==="image")||selectedSingleImageLayer();const hasImage=workspaces.single.elements.some(item=>item.type==="image");if(!source&&!hasImage&&Number(sourceContext?.width)>0&&Number(sourceContext?.height)>0&&activeWorkspace==="single")scaleStateToImageSize(Number(sourceContext.width),Number(sourceContext.height));await addSingleImageLayerFromBlob(blob,name,{inherit:source||undefined,role,hideSource:Boolean(source),fit:source?"cover":"contain"});layoutDirty=true;scheduleAutoSave();updateActionState();return true;}
     function initializeComicEditor(){
       if(!["desktop","desktop-file"].includes(hostMode)||comicEditor||!window.SpeechBubbleComicEditor)return comicEditor;
       comicEditor=window.SpeechBubbleComicEditor.create({
@@ -912,6 +923,8 @@
         getSourceImage:()=>image,
         getSourceBlob:()=>sourceImageBlob(),
          getSourceName:()=>sourceName,
+         imageStore:sharedPageImageStore||undefined,
+         removeSharedImage,
          pushUndo,
          clearLayerSelection:()=>setSelection([],null),
          hasLayerSelection:()=>state.selection.length>0,
@@ -950,6 +963,7 @@
       generalComicEditor=window.SpeechBubbleGeneralComicEditor.create({
         defaultWidth:2480,defaultHeight:3508,
         getCanvasState:()=>state,getDocumentId:()=>documentId,
+        imageStore:sharedPageImageStore||undefined,removeSharedImage,
         pushUndo,clearLayerSelection:()=>setSelection([],null),hasLayerSelection:()=>state.selection.length>0,
         layerAt:point=>findHit(point,false),
         resizeCanvas:(width,height)=>{scaleStateToImageSize(width,height);fitView(false);},
@@ -3596,16 +3610,17 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     }
     const DESKTOP_SINGLE_BACKGROUND_ID="__single_background__";
     async function desktopSnapshot(){
-      const images=[...(await comicEditor?.exportProjectImages?.()||[]),...(await generalComicEditor?.exportProjectImages?.()||[])];
+      const images=sharedPageImageStore?await sharedPageImageStore.exportRecords():[...(await comicEditor?.exportProjectImages?.()||[]),...(await generalComicEditor?.exportProjectImages?.()||[])];
       const usedSingleAssets=new Set(workspaces.single.elements.filter(item=>item.type==="image").map(item=>item.image_asset_id));for(const asset of singleImageAssets.values())if(usedSingleAssets.has(asset.id))images.push({id:asset.id,name:asset.name||"single-image",mime:asset.mime||asset.blob.type||"image/png",data_url:await blobToDataUrl(asset.blob)});
       if(!singleImageAssets.size&&imageLoaded&&(sourceBlob||imageUrl)){const blob=await sourceImageBlob();images.push({id:DESKTOP_SINGLE_BACKGROUND_ID,name:sourceName||"single-image",mime:blob.type||"image/png",data_url:await blobToDataUrl(blob)});}
       return{title:sourceName||"speech-bubble-project",project_path:currentProjectPath,layout:JSON.parse(currentLayoutJson()),images};
     }
     async function loadDesktopPayload(payload,{recovery=false}={}){
-      const prepared=projectSchema.preflightPayload(payload),records=await Promise.all(prepared.images.map(async record=>{const response=await fetch(record.data_url);if(!response.ok)throw new Error(`Image load failed: ${record.id}`);const blob=await response.blob();if(!String(blob.type||"").startsWith("image/"))throw new Error(`Image data is invalid: ${record.id}`);const url=URL.createObjectURL(blob);try{await loadSingleImageElement(url);}finally{URL.revokeObjectURL(url);}return{...record,blob};})),singleRecords=records.filter(record=>record.id===DESKTOP_SINGLE_BACKGROUND_ID||record.id.startsWith(SINGLE_IMAGE_ASSET_PREFIX)),generalRecords=records.filter(record=>record.id.startsWith(generalComicEditor?.IMAGE_PREFIX||"general-comic-image:")),comicRecords=records.filter(record=>!singleRecords.includes(record)&&!generalRecords.includes(record)),savedSingleElements=prepared.layout.workspaces.single.elements||prepared.layout.elements||[],preferredId=savedSingleElements.find(item=>item?.type==="image"&&item.source_role==="original")?.image_asset_id||savedSingleElements.find(item=>item?.type==="image")?.image_asset_id||singleRecords[0]?.id;
+      const prepared=projectSchema.preflightPayload(payload),records=await Promise.all(prepared.images.map(async record=>{const response=await fetch(record.data_url);if(!response.ok)throw new Error(`Image load failed: ${record.id}`);const blob=await response.blob();if(!String(blob.type||"").startsWith("image/"))throw new Error(`Image data is invalid: ${record.id}`);const url=URL.createObjectURL(blob);try{await loadSingleImageElement(url);}finally{URL.revokeObjectURL(url);}return{...record,blob};})),singleRecords=records.filter(record=>record.id===DESKTOP_SINGLE_BACKGROUND_ID||record.id.startsWith(SINGLE_IMAGE_ASSET_PREFIX)),pageRecords=records.filter(record=>!singleRecords.includes(record)),savedSingleElements=prepared.layout.workspaces.single.elements||prepared.layout.elements||[],preferredId=savedSingleElements.find(item=>item?.type==="image"&&item.source_role==="original")?.image_asset_id||savedSingleElements.find(item=>item?.type==="image")?.image_asset_id||singleRecords[0]?.id;
       const nextId=`standalone:${createUuid()}`;setStandaloneContext(nextId);clearDocumentCanvas();sourceName=String(prepared.manifest?.title||"speech-bubble-project");currentProjectPath=String(prepared.path||prepared.manifest?.project_path||"");dirtyTrackingEnabled=false;
       for(const record of singleRecords){const assetId=record.id===DESKTOP_SINGLE_BACKGROUND_ID?`${SINGLE_IMAGE_ASSET_PREFIX}legacy-original`:record.id;if(record.id===preferredId||(!imageLoaded&&record===singleRecords[0]))await displayImageBlob(record.blob,{name:record.name||sourceName,assetId});else await registerSingleImageAsset(record.blob,record.name||"Image",assetId);}
-      loadState(JSON.stringify(prepared.layout),{strict:true});if(activeWorkspace==="single")ensurePrimarySingleImageLayer();await comicEditor?.importProjectImages?.(comicRecords.map(({blob,...record})=>record));await generalComicEditor?.importProjectImages?.(generalRecords.map(({blob,...record})=>record));
+      if(sharedPageImageStore){await sharedPageImageStore.clearDocument({notify:false});await sharedPageImageStore.importRecords(pageRecords,{notify:false});}
+      loadState(JSON.stringify(prepared.layout),{strict:true});if(activeWorkspace==="single")ensurePrimarySingleImageLayer();if(sharedPageImageStore)await syncSharedPageImages();else{const generalRecords=pageRecords.filter(record=>record.id.startsWith(generalComicEditor?.IMAGE_PREFIX||"general-comic-image:")),comicRecords=pageRecords.filter(record=>!generalRecords.includes(record));await comicEditor?.importProjectImages?.(comicRecords.map(({blob,...record})=>record));await generalComicEditor?.importProjectImages?.(generalRecords.map(({blob,...record})=>record));}
       lastSavedLayout=currentLayoutJson();hasExplicitSavedLayout=!recovery;layoutDirty=recovery;state.undo=[];state.redo=[];dirtyTrackingEnabled=true;
       restoreWorkspaceView(workspaces[activeWorkspace],false);syncProperties();requestRender({canvas:true,layers:true,preview:false});updateActionState();
     }
@@ -3622,8 +3637,8 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       clearCache:clearDesktopBrowserCache,
       converterStatus:()=>comicConverter?.storageStatus?.()||{},
       clearConversionHistory:()=>comicConverter?.clearHistory?.()||{removed:0},
-      comicStorageStatus:()=>comicEditor?.storageStatus?.()||{},
-      cleanupUnusedComicImages:()=>comicEditor?.cleanupUnusedImages?.()||{removed:0},
+      comicStorageStatus:()=>sharedPageImageStorageStatus(),
+      cleanupUnusedComicImages:()=>cleanupUnusedSharedPageImages(),
       refreshUserAssets:async()=>{await loadUserAssetCatalog();refreshQuickSfx();renderSfxDrawer();},
       bubblePresets:()=>structuredClone(userPresets),
       manageBubblePreset,
@@ -3636,6 +3651,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       initializeModeController();
       initializeComicEditor();
       initializeGeneralComicEditor();
+      await syncSharedPageImages();
       registerEditorModes();
       initializeComicConverter();
       initializeBackgroundRemoval();
