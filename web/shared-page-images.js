@@ -23,6 +23,21 @@
     });
   }
 
+  const LEGACY_DATABASES = [
+    ["speech-bubble-editor-comic-images", "images"],
+    ["speech-bubble-editor-general-comic-images", "images"],
+  ];
+
+  async function existingDatabaseNames() {
+    if (typeof indexedDB.databases !== "function") return new Set();
+    try {
+      const entries = await indexedDB.databases();
+      return new Set(entries.map(entry => String(entry?.name || "")).filter(Boolean));
+    } catch {
+      return new Set();
+    }
+  }
+
   async function sha256(blob) {
     if (!(blob instanceof Blob) || !root.crypto?.subtle) return "";
     const digest = await root.crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
@@ -201,6 +216,48 @@
       return output;
     }
 
+    async function migrateLegacy(control = {}) {
+      const documentId = getDocumentId();
+      if (!documentId) return 0;
+      const known = await existingDatabaseNames();
+      let migrated = 0;
+      for (const [databaseName, storeName] of LEGACY_DATABASES) {
+        if (known.size && !known.has(databaseName)) continue;
+        let db;
+        try {
+          db = await new Promise((resolve, reject) => {
+            const request = indexedDB.open(databaseName);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+            request.onupgradeneeded = () => {
+              request.transaction?.abort?.();
+              reject(new Error("legacy database is unavailable"));
+            };
+          });
+          if (!db.objectStoreNames.contains(storeName)) {
+            db.close();
+            continue;
+          }
+          const records = await new Promise((resolve, reject) => {
+            const tx = db.transaction(storeName, "readonly");
+            const request = tx.objectStore(storeName).getAll();
+            request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+            request.onerror = () => reject(request.error);
+          });
+          db.close();
+          for (const record of records) {
+            if (String(record?.documentId || "") !== documentId || !(record?.blob instanceof Blob)) continue;
+            await put({ ...(record.metadata || {}), id: record.imageId || record.metadata?.id }, record.blob, { notify: false });
+            migrated += 1;
+          }
+        } catch {
+          try { db?.close?.(); } catch {}
+        }
+      }
+      if (migrated && control.notify !== false) notify({ reason: "legacy-migration", count: migrated });
+      return migrated;
+    }
+
     async function status(usedIds = new Set()) {
       const used = usedIds instanceof Set ? usedIds : new Set(usedIds || []);
       const records = await listRecords();
@@ -219,6 +276,7 @@
       list,
       importRecords,
       exportRecords,
+      migrateLegacy,
       status,
       clearDocument,
       notify,
