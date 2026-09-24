@@ -17,8 +17,8 @@ assert.match(store, /async function status/);
 assert.match(store, /speech-bubble:page-images-changed/);
 
 assert.match(html, /sharedPageImageStore=window\.SpeechBubbleSharedPageImages\?\.create/);
-assert.match(html, /imageStore:sharedPageImageStore\|\|undefined/);
-assert.equal((html.match(/imageStore:sharedPageImageStore\|\|undefined/g) || []).length, 2);
+assert.match(html, /imageStore:sharedPageImageEditorStore/);
+assert.equal((html.match(/imageStore:sharedPageImageEditorStore/g) || []).length, 2);
 assert.match(html, /syncSharedPageImages/);
 assert.match(html, /removeSharedPageImage/);
 assert.match(html, /sharedPageImageStorageStatus/);
