@@ -162,6 +162,9 @@
     }
     comicVersion(layout.comic);
     generalComicVersion(layout.general_comic);
+    if (layout.image_trays != null && !isObject(layout.image_trays)) {
+      fail("INVALID_LAYOUT", "Project image tray state must be an object");
+    }
     const result = clone(layout);
     result.format = typeof result.format === "string" ? result.format : FORMAT;
     result.version = CURRENT_LAYOUT_VERSION;
@@ -267,6 +270,7 @@
     };
     if (runtime.comic) payload.comic = comicVersion(runtime.comic);
     payload.general_comic = runtime.generalComic ? generalComicVersion(runtime.generalComic) : null;
+    if (isObject(runtime.imageTrays)) payload.image_trays = clone(runtime.imageTrays);
     return validateNormalized(payload, { requireCurrent: true });
   }
 
