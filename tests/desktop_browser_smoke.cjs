@@ -26,6 +26,7 @@ catch { console.log("desktop_browser_smoke: SKIP (playwright unavailable)"); pro
     const pageErrors = [];
     page.on("pageerror", error => { pageErrors.push(error.message); console.error("PAGEERROR:", error.stack || error.message); });
     page.on("console", message => { if (message.type() === "error") console.error("BROWSER:", message.text()); });
+    page.on("response", response => { if (response.status() >= 400) console.error("HTTP", response.status(), response.url()); });
     await page.goto("http://127.0.0.1:" + port + "/", { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => window.SpeechBubbleDesktopEditor && document.querySelector("#canvas"));
     const health = await page.evaluate(async () => { const r = await fetch("/desktop/health"); return { status:r.status, body:await r.json() }; });
@@ -50,6 +51,14 @@ catch { console.log("desktop_browser_smoke: SKIP (playwright unavailable)"); pro
     const onePixelPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZCxkAAAAASUVORK5CYII=", "base64");
     await page.locator("[data-comic-image-input]").setInputFiles({ name: "shared-page.png", mimeType: "image/png", buffer: onePixelPng });
     await page.waitForFunction(() => document.querySelector("[data-comic-image-count]")?.textContent?.includes("1"));
+    await page.waitForTimeout(300);
+    console.log("SHARED_DIAGNOSTIC_AFTER_IMPORT", JSON.stringify(await page.evaluate(async () => ({
+      store: (await sharedPageImageStore.list()).map(item => item.id),
+      comic: comicEditor?.state?.()?.images?.map(item => item.id) || [],
+      general: generalComicEditor?.state?.()?.images?.map(item => item.id) || [],
+      comicCount: document.querySelector("[data-comic-image-count]")?.textContent || "",
+      generalCount: document.querySelector("[data-general-image-count]")?.textContent || "",
+    }))));
     await page.locator('button[data-editor-mode="comic_layout"]').click();
     await page.waitForFunction(() => document.documentElement.dataset.editorMode === "comic_layout");
     await page.waitForFunction(() => document.querySelector("[data-general-image-count]")?.textContent?.includes("1"));
