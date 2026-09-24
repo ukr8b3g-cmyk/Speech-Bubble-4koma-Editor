@@ -10,6 +10,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageOps
 
+from .version import APP_VERSION
+
 
 MODEL_NAME = "isnet-anime"
 MODEL_FILENAME = "isnet-anime.onnx"
@@ -114,7 +116,7 @@ class BackgroundRemovalService:
                 pass
             request = urllib.request.Request(
                 MODEL_URL,
-                headers={"User-Agent": "SpeechBubble4komaEditor/0.1.8"},
+                headers={"User-Agent": f"SpeechBubble4komaEditor/{APP_VERSION}"},
             )
             digest = hashlib.sha256()
             with urllib.request.urlopen(request, timeout=60) as response, self.partial_path.open("wb") as output:
