@@ -10,6 +10,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 from speech_bubble_editor.api import register_routes
+from speech_bubble_editor.request_limits import read_bounded_body, read_bounded_json
 
 from .background_removal import BackgroundRemovalService, MAX_IMAGE_BYTES
 from .paths import DesktopPaths
@@ -17,6 +18,12 @@ from .project_store import ProjectStore
 from .recent_projects import RecentProjects
 from .recovery_store import RecoveryStore
 from .settings_store import SettingsStore
+from .version import APP_VERSION
+
+_MAX_DESKTOP_JSON_BYTES = 256 * 1024
+# Project and recovery JSON contain base64 images. The saved project archive is
+# limited to 512 MiB, so this keeps transport bounded while preserving overhead.
+_MAX_DESKTOP_PROJECT_JSON_BYTES = 768 * 1024 * 1024
 
 
 def create_app(paths: DesktopPaths, launch_token: str | None = None) -> FastAPI:
@@ -73,7 +80,7 @@ def create_app(paths: DesktopPaths, launch_token: str | None = None) -> FastAPI:
     @app.get("/desktop/health")
     async def health(request: Request, x_sbe_token: str = Header(default="")):
         require_token(request, x_sbe_token)
-        return {"ok": True, "host": "desktop"}
+        return {"ok": True, "host": "desktop", "version": APP_VERSION}
 
     @app.get("/desktop/background-removal/model")
     async def background_removal_model_status(request: Request, x_sbe_token: str = Header(default="")):
@@ -101,10 +108,7 @@ def create_app(paths: DesktopPaths, launch_token: str | None = None) -> FastAPI:
     @app.post("/desktop/background-removal/infer")
     async def background_removal_infer(request: Request, x_sbe_token: str = Header(default="")):
         require_token(request, x_sbe_token)
-        content_length = int(request.headers.get("content-length") or 0)
-        if content_length > MAX_IMAGE_BYTES:
-            raise HTTPException(status_code=413, detail="画像サイズが大きすぎます。")
-        raw = await request.body()
+        raw = await read_bounded_body(request, MAX_IMAGE_BYTES, allow_empty=False)
         try:
             mask, width, height = await asyncio.to_thread(background_removal.infer_mask, raw)
         except FileNotFoundError as error:
@@ -125,13 +129,13 @@ def create_app(paths: DesktopPaths, launch_token: str | None = None) -> FastAPI:
     @app.put("/desktop/config")
     async def update_config(request: Request, x_sbe_token: str = Header(default="")):
         require_token(request, x_sbe_token)
-        payload = await request.json()
-        return {"ok": True, "settings": settings.save(payload if isinstance(payload, dict) else {})}
+        payload = await read_bounded_json(request, _MAX_DESKTOP_JSON_BYTES)
+        return {"ok": True, "settings": settings.save(payload)}
 
     @app.post("/desktop/export-directory/validate")
     async def validate_export_directory(request: Request, x_sbe_token: str = Header(default="")):
         require_token(request, x_sbe_token)
-        payload = await request.json()
+        payload = await read_bounded_json(request, _MAX_DESKTOP_JSON_BYTES)
         raw = str(payload.get("path", "") or "").strip()
         path = Path(raw).expanduser()
         if not raw or not path.is_absolute():
@@ -184,11 +188,11 @@ def create_app(paths: DesktopPaths, launch_token: str | None = None) -> FastAPI:
     @app.post("/desktop/recovery/save")
     async def save_recovery(request: Request, x_sbe_token: str = Header(default="")):
         require_token(request, x_sbe_token)
-        payload = await request.json()
+        payload = await read_bounded_json(request, _MAX_DESKTOP_PROJECT_JSON_BYTES)
         try:
             return recovery.save(
-                payload if isinstance(payload, dict) else {},
-                checkpoint=bool(payload.get("checkpoint")) if isinstance(payload, dict) else False,
+                payload,
+                checkpoint=bool(payload.get("checkpoint")),
             )
         except (OSError, ValueError, TypeError) as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
@@ -211,13 +215,13 @@ def create_app(paths: DesktopPaths, launch_token: str | None = None) -> FastAPI:
     @app.post("/desktop/recent/remove")
     async def remove_recent(request: Request, x_sbe_token: str = Header(default="")):
         require_token(request, x_sbe_token)
-        payload = await request.json()
+        payload = await read_bounded_json(request, _MAX_DESKTOP_JSON_BYTES)
         return {"ok": True, "items": recent.remove(str(payload.get("path", "")))}
 
     @app.post("/desktop/project/save")
     async def save_project(request: Request, x_sbe_token: str = Header(default="")):
         require_token(request, x_sbe_token)
-        payload = await request.json()
+        payload = await read_bounded_json(request, _MAX_DESKTOP_PROJECT_JSON_BYTES)
         requested = Path(str(payload.pop("path", "")))
         if not requested.is_absolute():
             raise HTTPException(status_code=400, detail="A native-selected absolute project path is required")
@@ -231,7 +235,7 @@ def create_app(paths: DesktopPaths, launch_token: str | None = None) -> FastAPI:
     @app.post("/desktop/project/open")
     async def open_project(request: Request, x_sbe_token: str = Header(default="")):
         require_token(request, x_sbe_token)
-        payload = await request.json()
+        payload = await read_bounded_json(request, _MAX_DESKTOP_JSON_BYTES)
         requested = Path(str(payload.get("path", "")))
         if not requested.is_absolute():
             raise HTTPException(status_code=400, detail="A native-selected absolute project path is required")

@@ -10,6 +10,14 @@ AI生成画像を漫画表現へ仕上げる用途を主な対象としつつ、
 
 > **Local post-production comic editor for AI-generated and existing artwork.**
 
+## 2026-09-24 保守更新
+
+Forge Neo版で検証済みの保守修正から、スタンドアロン構成へ安全に適用できる部分を移植しました。JSON／画像APIはContent-Lengthの有無にかかわらず受信上限を適用し、Data URLのCR/LFと厳密Base64検証を整合させ、画像は全画素を展開する前に解像度上限を確認します。Pillow互換レンダラーで到達不能だった吹き出し装飾も修正しています。
+
+SFX／FrameのAsset Catalogをレンダラーから分離し、通常のEditor起動・設定キャッシュ更新では巨大なPillow互換レンダラーを不要に読み込まない構造へ変更しました。Desktop API、`.sbeproj`、復元データ、既存レイアウトの形式は変更していません。配布バージョンは引き続きv0.1.8です。
+
+Windows／Linux／Chromiumの自動回帰テストを追加しました。検証方法は [docs/VALIDATION.md](docs/VALIDATION.md)、構造と互換範囲は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) を参照してください。
+
 ## 開発経緯
 
 本作のベースは、ComfyUI向けカスタムノードの[Speech-Bubble-Layer](https://github.com/ukr8b3g-cmyk/Speech-Bubble-Layer)です。これをForge Neo向けに移植・拡張したものが[sd-webui-speech-bubble-forge-neo](https://github.com/ukr8b3g-cmyk/sd-webui-speech-bubble-forge-neo)で、本作はそのEditorをWindows向けのスタンドアロンアプリとして発展させています。

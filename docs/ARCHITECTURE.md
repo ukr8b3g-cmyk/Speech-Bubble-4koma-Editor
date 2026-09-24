@@ -1,0 +1,23 @@
+# Architecture
+
+## Desktop host
+
+`desktop_app.main` starts a loopback-only FastAPI server and a WebView2/pywebview window. A random per-launch token protects non-static Desktop/editor API routes. Native dialogs, window lifecycle and the Properties/Layers tool window remain in the Desktop bridge.
+
+## Editor support
+
+The current UI remains `web/speech-bubble-editor.html`. `speech_bubble_editor.api` provides layout, preset, user-asset, font and export endpoints. Browser Canvas is the normal export path. `speech_bubble_editor.renderer` is retained for saved/explicit Pillow compatibility rendering and is loaded lazily.
+
+SFX/frame discovery now lives in `speech_bubble_editor.asset_catalog`. This ports the validated Forge Neo separation while preserving the standalone-specific per-item SFX geometry and emphasis presets.
+
+## Request boundaries
+
+`speech_bubble_editor.request_limits` contains bounded streaming body/JSON readers. Desktop metadata endpoints use a small JSON bound, background-removal input remains capped at 96 MiB, and project/recovery JSON has an explicit 768 MiB transport ceiling to cover base64 overhead for the existing 512 MiB project archive limit. JSON roots must be objects.
+
+## Compatibility scope
+
+- Distribution version remains 0.1.8.
+- `.sbeproj`, recovery, layout, preset and user-asset schemas are unchanged.
+- Existing web asset URLs and the optional model URL/SHA-256 are unchanged.
+- No mandatory runtime dependency was added; CI dependencies are test-only.
+- The standalone HTML shell is intentionally not split in this maintenance port. The Forge Project Editor shell differs materially from the Desktop shell, so copying that refactor would add risk without fixing a correctness issue.

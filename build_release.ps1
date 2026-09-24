@@ -15,6 +15,16 @@ $checksums = Join-Path $releaseDir "SHA256SUMS.txt"
 if ($Version -notmatch '^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') {
     throw "Version must use semantic version format, for example 0.1.0."
 }
+$appVersionText = Get-Content -LiteralPath (Join-Path $root "desktop_app\version.py") -Raw
+$appVersionMatch = [regex]::Match($appVersionText, 'APP_VERSION\s*=\s*"([^"]+)"')
+if (-not $appVersionMatch.Success -or $appVersionMatch.Groups[1].Value -ne $Version) {
+    throw "Build version $Version does not match desktop_app/version.py."
+}
+$windowsVersion = (($Version -replace '[-+].*$', '') + '.0')
+$versionInfoText = Get-Content -LiteralPath (Join-Path $root "packaging\windows_version_info.txt") -Raw
+if ($versionInfoText -notmatch [regex]::Escape("'$windowsVersion'")) {
+    throw "Windows version info does not contain $windowsVersion. Update packaging/windows_version_info.txt before release."
+}
 $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
 $shortBuildRoot = Join-Path $tempRoot "SBE-v$Version-build"
 $shortBuildRoot = [IO.Path]::GetFullPath($shortBuildRoot)
@@ -59,7 +69,6 @@ try {
         Compress-Archive -LiteralPath $portableDir -DestinationPath $portableZip -CompressionLevel Optimal
     }
 
-    $windowsVersion = (($Version -replace '[-+].*$', '') + '.0')
     & $IsccPath "/DMyAppVersion=$Version" "/DMyAppWindowsVersion=$windowsVersion" "/DMySourceDir=$portableDir" (Join-Path $root "packaging\SpeechBubble4komaEditor.iss")
     if ($LASTEXITCODE -ne 0) {
         throw "Installer build failed with exit code $LASTEXITCODE."
