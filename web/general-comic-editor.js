@@ -27,7 +27,12 @@
     const runtimeImages = new Map(), runtimeBlobs = new Map(), objectUrls = new Set(), elements = {};
     const canvasState = () => options.getCanvasState?.() || { width: comic.page.width, height: comic.page.height, zoom: 1 };
     const documentId = () => String(options.getDocumentId?.() || "");
-    const imageStore = options.imageStore || {
+    const externalImageStore = options.imageStore || null;
+    const imageStore = externalImageStore ? {
+      put: (metadata, blob) => externalImageStore.put(metadata, blob),
+      get: async (imageId) => (await externalImageStore.get(imageId)) || loadImageBlob(documentId(), imageId),
+      remove: (imageId) => externalImageStore.remove?.(imageId),
+    } : {
       put: async (metadata, blob) => { await storeImageBlob(documentId(), metadata, blob); return metadata; },
       get: (imageId) => loadImageBlob(documentId(), imageId),
       remove: (imageId) => deleteImageBlob(documentId(), imageId),
@@ -64,7 +69,7 @@
     }
 
     function attachBlob(metadata, blob) { return imageFromBlob(blob).then(({ image, url }) => { const old = runtimeImages.get(metadata.id)?.dataset?.generalComicObjectUrl; if (old) { URL.revokeObjectURL(old); objectUrls.delete(old); } image.dataset.generalComicObjectUrl = url; objectUrls.add(url); runtimeImages.set(metadata.id, image); runtimeBlobs.set(metadata.id, blob); metadata.width = image.naturalWidth; metadata.height = image.naturalHeight; renderTray(); requestRender({ canvas: true, layers: true }); }); }
-    async function hydrateImages() { const target = documentId(); hydratedDocumentId = target; await Promise.all(comic.images.filter((item) => !runtimeImages.has(item.id)).map(async (metadata) => { try { const blob = await imageStore.get(metadata.id); if (blob && target === hydratedDocumentId) await attachBlob(metadata, blob); } catch (error) { console.warn("General comic image restore failed", metadata.id, error); } })); }
+    async function hydrateImages() { const target = documentId(); hydratedDocumentId = target; await Promise.all(comic.images.filter((item) => !runtimeImages.has(item.id)).map(async (metadata) => { try { const blob = await imageStore.get(metadata.id); if (blob && target === hydratedDocumentId) { if (externalImageStore) await externalImageStore.put(metadata, blob); await attachBlob(metadata, blob); } } catch (error) { console.warn("General comic image restore failed", metadata.id, error); } })); }
 
     function setSelection(kind, id = null) { selection = { kind, id }; if (kind === "panel" || kind === "image") lastPanelId = id; if (kind !== "image") { selectedImagePanelIds.clear(); imageSelectionAnchorId = null; } if (kind !== "normal") options.clearLayerSelection?.(); syncUi(); options.syncInsertTargetStatus?.(); requestRender({ canvas: true, layers: true }); }
     function clearSelection() { selection = { kind: "page", id: null }; selectedImagePanelIds.clear(); imageSelectionAnchorId = null; drag = null; syncUi(); return true; }
