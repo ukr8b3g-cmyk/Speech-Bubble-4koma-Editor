@@ -220,6 +220,7 @@
         request.onerror = () => reject(request.error);
       });
       db.close();
+      if (documentId() !== doc) return [];
       for (const record of records.filter(record => record?.documentId === doc)) {
         if (!record?.imageId || !(record.blob instanceof Blob)) continue;
         setRuntime({ ...(record.metadata || {}), id: String(record.imageId) }, record.blob);
