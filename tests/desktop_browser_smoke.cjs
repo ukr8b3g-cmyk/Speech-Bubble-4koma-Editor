@@ -33,8 +33,24 @@ catch { console.log("desktop_browser_smoke: SKIP (playwright unavailable)"); pro
     const config = await page.evaluate(async () => { const r = await fetch("/desktop/config"); return { status:r.status, body:await r.json() }; });
     assert.equal(config.status, 200);
     assert.equal(typeof config.body.settings, "object");
+
+    // Page Images are one document-scoped library across both comic workspaces.
+    await page.locator('[data-editor-mode="comic"]').click();
+    await page.waitForFunction(() => document.documentElement.dataset.editorMode === "comic");
+    const onePixelPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZCxkAAAAASUVORK5CYII=", "base64");
+    await page.locator("[data-comic-image-input]").setInputFiles({ name: "shared-page.png", mimeType: "image/png", buffer: onePixelPng });
+    await page.waitForFunction(() => document.querySelector("[data-comic-image-count]")?.textContent?.includes("1"));
+    await page.locator('[data-editor-mode="comic_layout"]').click();
+    await page.waitForFunction(() => document.documentElement.dataset.editorMode === "comic_layout");
+    await page.waitForFunction(() => document.querySelector("[data-general-image-count]")?.textContent?.includes("1"));
+
+    // Forge Neo's current Black & White Conversion dialog is present in Standalone.
+    await page.locator("[data-comic-converter-open]").click();
+    await page.waitForFunction(() => document.querySelector("dialog.comic-converter-dialog")?.open === true);
+    assert.match(await page.locator("dialog.comic-converter-dialog strong").innerText(), /白黒変換|Black & White Conversion/);
+
     assert.deepEqual(pageErrors, []);
-    console.log("desktop_browser_smoke: OK");
+    console.log("desktop_browser_smoke: OK (shared Page Images + Black & White Conversion)");
   } finally {
     await browser?.close();
     server.kill();
