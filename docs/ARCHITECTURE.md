@@ -21,3 +21,16 @@ SFX/frame discovery now lives in `speech_bubble_editor.asset_catalog`. This port
 - Existing web asset URLs and the optional model URL/SHA-256 are unchanged.
 - No mandatory runtime dependency was added; CI dependencies are test-only.
 - The standalone HTML shell is intentionally not split in this maintenance port. The Forge Project Editor shell differs materially from the Desktop shell, so copying that refactor would add risk without fixing a correctness issue.
+
+
+## Shared Page Images
+
+`web/shared-page-images.js` owns the document-scoped Page Image Blob store. Both structural editors receive the same `imageStore`, while panel assignment remains workspace-local. New images use `page-image:*` IDs; legacy `image-*` and `general-comic-image:*` IDs remain valid and are migrated from the old per-workspace IndexedDB stores.
+
+Project save exports the shared library once, so a Blob reused by both 4-Panel Manga and Comic is not serialized twice. Project load restores every non-Single-Image project image into the shared store before the workspace layouts hydrate.
+
+Deleting a Page Image removes its panel usage across both comic workspaces. Settings storage status and unused cleanup operate on the shared library rather than only the 4-panel editor.
+
+## Black & White Conversion
+
+The standalone `web/comic-converter.js` follows the current Forge Neo implementation. Conversion processing remains browser-local and uses a Worker for preview/full-resolution processing. Applying to Single Image carries the exact source-layer context; applying in either comic workspace inserts the result into the shared Page Image Library.
