@@ -883,7 +883,9 @@
       if (switchWorkspace) options.switchWorkspace?.(enableComic ? "comic" : "single");
       if (enableComic && !used) {
         options.resizeCanvas?.(720, 2200);
+        const sharedImages = Array.isArray(comic.images) ? comic.images : [];
         comic = core.defaultState(720, 2200, uuid);
+        comic.images = sharedImages;
       }
       comic.enabled = enableComic;
       drag = null;
