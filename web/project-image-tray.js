@@ -71,7 +71,9 @@
       <div class="project-image-tray-list"></div>
       <input type="file" data-project-tray-file accept="image/png,image/jpeg,image/webp" multiple hidden>
     `;
-    canvasPanel.append(tray);
+    const footer = canvasPanel.querySelector(".footer");
+    if (footer) canvasPanel.insertBefore(tray, footer);
+    else canvasPanel.append(tray);
     const list = tray.querySelector(".project-image-tray-list");
     const fileInput = tray.querySelector("[data-project-tray-file]");
 
