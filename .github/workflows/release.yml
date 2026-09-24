@@ -77,7 +77,8 @@ jobs:
           if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw "Installer missing." }
           if ((Get-Item -LiteralPath $installer).Length -lt 10MB) { throw "Installer is unexpectedly small." }
           $info = (Get-Item -LiteralPath $installer).VersionInfo
-          if ($info.FileVersion -ne "$env:RELEASE_VERSION.0") { throw "Installer FileVersion is $($info.FileVersion), expected $env:RELEASE_VERSION.0" }
+          $fileVersion = [string]$info.FileVersion
+          if ($fileVersion.Trim() -ne "$env:RELEASE_VERSION.0") { throw "Installer FileVersion is $fileVersion, expected $env:RELEASE_VERSION.0" }
           $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
           $expected = "$hash  $([IO.Path]::GetFileName($installer))"
           $line = (Get-Content -LiteralPath $checksums -Raw).Trim()
