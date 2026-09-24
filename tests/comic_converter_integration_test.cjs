@@ -113,9 +113,15 @@ for (const feature of [
   assert.ok(desktopShell.includes(feature), `Desktop Settings must include ${feature}`);
 }
 
-assert.match(readme, /## コミック変換/);
+assert.match(readme, /## 白黒変換/);
 assert.match(readme, /長辺768px/);
 assert.match(readme, /文書ごとに最大5件、全体512MB、30日/);
 assert.match(readme, /単純グレースケール（初期値）、白黒コミック、単純モノクロ、XDoG 100/);
+
+assert.match(converter, /白黒変換/);
+assert.match(converter, /Black & White Conversion/);
+assert.match(converter, /applySingleImage\?\.\(blob, name, source\)/);
+assert.match(converter, /source_kind: "external-file"/);
+assert.match(desktopShell, /白黒変換/);
 
 console.log("comic converter integration tests passed");
