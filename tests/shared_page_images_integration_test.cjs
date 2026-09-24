@@ -35,6 +35,9 @@ for (const source of [four, general]) {
   assert.match(source, /imageUsageCount/);
   assert.match(source, /usedImageIds/);
 }
+assert.match(four, /const sharedImages = Array\.isArray\(comic\.images\)/);
+assert.match(four, /comic\.images = sharedImages/);
+assert.match(general, /next\.images = sharedImages/);
 assert.match(converter, /白黒変換/);
 assert.match(converter, /Black & White Conversion/);
 assert.match(converter, /applySingleImage\?\.\(blob, name, source\)/);
