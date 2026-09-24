@@ -114,7 +114,7 @@ class BackgroundRemovalService:
                 pass
             request = urllib.request.Request(
                 MODEL_URL,
-                headers={"User-Agent": "SpeechBubble4komaEditor/0.1.3"},
+                headers={"User-Agent": "SpeechBubble4komaEditor/0.1.8"},
             )
             digest = hashlib.sha256()
             with urllib.request.urlopen(request, timeout=60) as response, self.partial_path.open("wb") as output:
@@ -200,6 +200,8 @@ class BackgroundRemovalService:
             raise ValueError("画像が空、またはサイズが大きすぎます。")
         try:
             source = Image.open(io.BytesIO(raw))
+            if source.width * source.height > MAX_IMAGE_PIXELS:
+                raise ValueError("画像の解像度が大きすぎます。")
             source.load()
             source = ImageOps.exif_transpose(source).convert("RGB")
         except Exception as error:
