@@ -383,8 +383,8 @@
   <div class="layout">
     <aside class="left">
       <details class="left-section comic-converter-launcher" data-left-section="comic-converter" open>
-        <summary>コミック変換</summary>
-        <button type="button" data-comic-converter-open>コミック変換を開く</button>
+        <summary>白黒変換</summary>
+        <button type="button" data-comic-converter-open>白黒変換を開く</button>
       </details>
       <details class="left-section background-removal-launcher" data-left-section="background-removal" open>
         <summary>背景削除</summary>
@@ -480,7 +480,7 @@
           <label>回転角度<input id="backgroundRotation" type="number" min="-180" max="180" step="1"></label>
           <label>不透明度<div class="range-output-row"><input id="backgroundOpacity" type="range" min="0" max="100" step="1" value="100"><output id="backgroundOpacityOutput">100%</output></div></label>
           <div class="toolbar"><button type="button" id="resetBackgroundPosition">中央へ戻す</button><button type="button" id="coverBackgroundImage">背景に合わせる</button><button type="button" id="containBackgroundImage">キャンバスに収める</button></div>
-          <div class="toolbar"><button type="button" id="processImageBackgroundRemoval">この画像を背景削除</button><button type="button" id="processImageComicConversion">この画像をコミック変換</button></div>
+          <div class="toolbar"><button type="button" id="processImageBackgroundRemoval">この画像を背景削除</button><button type="button" id="processImageComicConversion">この画像を白黒変換</button></div>
           <p class="hint">Canvas上でドラッグして移動、Ctrl+ホイールで拡大・縮小できます。ロック中も画像処理には利用できます。</p>
         </div>
         <div id="canvasBackgroundProps" hidden>
@@ -706,7 +706,7 @@
     </div>
     <div id="fontList" class="font-list" role="listbox" aria-label="Available fonts"></div>
   </div>
-  <div id="layerMenu" class="layer-menu"><button id="copyLayer">Copy　Ctrl+C</button><button id="pasteLayer" disabled>Paste　Ctrl+V</button><button id="duplicateLayer">Duplicate</button><button id="processLayerBackgroundRemoval" hidden>この画像を背景削除</button><button id="processLayerComicConversion" hidden>この画像をコミック変換</button><button id="showOriginalImageLayer" hidden>元画像を表示</button><button id="deleteLayer">Delete</button></div>
+  <div id="layerMenu" class="layer-menu"><button id="copyLayer">Copy　Ctrl+C</button><button id="pasteLayer" disabled>Paste　Ctrl+V</button><button id="duplicateLayer">Duplicate</button><button id="processLayerBackgroundRemoval" hidden>この画像を背景削除</button><button id="processLayerComicConversion" hidden>この画像を白黒変換</button><button id="showOriginalImageLayer" hidden>元画像を表示</button><button id="deleteLayer">Delete</button></div>
   <dialog id="replaceImageDialog" class="document-dialog">
     <strong>背景画像を置き換えますか？</strong>
     <p>現在の画像には未保存の変更があります。</p>
