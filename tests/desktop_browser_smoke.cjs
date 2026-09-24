@@ -29,7 +29,7 @@ catch { console.log("desktop_browser_smoke: SKIP (playwright unavailable)"); pro
     await page.waitForFunction(() => window.SpeechBubbleDesktopEditor && document.querySelector("#canvas"));
     const health = await page.evaluate(async () => { const r = await fetch("/desktop/health"); return { status:r.status, body:await r.json() }; });
     assert.equal(health.status, 200);
-    assert.equal(health.body.version, "0.1.8");
+    assert.equal(health.body.version, "0.1.9");
     const config = await page.evaluate(async () => { const r = await fetch("/desktop/config"); return { status:r.status, body:await r.json() }; });
     assert.equal(config.status, 200);
     assert.equal(typeof config.body.settings, "object");
