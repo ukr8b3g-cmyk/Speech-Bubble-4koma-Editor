@@ -1,0 +1,6 @@
+pytest>=8,<9
+Pillow>=10,<13
+numpy>=2,<3
+fastapi>=0.110,<1
+uvicorn>=0.29,<1
+httpx2>=2,<3
