@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from PIL import Image, ImageChops
+from PIL import Image
 
 from desktop_app.paths import DesktopPaths
 from desktop_app.server import create_app
@@ -37,7 +37,7 @@ def png_data_url() -> str:
     return "data:image/png;base64," + "\r\n".join(encoded[i:i+12] for i in range(0, len(encoded), 12))
 
 
-def test_paths(root: Path) -> DesktopPaths:
+def make_test_paths(root: Path) -> DesktopPaths:
     paths = DesktopPaths(root, root/"settings.json", root/"recent.json", root/"recovery", root/"cache", root/"logs", root/"temp", root/"models")
     for directory in (paths.root, paths.recovery, paths.cache, paths.logs, paths.temp, paths.models):
         directory.mkdir(parents=True, exist_ok=True)
@@ -78,14 +78,14 @@ class MaintenanceHardeningTests(unittest.IsolatedAsyncioTestCase):
 
     def test_desktop_health_reports_distribution_version(self):
         with tempfile.TemporaryDirectory() as temp:
-            client = TestClient(create_app(test_paths(Path(temp)), "test-token"))
+            client = TestClient(create_app(make_test_paths(Path(temp)), "test-token"))
             response = client.get("/desktop/health", headers={"X-SBE-Token":"test-token"})
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["version"], APP_VERSION)
 
     def test_desktop_config_rejects_non_object_json(self):
         with tempfile.TemporaryDirectory() as temp:
-            client = TestClient(create_app(test_paths(Path(temp)), "test-token"))
+            client = TestClient(create_app(make_test_paths(Path(temp)), "test-token"))
             response = client.put("/desktop/config", headers={"X-SBE-Token":"test-token","Content-Type":"application/json"}, content=b"[]")
             self.assertEqual(response.status_code, 400)
 
@@ -97,8 +97,8 @@ class MaintenanceHardeningTests(unittest.IsolatedAsyncioTestCase):
             layer=Image.new("RGBA",(180,150),(0,0,0,0))
             _draw_bubble(layer,{**base,"decoration_style":style},1)
             images.append(layer)
-        self.assertIsNotNone(ImageChops.difference(images[0], images[1]).getbbox())
-        self.assertIsNotNone(ImageChops.difference(images[0], images[2]).getbbox())
+        self.assertNotEqual(images[0].tobytes(), images[1].tobytes())
+        self.assertNotEqual(images[0].tobytes(), images[2].tobytes())
 
 
 if __name__ == "__main__":
