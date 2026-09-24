@@ -1003,7 +1003,8 @@
       });
       document.documentElement.classList.add("shared-page-image-tray-enabled");
       projectImageTray.setWorkspace(activeWorkspace);
-      store.list().then(assets=>projectImageTray?.restore(assets,null)).catch(error=>console.warn("Shared Page Image restore failed",error));
+      const initialDocument=documentId;
+      store.list().then(assets=>{if(documentId===initialDocument)projectImageTray?.restore(assets,null);}).catch(error=>console.warn("Shared Page Image restore failed",error));
       return projectImageTray;
     }
 
