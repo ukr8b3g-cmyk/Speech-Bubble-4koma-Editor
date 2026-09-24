@@ -167,6 +167,14 @@
     const runtimeImages = new Map();
     const objectUrls = new Set();
     const elements = {};
+    const imageStore = options.imageStore || {
+      put: async (metadata, blob) => {
+        await storeImageBlob(documentId(), metadata, blob);
+        return metadata;
+      },
+      get: (imageId) => loadImageBlob(documentId(), imageId),
+      remove: (imageId) => deleteImageBlob(documentId(), imageId),
+    };
 
     function canvasState() {
       return options.getCanvasState();
@@ -317,7 +325,7 @@
           .filter((metadata) => metadata.source !== "document" && !runtimeImages.has(metadata.id))
           .map(async (metadata) => {
             try {
-              const blob = await loadImageBlob(targetDocument, metadata.id);
+              const blob = await imageStore.get(metadata.id);
               if (blob && hydratedDocumentId === targetDocument) await attachBlob(metadata, blob);
             } catch (error) {
               console.warn("Speech Bubble comic image restore failed", metadata.id, error);
@@ -1507,7 +1515,7 @@
           };
           await attachBlob(metadata, file);
           comic.images.push(metadata);
-          await storeImageBlob(documentId(), metadata, file);
+          await imageStore.put(metadata, file);
           importedIds.push(metadata.id);
         } catch (error) {
           console.warn("Speech Bubble comic image import failed", error);
@@ -1544,7 +1552,7 @@
           return null;
         }
       }
-      return loadImageBlob(documentId(), metadata.id);
+      return imageStore.get(metadata.id);
     }
 
     async function getConversionSources() {
@@ -1643,7 +1651,7 @@
       comic.images = comic.images.filter((item) => !unusedIds.has(item.id));
       for (const metadata of unused) {
         releaseRuntimeImage(metadata.id);
-        await deleteImageBlob(documentId(), metadata.id).catch(() => {});
+        await imageStore.remove(metadata.id).catch(() => {});
       }
       renderTray();
       updateUi();
@@ -1688,7 +1696,7 @@
       const records = [];
       for (const metadata of comic.images) {
         if (metadata.source === "document") continue;
-        const blob = await loadImageBlob(documentId(), metadata.id);
+        const blob = await imageStore.get(metadata.id);
         if (!blob) {
           const locations = layout().panels
             .filter((item) => item.node?.image_id === metadata.id)
@@ -1710,25 +1718,68 @@
     async function importProjectImages(records) {
       for (const record of Array.isArray(records) ? records : []) {
         if (!record?.id || !String(record.data_url || "").startsWith("data:image/")) continue;
+        const metadata = comic.images.find((item) => item.id === record.id);
+        if (!metadata) continue;
         const blob = await fetch(record.data_url).then((response) => response.blob());
-        let metadata = comic.images.find((item) => item.id === record.id);
-        if (!metadata) {
-          metadata = {
-            id: String(record.id),
-            name: String(record.name || "project-image"),
-            mime: String(record.mime || blob.type || "image/png"),
-            width: 1,
-            height: 1,
-            sha256: await sha256(blob),
-            source: "stored",
-          };
-          comic.images.push(metadata);
-        }
         await attachBlob(metadata, blob);
-        await storeImageBlob(documentId(), metadata, blob);
+        await imageStore.put(metadata, blob);
       }
       renderTray();
       options.requestRender({ canvas: true, layers: true });
+    }
+
+    async function importExternalImage(file, asset, control = {}) {
+      if (!(file instanceof Blob) || !asset?.id) return "";
+      const metadata = {
+        id: String(asset.id),
+        name: String(asset.name || "page-image").slice(0, 260),
+        mime: asset.mime || file.type || "image/png",
+        width: Math.max(1, Number(asset.width) || 1),
+        height: Math.max(1, Number(asset.height) || 1),
+        sha256: String(asset.sha256 || ""),
+        source: "shared-page-image",
+      };
+      options.pushUndo?.();
+      let existing = comic.images.find((item) => item.id === metadata.id);
+      if (!existing) {
+        existing = metadata;
+        comic.images.push(existing);
+      }
+      if (!runtimeImages.has(existing.id)) await attachBlob(existing, file);
+      await imageStore.put(existing, file);
+      selectedTrayImageId = existing.id;
+      const dropped = control.point ? core.panelAt(layout(), control.point)?.node : null;
+      const target = dropped || (control.assignToSelectedPanel ? selectedPanel() : null);
+      if (target && target.kind === "panel") {
+        target.image_id = existing.id;
+        target.image_scale = 1;
+        target.image_offset_x = 0;
+        target.image_offset_y = 0;
+        setPanelImageSelection([target.id], target.id);
+      }
+      used = true;
+      changed();
+      updateUi();
+      return existing.id;
+    }
+
+    function removeAssetUsage(imageId, control = {}) {
+      const id = String(imageId || "");
+      if (!id || id === "source") return false;
+      const usedPanels = layout().panels.map((item) => item.node).filter((panel) => panel.image_id === id);
+      const hasMetadata = comic.images.some((item) => item.id === id);
+      if (!usedPanels.length && !hasMetadata) return false;
+      if (control.recordUndo !== false) options.pushUndo?.();
+      for (const panel of usedPanels) {
+        panel.image_id = null;
+        selectedPanelImageIds.delete(panel.id);
+      }
+      comic.images = comic.images.filter((item) => item.id !== id);
+      if (selectedTrayImageId === id) selectedTrayImageId = "";
+      if (selectedTarget === "image" && !selectedPanel()?.image_id) selectedTarget = selectedPanelId ? "panel" : "page";
+      changed();
+      updateUi();
+      return true;
     }
 
     function renderTray() {
@@ -2594,6 +2645,8 @@
       isActive: () => comic.enabled,
       isEditing: () => comic.enabled && Boolean(selectedTarget),
       importFiles,
+      importExternalImage,
+      removeAssetUsage,
       addConvertedImage,
       getConversionSources,
       storageStatus,
