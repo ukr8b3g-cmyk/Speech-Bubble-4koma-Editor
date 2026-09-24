@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Share one Page Image Library between 4-Panel Manga and free Comic workspaces.
+- Migrate legacy `image-*` and `general-comic-image:*` records from the previous per-workspace IndexedDB stores.
+- Save shared Page Images only once in `.sbeproj` while preserving existing image IDs and project schema compatibility.
+- Aggregate Page Image count, bytes and unused cleanup across both comic workspaces.
+- Port the current Forge Neo Black & White Conversion flow and terminology, including source-context aware Single Image application.
+- Keep grayscale, Black & White Comic, Simple Monochrome and XDoG 100 modes with full-resolution apply.
+
 ## v0.1.9 - 2026-09-24
 
 - Port bounded streaming request readers and JSON object validation from the validated Forge Neo maintenance work.
