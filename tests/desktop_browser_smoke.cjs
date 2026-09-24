@@ -24,7 +24,8 @@ catch { console.log("desktop_browser_smoke: SKIP (playwright unavailable)"); pro
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const pageErrors = [];
-    page.on("pageerror", error => pageErrors.push(error.message));
+    page.on("pageerror", error => { pageErrors.push(error.message); console.error("PAGEERROR:", error.stack || error.message); });
+    page.on("console", message => { if (message.type() === "error") console.error("BROWSER:", message.text()); });
     await page.goto("http://127.0.0.1:" + port + "/", { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => window.SpeechBubbleDesktopEditor && document.querySelector("#canvas"));
     const health = await page.evaluate(async () => { const r = await fetch("/desktop/health"); return { status:r.status, body:await r.json() }; });
@@ -37,6 +38,15 @@ catch { console.log("desktop_browser_smoke: SKIP (playwright unavailable)"); pro
     // Page Images are one document-scoped library across both comic workspaces.
     await page.locator('[data-editor-mode="comic"]').click();
     await page.waitForFunction(() => document.documentElement.dataset.editorMode === "comic");
+    console.log("EDITOR_DIAGNOSTIC", JSON.stringify(await page.evaluate(() => ({
+      comicGlobal: Boolean(window.SpeechBubbleComicEditor),
+      sharedGlobal: Boolean(window.SpeechBubbleSharedPageImages),
+      comicEditorReady: typeof comicEditor !== "undefined" && Boolean(comicEditor),
+      generalEditorReady: typeof generalComicEditor !== "undefined" && Boolean(generalComicEditor),
+      footer: Boolean(document.querySelector(".canvas-panel .footer")),
+      comicInput: Boolean(document.querySelector("[data-comic-image-input]")),
+      generalInput: Boolean(document.querySelector("[data-general-image-input]")),
+    }))));
     const onePixelPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZCxkAAAAASUVORK5CYII=", "base64");
     await page.locator("[data-comic-image-input]").setInputFiles({ name: "shared-page.png", mimeType: "image/png", buffer: onePixelPng });
     await page.waitForFunction(() => document.querySelector("[data-comic-image-count]")?.textContent?.includes("1"));
