@@ -924,7 +924,7 @@
         getSourceBlob:()=>sourceImageBlob(),
          getSourceName:()=>sourceName,
          imageStore:sharedPageImageStore||undefined,
-         removeSharedImage,
+         removeSharedImage:removeSharedPageImage,
          pushUndo,
          clearLayerSelection:()=>setSelection([],null),
          hasLayerSelection:()=>state.selection.length>0,
@@ -963,7 +963,7 @@
       generalComicEditor=window.SpeechBubbleGeneralComicEditor.create({
         defaultWidth:2480,defaultHeight:3508,
         getCanvasState:()=>state,getDocumentId:()=>documentId,
-        imageStore:sharedPageImageStore||undefined,removeSharedImage,
+        imageStore:sharedPageImageStore||undefined,removeSharedImage:removeSharedPageImage,
         pushUndo,clearLayerSelection:()=>setSelection([],null),hasLayerSelection:()=>state.selection.length>0,
         layerAt:point=>findHit(point,false),
         resizeCanvas:(width,height)=>{scaleStateToImageSize(width,height);fitView(false);},
