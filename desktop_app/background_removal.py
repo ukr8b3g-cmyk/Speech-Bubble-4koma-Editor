@@ -121,18 +121,25 @@ class BackgroundRemovalService:
             digest = hashlib.sha256()
             with urllib.request.urlopen(request, timeout=60) as response, self.partial_path.open("wb") as output:
                 header_total = int(response.headers.get("Content-Length") or MODEL_SIZE)
+                if header_total < 0 or header_total > MODEL_SIZE:
+                    raise ValueError("モデルのダウンロードサイズが想定値を超えています。")
                 with self._state_lock:
-                    self._total = header_total
+                    self._total = header_total or MODEL_SIZE
+                downloaded = 0
                 while True:
                     if self._cancel.is_set():
                         raise DownloadCancelled("モデルのダウンロードをキャンセルしました。")
-                    chunk = response.read(1024 * 1024)
+                    remaining = MODEL_SIZE - downloaded
+                    chunk = response.read(min(1024 * 1024, remaining + 1))
                     if not chunk:
                         break
+                    downloaded += len(chunk)
+                    if downloaded > MODEL_SIZE:
+                        raise ValueError("モデルのダウンロードサイズが想定値を超えています。")
                     output.write(chunk)
                     digest.update(chunk)
                     with self._state_lock:
-                        self._downloaded += len(chunk)
+                        self._downloaded = downloaded
                 output.flush()
                 os.fsync(output.fileno())
             if self.partial_path.stat().st_size != MODEL_SIZE:
