@@ -357,6 +357,14 @@
       activeIds: () => [...activeIds()],
       asset: (id) => assets.get(String(id || "")) || null,
       assets: () => [...assets.values()],
+      forget(id) {
+        id = String(id || "");
+        if (!id) return false;
+        assets.delete(id);
+        removeFromAllTrays(id);
+        render();
+        return true;
+      },
       setWorkspace,
       importBehavior: () => state.forge_import,
       isShared: () => state.mode === "shared",
