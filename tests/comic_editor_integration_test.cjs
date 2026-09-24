@@ -39,6 +39,12 @@ for (const item of newBuiltInSfx) {
   assert.ok(fs.existsSync(`web/assets/sfx/sfx-png-corrected-list-v2/${item.asset}`), `${item.id} asset must exist`);
 }
 
+assert.ok(html.includes("./shared-page-images.js?v="), "Shared Page Images store must be loaded by the Editor");
+assert.match(html, /imageStore:sharedPageImageStore\|\|undefined/);
+assert.match(editor, /syncSharedImages/);
+assert.match(editor, /removeAssetUsage/);
+assert.match(editor, /usedImageIds/);
+assert.match(editor, /page-image:/);
 assert.ok(html.includes("./project-schema.js?v="), "Project schema must be loaded by the Editor");
 assert.ok(
   html.indexOf("./project-schema.js?v=") < html.indexOf("./comic-panels.js?v="),
