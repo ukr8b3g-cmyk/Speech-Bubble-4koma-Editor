@@ -40,7 +40,7 @@ for (const item of newBuiltInSfx) {
 }
 
 assert.ok(html.includes("./shared-page-images.js?v="), "Shared Page Images store must be loaded by the Editor");
-assert.match(html, /imageStore:sharedPageImageStore\|\|undefined/);
+assert.match(html, /imageStore:sharedPageImageEditorStore/);
 assert.match(editor, /syncSharedImages/);
 assert.match(editor, /removeAssetUsage/);
 assert.match(editor, /usedImageIds/);
