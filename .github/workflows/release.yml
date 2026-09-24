@@ -1,0 +1,111 @@
+name: Windows release build
+on:
+  push:
+    branches:
+      - main
+      - maintenance/release-v0.1.9
+    paths:
+      - desktop_app/version.py
+      - packaging/windows_version_info.txt
+      - packaging/SpeechBubble4komaEditor.iss
+      - build_release.ps1
+      - .github/workflows/release.yml
+      - docs/releases/v0.1.9.md
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      RELEASE_VERSION: '0.1.9'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Create release build environment
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --disable-pip-version-check -r requirements-desktop.txt -r requirements-ci.txt
+
+      - name: Validate source before packaging
+        shell: pwsh
+        run: .\.venv\Scripts\python.exe tools\validate_repo.py
+
+      - name: Install Inno Setup 6
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $candidates = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+          if (-not $iscc) { throw "Inno Setup 6 ISCC.exe was not found after installation." }
+          "ISCC_PATH=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $actual = (& .\.venv\Scripts\python.exe -c "from desktop_app.version import APP_VERSION; print(APP_VERSION)").Trim()
+          if ($actual -ne $env:RELEASE_VERSION) { throw "desktop_app.version reports $actual, expected $env:RELEASE_VERSION" }
+          .\build_release.ps1 -Version $env:RELEASE_VERSION -InstallerOnly -IsccPath $env:ISCC_PATH
+
+      - name: Verify installer and checksum
+        shell: pwsh
+        run: |
+          $installer = "dist\release\SpeechBubble4komaEditor-v$env:RELEASE_VERSION-win-x64-setup.exe"
+          $checksums = "dist\release\SHA256SUMS.txt"
+          if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw "Installer missing." }
+          if ((Get-Item -LiteralPath $installer).Length -lt 10MB) { throw "Installer is unexpectedly small." }
+          $info = (Get-Item -LiteralPath $installer).VersionInfo
+          if ($info.FileVersion -ne "$env:RELEASE_VERSION.0") { throw "Installer FileVersion is $($info.FileVersion), expected $env:RELEASE_VERSION.0" }
+          $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = "$hash  $([IO.Path]::GetFileName($installer))"
+          $line = (Get-Content -LiteralPath $checksums -Raw).Trim()
+          if ($line -ne $expected) { throw "SHA256SUMS.txt does not match installer." }
+          Write-Host "Verified $installer"
+          Write-Host $expected
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: SpeechBubble4komaEditor-v0.1.9-win-x64
+          path: |
+            dist/release/SpeechBubble4komaEditor-v0.1.9-win-x64-setup.exe
+            dist/release/SHA256SUMS.txt
+          retention-days: 14
+
+      - name: Publish GitHub release
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "v$env:RELEASE_VERSION"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists; refusing to overwrite it." }
+          $assets = @(
+            "dist\release\SpeechBubble4komaEditor-v$env:RELEASE_VERSION-win-x64-setup.exe",
+            "dist\release\SHA256SUMS.txt"
+          )
+          gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Speech Bubble 4koma Editor $tag" --notes-file "docs\releases\v$env:RELEASE_VERSION.md"
+          if ($LASTEXITCODE -ne 0) { throw "GitHub release creation failed." }
+          gh release view $tag --repo $env:GITHUB_REPOSITORY
