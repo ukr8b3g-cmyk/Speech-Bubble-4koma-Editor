@@ -1199,7 +1199,7 @@
         });
         row.addEventListener("drop", (event) => {
           const layerId = event.dataTransfer.getData("text/plain");
-          if (!layerId) return;
+          if (!layerId || comic.images.some((metadata) => metadata.id === layerId)) return;
           event.preventDefault();
           event.stopPropagation();
           const stack =
