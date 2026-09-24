@@ -16,7 +16,7 @@ SFX/frame discovery now lives in `speech_bubble_editor.asset_catalog`. This port
 
 ## Compatibility scope
 
-- Distribution version remains 0.1.8.
+- Distribution version is 0.1.9.
 - `.sbeproj`, recovery, layout, preset and user-asset schemas are unchanged.
 - Existing web asset URLs and the optional model URL/SHA-256 are unchanged.
 - No mandatory runtime dependency was added; CI dependencies are test-only.
