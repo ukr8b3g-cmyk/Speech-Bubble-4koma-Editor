@@ -365,7 +365,7 @@
     dialog.innerHTML = `
       <div class="comic-converter-window">
         <header class="comic-converter-head" data-converter-drag-handle>
-          <strong>コミック変換</strong>
+          <strong>${tr("白黒変換", "Black & White Conversion")}</strong>
           <span data-converter-mode></span>
           <button type="button" data-converter-action="maximize" title="最大化／元に戻す">□</button>
           <button type="button" data-converter-action="close" aria-label="閉じる">×</button>
@@ -403,7 +403,7 @@
           <span data-converter-status>変換元画像を選択してください</span>
           <div class="comic-converter-footer-actions">
             <button type="button" data-converter-action="cancel">キャンセル</button>
-            <button type="button" class="primary" data-converter-action="apply" disabled>ページ画像へ追加</button>
+            <button type="button" class="primary" data-converter-action="apply" disabled>画像トレイへ追加</button>
           </div>
         </footer>
       </div>`;
@@ -668,8 +668,8 @@
         const empty = document.createElement("p");
         empty.textContent = currentMode() === "comic"
           ? tr(
-              "ページ画像またはコマ画像を選択するか、画像ファイルを読み込んでください。",
-              "Select a Page Image or panel image, or load an image file.",
+              "画像トレイまたはコマ画像を選択するか、画像ファイルを読み込んでください。",
+              "Select an Image Tray item or panel image, or load an image file.",
             )
           : tr("一枚画像を読み込んでください。", "Load a Single Image.");
         host.append(empty);
@@ -711,7 +711,7 @@
     async function applyResult() {
       if (!source) return;
       const idleLabel =
-        currentMode() === "comic" ? tr("ページ画像へ追加", "Add to Page Images") : tr("一枚画像へ適用", "Apply to Single Image");
+        currentMode() === "comic" ? tr("画像トレイへ追加", "Add to Image Tray") : tr("一枚画像へ適用", "Apply to Single Image");
       applyButton.disabled = true;
       applyButton.textContent = tr("追加処理中…", "Adding…");
       status.textContent = tr("元解像度で変換しています…", "Converting at full resolution…");
@@ -721,23 +721,23 @@
         const name = `${source.name}-comic.png`;
         if (currentMode() === "comic") {
           const id = await options.addPageImage?.(blob, name);
-          if (!id) throw new Error(tr("ページ画像へ追加できませんでした。", "Could not add the image to Page Images."));
+          if (!id) throw new Error(tr("画像トレイへ追加できませんでした。", "Could not add the image to the Image Tray."));
           options.setStatus?.(
-            tr(`${name}をページ画像へ追加しました。`, `${name} was added to Page Images.`),
+            tr(`${name}を画像トレイへ追加しました。`, `${name} was added to the Image Tray.`),
             "saved",
           );
         } else {
           await storeHistory(options.getDocumentId?.(), source.blob, source.name);
-          const applied = await options.applySingleImage?.(blob, name);
+          const applied = await options.applySingleImage?.(blob, name, source);
           if (!applied) throw new Error(tr("一枚画像へ適用できませんでした。", "Could not apply the conversion to the Single Image."));
           options.setStatus?.(
-            tr("コミック変換を一枚画像へ適用しました。", "Comic Conversion was applied to the Single Image."),
+            tr("白黒変換を一枚画像へ適用しました。", "Black & White Conversion was applied to the Single Image."),
             "saved",
           );
         }
         dialog.close();
       } catch (error) {
-        status.textContent = error?.message || tr("コミック変換を適用できませんでした。", "Comic Conversion could not be applied.");
+        status.textContent = error?.message || tr("白黒変換を適用できませんでした。", "Black & White Conversion could not be applied.");
         status.dataset.level = "error";
       } finally {
         applyButton.disabled = !source;
@@ -796,7 +796,7 @@
       dialog.querySelector("[data-converter-mode]").textContent =
         currentMode() === "comic" ? tr("4コマ漫画", "4-panel Comic") : tr("一枚画像", "Single Image");
       applyButton.textContent =
-        currentMode() === "comic" ? tr("ページ画像へ追加", "Add to Page Images") : tr("一枚画像へ適用", "Apply to Single Image");
+        currentMode() === "comic" ? tr("画像トレイへ追加", "Add to Image Tray") : tr("一枚画像へ適用", "Apply to Single Image");
       dialog.showModal();
       restoreGeometry();
       clearCandidateUrls();
@@ -845,7 +845,7 @@
     fileInput.onchange = async () => {
       const file = fileInput.files?.[0];
       fileInput.value = "";
-      if (file) await setSource({ blob: file, name: file.name });
+      if (file) await setSource({ blob: file, name: file.name, source_kind: "external-file" });
     };
     const drop = dialog.querySelector("[data-converter-drop]");
     drop.addEventListener("dragover", (event) => {
@@ -859,7 +859,7 @@
       const file = Array.from(event.dataTransfer?.files || []).find((item) =>
         /^image\/(?:png|jpeg|webp)$/i.test(item.type),
       );
-      if (file) await setSource({ blob: file, name: file.name });
+      if (file) await setSource({ blob: file, name: file.name, source_kind: "external-file" });
     });
     document.addEventListener("paste", async (event) => {
       if (!dialog.open || ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
