@@ -863,6 +863,7 @@
       if(hostMode==="desktop")window.SpeechBubbleDesktopShell?.saveRecovery?.(true).catch?.(error=>console.warn("Speech Bubble workspace checkpoint failed",error));
       captureActiveWorkspace();
       activeWorkspace=next;
+      projectImageTray?.setWorkspace(next);
       const source=workspaces[next];
       state.width=Math.max(1,Math.round(Number(source.width)||1));
       state.height=Math.max(1,Math.round(Number(source.height)||1));
@@ -874,8 +875,137 @@
       document.getElementById("addSingleImageLayerFromLayers").hidden=next!=="single";
       restoreWorkspaceView(source,false);
     }
-    let modeController=null,comicEditor=null,generalComicEditor=null,comicConverter=null,backgroundRemoval=null,comicOverlayExport=false;
+    let modeController=null,comicEditor=null,generalComicEditor=null,comicConverter=null,backgroundRemoval=null,comicOverlayExport=false,pageImageStore=null,projectImageTray=null;
     function activeStructuralEditor(){return generalComicEditor?.isActive()?generalComicEditor:comicEditor?.isActive()?comicEditor:null;}
+    function ensurePageImageStore(){
+      if(pageImageStore||!window.SpeechBubblePageImageStore)return pageImageStore;
+      pageImageStore=window.SpeechBubblePageImageStore.create({documentId:()=>documentId});
+      return pageImageStore;
+    }
+    function sharedPageImageStoreAdapter(){
+      const store=ensurePageImageStore();
+      if(!store)return undefined;
+      return{
+        put:async(metadata,blob)=>{
+          const asset=await store.put(metadata,blob);
+          projectImageTray?.register(asset,{notify:false,select:false,expand:false});
+          return asset;
+        },
+        get:imageId=>store.get(imageId),
+        // Removing an image from one structural editor must not delete the
+        // project-wide Page Image while another workspace still references it.
+        remove:async()=>false,
+      };
+    }
+    function pageImageTreeUsage(tree,assetId){
+      if(!tree||typeof tree!=="object")return 0;
+      if(tree.kind!=="split")return tree.image_id===assetId?1:0;
+      return pageImageTreeUsage(tree.first,assetId)+pageImageTreeUsage(tree.second,assetId);
+    }
+    function pageImageUsage(assetId){
+      const id=String(assetId||"");
+      const singleElements=activeWorkspace==="single"?state.elements:(workspaces.single.elements||[]);
+      return{
+        single:singleElements.filter(item=>item?.type==="image"&&String(item.image_asset_id||"")===id).length,
+        comic:pageImageTreeUsage(comicEditor?.serialize?.()?.tree,id),
+        comic_layout:pageImageTreeUsage(generalComicEditor?.serialize?.()?.tree,id),
+      };
+    }
+    function usedPageImageIds(){
+      const ids=new Set();
+      const singleElements=activeWorkspace==="single"?state.elements:(workspaces.single.elements||[]);
+      for(const item of singleElements)if(item?.type==="image"&&item.image_asset_id)ids.add(String(item.image_asset_id));
+      const collect=node=>{if(!node||typeof node!=="object")return;if(node.kind!=="split"){if(node.image_id)ids.add(String(node.image_id));return;}collect(node.first);collect(node.second);};
+      collect(comicEditor?.serialize?.()?.tree);
+      collect(generalComicEditor?.serialize?.()?.tree);
+      return ids;
+    }
+    async function detachPageImageUsage(assetId){
+      const id=String(assetId||"");
+      const usage=pageImageUsage(id);
+      if(!usage.single&&!usage.comic&&!usage.comic_layout)return false;
+      pushUndo();
+      const filtered=(workspaces.single.elements||[]).filter(item=>!(item?.type==="image"&&String(item.image_asset_id||"")===id));
+      workspaces.single.elements=filtered;
+      if(activeWorkspace==="single"){
+        state.elements=filtered;
+        setSelection([],null);
+      }
+      const singleAsset=singleImageAssets.get(id);
+      if(singleAsset?.url)URL.revokeObjectURL(singleAsset.url);
+      singleImageAssets.delete(id);
+      if(primarySingleImageAssetId===id)primarySingleImageAssetId="";
+      comicEditor?.removeAssetUsage?.(id,{recordUndo:false});
+      generalComicEditor?.removeAssetUsage?.(id,{recordUndo:false});
+      captureActiveWorkspace();
+      layoutDirty=true;scheduleAutoSave();syncProperties();requestRender({canvas:true,layers:true,preview:true});updateActionState();
+      return true;
+    }
+    async function placePageImageAsset(asset,blob,control={}){
+      if(!(blob instanceof Blob)||!asset?.id)return false;
+      const file=new File([blob],asset.name||"page-image",{type:asset.mime||blob.type||"image/png",lastModified:Date.now()});
+      if(generalComicEditor?.isActive())return generalComicEditor.importExternalImage?.(file,asset,{assignToSelectedPanel:true,point:control.point});
+      if(comicEditor?.isActive())return comicEditor.importExternalImage?.(file,asset,{assignToSelectedPanel:true,point:control.point});
+      const existing=state.elements.find(item=>item?.type==="image"&&String(item.image_asset_id||"")===String(asset.id));
+      if(existing){setSelection([existing.id],existing.id);syncProperties();requestRender({canvas:true,layers:true});return asset.id;}
+      await addSingleImageLayerFromBlob(blob,asset.name||"Page Image",{role:"page-image",assetId:String(asset.id),locked:false});
+      layoutDirty=true;scheduleAutoSave();updateActionState();
+      return String(asset.id);
+    }
+    async function sharedPageImageSources(){
+      const store=ensurePageImageStore();
+      if(!store||!projectImageTray)return[];
+      const selected=projectImageTray.selectedId?.()||"";
+      const ids=projectImageTray.activeIds?.()||projectImageTray.imageIds?.()||[];
+      const result=[];
+      for(const id of ids){
+        const asset=projectImageTray.asset?.(id)||store.asset(id);
+        const blob=await store.get(id);
+        if(!asset||!blob)continue;
+        result.push({id,name:asset.name||"Page Image",width:Number(asset.width)||1,height:Number(asset.height)||1,blob,selected:id===selected});
+      }
+      return result;
+    }
+    async function pageImageStorageStatus(){
+      const store=ensurePageImageStore();
+      return store?store.status(usedPageImageIds()):{page_images:0,page_image_bytes:0,unused_page_images:0};
+    }
+    async function cleanupUnusedPageImages(){
+      const store=ensurePageImageStore();
+      if(!store||!projectImageTray)return{removed:0};
+      const used=usedPageImageIds();
+      const unused=projectImageTray.imageIds().filter(id=>!used.has(id));
+      if(!unused.length)return{removed:0};
+      if(!confirm(uiText(`使用していないページ画像${unused.length}件を削除しますか？\nこの操作は元に戻せません。`,`Delete ${unused.length} unused Page Image(s)?\nThis cannot be undone.`)))return{removed:0,cancelled:true};
+      for(const id of unused){await store.remove(id);projectImageTray.forget?.(id);}
+      layoutDirty=true;scheduleAutoSave();updateActionState();
+      return{removed:unused.length};
+    }
+    function markPageImageLibraryChanged(){layoutDirty=true;scheduleAutoSave();updateActionState();}
+    function initializeProjectImageTray(){
+      if(!["desktop","desktop-file"].includes(hostMode)||projectImageTray||!window.SpeechBubbleProjectImageTray)return projectImageTray;
+      const store=ensurePageImageStore();
+      if(!store)return null;
+      projectImageTray=window.SpeechBubbleProjectImageTray.create({
+        document,
+        host:document.querySelector(".canvas-panel"),
+        workspace:()=>activeWorkspace,
+        english:()=>document.documentElement.lang==="en",
+        usage:pageImageUsage,
+        removeUsage:detachPageImageUsage,
+        removeAsset:id=>store.remove(id),
+        addFile:file=>store.addFile(file,{source:"page-image"}),
+        getBlob:id=>store.get(id),
+        imageUrl:id=>store.imageUrl(id),
+        place:placePageImageAsset,
+        changed:markPageImageLibraryChanged,
+        setStatus:setSaveState,
+      });
+      document.documentElement.classList.add("shared-page-image-tray-enabled");
+      projectImageTray.setWorkspace(activeWorkspace);
+      store.list().then(assets=>projectImageTray?.restore(assets,null)).catch(error=>console.warn("Shared Page Image restore failed",error));
+      return projectImageTray;
+    }
 
     function initializeModeController(){
       if(!["desktop","desktop-file"].includes(hostMode)||modeController||!window.SpeechBubbleEditorModeController)return modeController;
