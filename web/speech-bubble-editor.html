@@ -3651,6 +3651,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       initializeModeController();
       initializeComicEditor();
       initializeGeneralComicEditor();
+      await sharedPageImageStore?.migrateLegacy?.({notify:false});
       await syncSharedPageImages();
       registerEditorModes();
       initializeComicConverter();
