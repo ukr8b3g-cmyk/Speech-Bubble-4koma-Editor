@@ -1035,7 +1035,7 @@
       document.documentElement.dataset.editorMode=activeWorkspace;
     }
     async function selectedSingleImageSource(){const layer=selectedSingleImageLayer(),asset=singleImageAssetFor(layer);if(layer&&asset){lastSingleProcessingLayerId=layer.id;return{blob:asset.blob,name:layer.image_name||asset.name,width:asset.width,height:asset.height,layer_id:layer.id,visible:layer.visible!==false};}if(!imageLoaded||!image.naturalWidth)return null;lastSingleProcessingLayerId="";return{blob:await sourceImageBlob(),name:sourceName||"speech_bubble",width:image.naturalWidth,height:image.naturalHeight};}
-    async function applyProcessedSingleImage(blob,name,role){if(!blob)return false;const source=state.elements.find(item=>item.id===lastSingleProcessingLayerId&&item.type==="image")||selectedSingleImageLayer();await addSingleImageLayerFromBlob(blob,name,{inherit:source,role,hideSource:Boolean(source)});layoutDirty=true;scheduleAutoSave();updateActionState();return true;}
+    async function applyProcessedSingleImage(blob,name,role,sourceInfo=null){if(!blob)return false;const sourceId=String(sourceInfo?.layer_id||lastSingleProcessingLayerId||"");const source=state.elements.find(item=>item.id===sourceId&&item.type==="image")||selectedSingleImageLayer();await addSingleImageLayerFromBlob(blob,name,{inherit:source,role,hideSource:Boolean(source)});layoutDirty=true;scheduleAutoSave();updateActionState();return true;}
     function initializeComicEditor(){
       if(!["desktop","desktop-file"].includes(hostMode)||comicEditor||!window.SpeechBubbleComicEditor)return comicEditor;
       comicEditor=window.SpeechBubbleComicEditor.create({
@@ -1045,6 +1045,7 @@
         getSourceImage:()=>image,
         getSourceBlob:()=>sourceImageBlob(),
          getSourceName:()=>sourceName,
+         imageStore:sharedPageImageStoreAdapter(),
          pushUndo,
          clearLayerSelection:()=>setSelection([],null),
          hasLayerSelection:()=>state.selection.length>0,
@@ -1083,6 +1084,7 @@
       generalComicEditor=window.SpeechBubbleGeneralComicEditor.create({
         defaultWidth:2480,defaultHeight:3508,
         getCanvasState:()=>state,getDocumentId:()=>documentId,
+        imageStore:sharedPageImageStoreAdapter(),
         pushUndo,clearLayerSelection:()=>setSelection([],null),hasLayerSelection:()=>state.selection.length>0,
         layerAt:point=>findHit(point,false),
         resizeCanvas:(width,height)=>{scaleStateToImageSize(width,height);fitView(false);},
@@ -1113,9 +1115,9 @@
         getMode:()=>comicEditor?.isActive()||generalComicEditor?.isActive()?"comic":"single",
         getDocumentId:()=>documentId,
         getSingleSource:selectedSingleImageSource,
-        getComicSources:()=>generalComicEditor?.isActive()?generalComicEditor.getConversionSources?.()||Promise.resolve([]):comicEditor?.getConversionSources?.()||Promise.resolve([]),
+        getComicSources:()=>projectImageTray?sharedPageImageSources():(generalComicEditor?.isActive()?generalComicEditor.getConversionSources?.()||Promise.resolve([]):comicEditor?.getConversionSources?.()||Promise.resolve([])),
         addPageImage:(blob,name)=>generalComicEditor?.isActive()?generalComicEditor.addConvertedImage?.(blob,name):comicEditor?.addConvertedImage?.(blob,name),
-        applySingleImage:(blob,name)=>applyProcessedSingleImage(blob,name||`${sourceName||"speech_bubble"}-comic`,"comic-conversion"),
+        applySingleImage:(blob,name,source)=>applyProcessedSingleImage(blob,name||`${sourceName||"speech_bubble"}-bw`,"black-white-conversion",source),
         setStatus:setSaveState,
       });
       return comicConverter;
@@ -1125,9 +1127,9 @@
       backgroundRemoval=window.SpeechBubbleBackgroundRemoval.create({
         getMode:()=>comicEditor?.isActive()||generalComicEditor?.isActive()?"comic":"single",
         getSingleSource:selectedSingleImageSource,
-        getComicSources:()=>generalComicEditor?.isActive()?generalComicEditor.getConversionSources?.()||Promise.resolve([]):comicEditor?.getConversionSources?.()||Promise.resolve([]),
+        getComicSources:()=>projectImageTray?sharedPageImageSources():(generalComicEditor?.isActive()?generalComicEditor.getConversionSources?.()||Promise.resolve([]):comicEditor?.getConversionSources?.()||Promise.resolve([])),
         addPageImage:(blob,name)=>generalComicEditor?.isActive()?generalComicEditor.addConvertedImage?.(blob,name):comicEditor?.addConvertedImage?.(blob,name),
-        applySingleImage:(blob,name)=>applyProcessedSingleImage(blob,name||`${sourceName||"speech_bubble"}-no-bg`,"background-removal"),
+        applySingleImage:(blob,name,source)=>applyProcessedSingleImage(blob,name||`${sourceName||"speech_bubble"}-no-bg`,"background-removal",source),
         setStatus:setSaveState,
       });
       return backgroundRemoval;
@@ -3767,6 +3769,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       const initialTheme=params.get("theme");
       document.documentElement.dataset.theme=initialTheme==="light"?"light":initialTheme==="dark"?"dark":(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark");
       initializeModeController();
+      initializeProjectImageTray();
       initializeComicEditor();
       initializeGeneralComicEditor();
       registerEditorModes();
