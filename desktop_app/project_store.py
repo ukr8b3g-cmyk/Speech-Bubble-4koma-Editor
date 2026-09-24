@@ -31,6 +31,33 @@ MAX_IMAGE_BYTES = 96 * 1024 * 1024
 ALLOWED_IMAGE_FORMATS = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp"}
 
 
+def _normalized_project_base64(encoded: str) -> str:
+    normalized = str(encoded or "").replace("\r", "").replace("\n", "")
+    maximum_chars = 4 * ((MAX_IMAGE_BYTES + 2) // 3)
+    if not normalized or len(normalized) > maximum_chars:
+        raise ValueError("Project image is empty or too large")
+    return normalized
+
+
+def _read_bounded_archive_entry(
+    archive: zipfile.ZipFile,
+    name: str,
+    maximum_bytes: int,
+    *,
+    label: str,
+) -> bytes:
+    try:
+        info = archive.getinfo(name)
+    except KeyError as error:
+        raise ValueError(f"{label} is missing") from error
+    if info.is_dir() or info.file_size < 0 or info.file_size > maximum_bytes:
+        raise ValueError(f"{label} is empty or too large")
+    data = archive.read(info)
+    if not data or len(data) > maximum_bytes:
+        raise ValueError(f"{label} is empty or too large")
+    return data
+
+
 def _safe_entries(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
     entries = archive.infolist()
     if len(entries) > MAX_ENTRIES:
@@ -70,7 +97,7 @@ def _decode_project_image(record: dict) -> tuple[str, bytes, dict]:
     raw = str(record.get("data_url", ""))
     if "," not in raw:
         raise ValueError("Project image data is missing")
-    encoded = raw.split(",", 1)[1]
+    encoded = _normalized_project_base64(raw.split(",", 1)[1])
     try:
         data = base64.b64decode(encoded, validate=True)
     except (ValueError, TypeError) as error:
@@ -205,7 +232,12 @@ class ProjectStore:
             images = []
             for record in manifest["images"]:
                 entry = record["path"]
-                data = archive.read(entry)
+                data = _read_bounded_archive_entry(
+                    archive,
+                    entry,
+                    MAX_IMAGE_BYTES,
+                    label="Project image",
+                )
                 if hashlib.sha256(data).hexdigest() != record.get("sha256"):
                     raise ValueError("Project image checksum does not match")
                 image_format, width, height = _inspect_project_image(data)
