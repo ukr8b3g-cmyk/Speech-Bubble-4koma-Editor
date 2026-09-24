@@ -955,7 +955,7 @@
   }
 
   async function clearConversionHistory(dialog) {
-    if (!confirm(desktopText("一枚画像のコミック変換履歴を削除しますか？\n現在使用中の画像は削除しません。", "Delete the single-image comic conversion history?\nThe image currently in use will not be deleted."))) return;
+    if (!confirm(desktopText("一枚画像の白黒変換履歴を削除しますか？\n現在使用中の画像は削除しません。", "Delete the single-image Black & White Conversion history?\nThe image currently in use will not be deleted."))) return;
     await root.SpeechBubbleDesktopEditor?.clearConversionHistory?.();
     await refreshImageStorageStatus(dialog);
   }
@@ -1031,7 +1031,7 @@
     ["背景に合わせる", "Cover Canvas"],
     ["キャンバスに収める", "Fit in Canvas"],
     ["この画像を背景削除", "Remove Background from This Image"],
-    ["この画像をコミック変換", "Convert This Image to Comic"],
+    ["この画像を白黒変換", "Black & White Convert This Image"],
     ["Canvas上でドラッグして移動、Ctrl+ホイールで拡大・縮小できます。ロック中も画像処理には利用できます。", "Drag on the canvas to move; use Ctrl+Wheel to scale. Locked images can still be processed."],
     ["キャンバス背景", "Canvas Background"],
     ["Ctrl：個別選択／Shift：範囲選択", "Ctrl: toggle selection / Shift: range selection"],
@@ -1068,11 +1068,11 @@
     ["変換履歴を削除", "Clear Conversion History"],
     ["プロジェクト、ユーザープリセット、設定、書き出し画像は削除しません。", "Projects, user presets, settings, and exported images are not deleted."],
     ["プレビューはメモリのみで処理します。使用中のページ画像と現在の一枚画像は削除しません。", "Previews stay in memory. Active page images and the current single image are not deleted."],
-    ["コミック変換", "Comic Conversion"],
+    ["白黒変換", "Black & White Conversion"],
     ["プリセット", "Preset"],
     ["白黒コミック", "Black & White Comic"],
     ["カスタム", "Custom"],
-    ["コミック変換を開く", "Open Comic Conversion"],
+    ["白黒変換を開く", "Open Black & White Conversion"],
     ["画像を選択してください", "Select an image"],
     ["画像を変更", "Change Image"],
     ["画像をドロップ", "Drop an image"],
@@ -1357,8 +1357,8 @@
       xdog100: document.querySelector('[data-converter-preset] option[value="xdog100"]'),
       custom: document.querySelector('[data-converter-preset] option[value="custom"]'),
     };
-    if (converterSummary) converterSummary.textContent = selected === "en" ? "Comic Conversion" : "コミック変換";
-    if (converterOpen) converterOpen.textContent = selected === "en" ? "Open Comic Conversion" : "コミック変換を開く";
+    if (converterSummary) converterSummary.textContent = selected === "en" ? "Black & White Conversion" : "白黒変換";
+    if (converterOpen) converterOpen.textContent = selected === "en" ? "Open Black & White Conversion" : "白黒変換を開く";
     const backgroundSummary = document.querySelector(".background-removal-launcher > summary");
     const backgroundOpen = document.querySelector("[data-background-removal-open]");
     if (backgroundSummary) backgroundSummary.textContent = selected === "en" ? "Background Removal" : "背景削除";
