@@ -26,7 +26,12 @@ catch { console.log("desktop_browser_smoke: SKIP (playwright unavailable)"); pro
     const pageErrors = [];
     page.on("pageerror", error => { pageErrors.push(error.message); console.error("PAGEERROR:", error.stack || error.message); });
     page.on("console", message => { if (message.type() === "error") console.error("BROWSER:", message.text()); });
-    page.on("response", response => { if (response.status() >= 400) console.error("HTTP", response.status(), response.url()); });
+    page.on("response", async response => {
+      if (response.status() < 400) return;
+      let body = "";
+      try { body = (await response.text()).slice(0, 1000); } catch {}
+      console.error("HTTP", response.status(), response.url(), body);
+    });
     await page.goto("http://127.0.0.1:" + port + "/", { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => window.SpeechBubbleDesktopEditor && document.querySelector("#canvas"));
     const health = await page.evaluate(async () => { const r = await fetch("/desktop/health"); return { status:r.status, body:await r.json() }; });
