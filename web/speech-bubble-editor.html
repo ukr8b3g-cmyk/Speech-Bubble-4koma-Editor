@@ -380,8 +380,8 @@
   <div class="layout">
     <aside class="left">
       <details class="left-section comic-converter-launcher" data-left-section="comic-converter" open>
-        <summary>コミック変換</summary>
-        <button type="button" data-comic-converter-open>コミック変換を開く</button>
+        <summary>白黒変換</summary>
+        <button type="button" data-comic-converter-open>白黒変換を開く</button>
       </details>
       <details class="left-section background-removal-launcher" data-left-section="background-removal" open>
         <summary>背景削除</summary>
@@ -477,7 +477,7 @@
           <label>回転角度<input id="backgroundRotation" type="number" min="-180" max="180" step="1"></label>
           <label>不透明度<div class="range-output-row"><input id="backgroundOpacity" type="range" min="0" max="100" step="1" value="100"><output id="backgroundOpacityOutput">100%</output></div></label>
           <div class="toolbar"><button type="button" id="resetBackgroundPosition">中央へ戻す</button><button type="button" id="coverBackgroundImage">背景に合わせる</button><button type="button" id="containBackgroundImage">キャンバスに収める</button></div>
-          <div class="toolbar"><button type="button" id="processImageBackgroundRemoval">この画像を背景削除</button><button type="button" id="processImageComicConversion">この画像をコミック変換</button></div>
+          <div class="toolbar"><button type="button" id="processImageBackgroundRemoval">この画像を背景削除</button><button type="button" id="processImageComicConversion">この画像を白黒変換</button></div>
           <p class="hint">Canvas上でドラッグして移動、Ctrl+ホイールで拡大・縮小できます。ロック中も画像処理には利用できます。</p>
         </div>
         <div id="canvasBackgroundProps" hidden>
@@ -703,7 +703,7 @@
     </div>
     <div id="fontList" class="font-list" role="listbox" aria-label="Available fonts"></div>
   </div>
-  <div id="layerMenu" class="layer-menu"><button id="copyLayer">Copy　Ctrl+C</button><button id="pasteLayer" disabled>Paste　Ctrl+V</button><button id="duplicateLayer">Duplicate</button><button id="processLayerBackgroundRemoval" hidden>この画像を背景削除</button><button id="processLayerComicConversion" hidden>この画像をコミック変換</button><button id="showOriginalImageLayer" hidden>元画像を表示</button><button id="deleteLayer">Delete</button></div>
+  <div id="layerMenu" class="layer-menu"><button id="copyLayer">Copy　Ctrl+C</button><button id="pasteLayer" disabled>Paste　Ctrl+V</button><button id="duplicateLayer">Duplicate</button><button id="processLayerBackgroundRemoval" hidden>この画像を背景削除</button><button id="processLayerComicConversion" hidden>この画像を白黒変換</button><button id="showOriginalImageLayer" hidden>元画像を表示</button><button id="deleteLayer">Delete</button></div>
   <dialog id="replaceImageDialog" class="document-dialog">
     <strong>背景画像を置き換えますか？</strong>
     <p>現在の画像には未保存の変更があります。</p>
@@ -901,8 +901,8 @@
       modeController?.setCurrent(activeWorkspace);
       document.documentElement.dataset.editorMode=activeWorkspace;
     }
-    async function selectedSingleImageSource(){const layer=selectedSingleImageLayer(),asset=singleImageAssetFor(layer);if(layer&&asset){lastSingleProcessingLayerId=layer.id;return{blob:asset.blob,name:layer.image_name||asset.name,width:asset.width,height:asset.height,layer_id:layer.id,visible:layer.visible!==false};}if(!imageLoaded||!image.naturalWidth)return null;lastSingleProcessingLayerId="";return{blob:await sourceImageBlob(),name:sourceName||"speech_bubble",width:image.naturalWidth,height:image.naturalHeight};}
-    async function applyProcessedSingleImage(blob,name,role){if(!blob)return false;const source=state.elements.find(item=>item.id===lastSingleProcessingLayerId&&item.type==="image")||selectedSingleImageLayer();await addSingleImageLayerFromBlob(blob,name,{inherit:source,role,hideSource:Boolean(source)});layoutDirty=true;scheduleAutoSave();updateActionState();return true;}
+    async function selectedSingleImageSource(){const layer=selectedSingleImageLayer(),asset=singleImageAssetFor(layer);if(layer&&asset){lastSingleProcessingLayerId=layer.id;return{blob:asset.blob,name:layer.image_name||asset.name,width:asset.width,height:asset.height,layer_id:layer.id,source_kind:"layer",visible:layer.visible!==false};}if(!imageLoaded||!image.naturalWidth)return null;lastSingleProcessingLayerId="";return{blob:await sourceImageBlob(),name:sourceName||"speech_bubble",width:image.naturalWidth,height:image.naturalHeight,source_kind:"legacy-background"};}
+    async function applyProcessedSingleImage(blob,name,role,sourceContext){if(!blob)return false;const sourceId=String(sourceContext?.layer_id||""),source=sourceId?state.elements.find(item=>item.id===sourceId&&item.type==="image"):(sourceContext?null:state.elements.find(item=>item.id===lastSingleProcessingLayerId&&item.type==="image")||selectedSingleImageLayer()),hasImage=workspaces.single.elements.some(item=>item.type==="image");if(!source&&!hasImage&&Number(sourceContext?.width)>0&&Number(sourceContext?.height)>0&&activeWorkspace==="single")scaleStateToImageSize(Number(sourceContext.width),Number(sourceContext.height));await addSingleImageLayerFromBlob(blob,name,{inherit:source||undefined,role,hideSource:Boolean(source),fit:source?"cover":"contain"});layoutDirty=true;scheduleAutoSave();updateActionState();return true;}
     function initializeComicEditor(){
       if(!["desktop","desktop-file"].includes(hostMode)||comicEditor||!window.SpeechBubbleComicEditor)return comicEditor;
       comicEditor=window.SpeechBubbleComicEditor.create({
@@ -982,7 +982,7 @@
         getSingleSource:selectedSingleImageSource,
         getComicSources:()=>generalComicEditor?.isActive()?generalComicEditor.getConversionSources?.()||Promise.resolve([]):comicEditor?.getConversionSources?.()||Promise.resolve([]),
         addPageImage:(blob,name)=>generalComicEditor?.isActive()?generalComicEditor.addConvertedImage?.(blob,name):comicEditor?.addConvertedImage?.(blob,name),
-        applySingleImage:(blob,name)=>applyProcessedSingleImage(blob,name||`${sourceName||"speech_bubble"}-comic`,"comic-conversion"),
+        applySingleImage:(blob,name,source)=>applyProcessedSingleImage(blob,name||`${sourceName||"speech_bubble"}-comic`,"comic-conversion",source),
         setStatus:setSaveState,
       });
       return comicConverter;

@@ -73,6 +73,18 @@ for (const preset of [
 assert.match(converter, /params\.mode === "grayscale"/);
 assert.match(converter, /params\.mode === "monochrome"/);
 assert.match(converter, /params\.mode === "xdog"/);
+assert.match(converter, /<strong>\$\{tr\("白黒変換", "Black & White Conversion"\)\}<\/strong>/);
+assert.match(converter, /options\.applySingleImage\?\.\(blob, name, source\)/);
+assert.equal((converter.match(/source_kind: "external-file"/g) || []).length, 2);
+assert.match(html, /source_kind:"layer"/);
+assert.match(html, /source_kind:"legacy-background"/);
+assert.match(html, /async function applyProcessedSingleImage\(blob,name,role,sourceContext\)/);
+assert.match(html, /sourceContext\?null:/);
+assert.match(html, /applySingleImage:\(blob,name,source\)=>applyProcessedSingleImage/);
+assert.match(html, /<summary>白黒変換<\/summary>/);
+assert.match(html, />白黒変換を開く<\/button>/);
+assert.match(desktopShell, /Black & White Conversion/);
+assert.match(desktopShell, /白黒変換/);
 assert.doesNotMatch(html, /data-comic-converter-preset/);
 assert.doesNotMatch(converter, /localStorage.*data:image/);
 assert.doesNotMatch(converter, /showSaveFilePicker/);
@@ -113,7 +125,7 @@ for (const feature of [
   assert.ok(desktopShell.includes(feature), `Desktop Settings must include ${feature}`);
 }
 
-assert.match(readme, /## コミック変換/);
+assert.match(readme, /## 白黒変換/);
 assert.match(readme, /長辺768px/);
 assert.match(readme, /文書ごとに最大5件、全体512MB、30日/);
 assert.match(readme, /単純グレースケール（初期値）、白黒コミック、単純モノクロ、XDoG 100/);
