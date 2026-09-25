@@ -458,7 +458,7 @@ assert.match(html, /projectSchema\.build\(\{activeWorkspace,workspaces,comic:com
 assert.match(html, /SINGLE_IMAGE_ASSET_PREFIX="single-image:"/);
 assert.match(html, /createSingleImageLayer\(asset,\{role:"original"/);
 assert.match(html, /applyProcessedSingleImage\(blob,[^\n]+,"background-removal"\)/);
-assert.match(html, /applyProcessedSingleImage\(blob,[^\n]+,"comic-conversion"\)/);
+assert.match(html, /applyProcessedSingleImage\(blob,[^\n]+,"comic-conversion",source\)/);
 assert.match(html, /if\(hideSource&&inherit\)inherit\.visible=false/);
 assert.match(html, /rotation:Number\(inherit\?\.rotation\)\|\|0/);
 assert.match(html, /locked:inherit\?inherit\.locked===true:locked/);
