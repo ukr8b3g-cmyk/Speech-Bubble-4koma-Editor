@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.11 - 2026-09-26
 
 - Keep an occupied Comic panel unchanged when Quick Retouch adds its output to shared Page Images.
 
@@ -8,7 +8,7 @@
 - Keep Page Images shared and Single Image results source-context aware and non-destructive.
 - Preserve full-resolution PNG, selection/paint/adjustment tools and session-only history.
 - Isolate retouch keyboard/clipboard events and reject stale asynchronous apply operations.
-- Add core, UI and real Desktop Chromium regressions. Published v0.1.10 binaries are unchanged.
+- Add core, UI and real Desktop Chromium regressions. Ship these changes in the v0.1.11 Windows installer; previous releases remain unchanged.
 
 ## v0.1.10 - 2026-09-26
 

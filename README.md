@@ -10,6 +10,12 @@ AI生成画像を漫画表現へ仕上げる用途を主な対象としつつ、
 
 > **Local post-production comic editor for AI-generated and existing artwork.**
 
+## v0.1.11 - 2026-09-26
+
+簡易レタッチ（Quick Retouch 0.7.10）をWindowsインストーラーへ追加しました。ブラシ・消しゴム・各種選択・調整レイヤー・トーンカーブ・内部Undo／Redoを、3つの編集モードから利用できます。
+
+一枚画像では元画像を残して新しい画像レイヤーへ適用します。4コマ漫画／コミックでは共通Page Imagesへ追加し、選択中のコマ画像を自動置換しません。適用結果は元解像度PNGです。レタッチ内部のレイヤー・マスク・履歴は保存せず、確定済み画像を既存のプロジェクト保存・復元経路で扱います。
+
 ## v0.1.10 - 2026-09-26
 
 - **Page Imagesを共通化**: 縦4コマ漫画と自由コミックは同じPage Image Libraryを参照します。片方で追加した画像、背景削除結果、白黒変換結果を、もう片方へ切り替えてそのまま利用できます。旧`image-*`／`general-comic-image:*` IDと旧IndexedDBは起動時に移行するため、既存プロジェクトとの互換性を維持します。
@@ -34,8 +40,8 @@ Windows／Linux／Chromiumの自動回帰テストを追加しました。検証
 
 ## ダウンロード
 
-- [インストーラー版（Windows x64 / v0.1.10）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.10/SpeechBubble4komaEditor-v0.1.10-win-x64-setup.exe)
-- [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.10/SHA256SUMS.txt)
+- [インストーラー版（Windows x64 / v0.1.11）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.11/SpeechBubble4komaEditor-v0.1.11-win-x64-setup.exe)
+- [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.11/SHA256SUMS.txt)
 - [過去のリリース](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases)
 
 - GitHub: https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor
@@ -57,7 +63,7 @@ Windows／Linux／Chromiumの自動回帰テストを追加しました。検証
 
 通常はEXE版、または`start.cmd`から起動してください。EXE版ではシステムフォント、日本語フォント、Settings、`.sbeproj`、指定フォルダーへの画像書き出しなど、Desktop APIを使う機能を利用できます。
 
-現行リリース（v0.1.10）の配布物はWindows x64セットアップEXEです。ソースから起動する場合は`setup_and_start.cmd`で専用`.venv`を準備し、以後は`start.cmd`を使用してください。
+現行リリース（v0.1.11）の配布物はWindows x64セットアップEXEです。ソースから起動する場合は`setup_and_start.cmd`で専用`.venv`を準備し、以後は`start.cmd`を使用してください。
 
 `web\speech-bubble-editor.html`の直接表示は旧版互換・UI確認用で、現在のDesktopリリースと同等の動作を保証しません。ブラウザーからDesktop APIへ接続しないため、システムフォント、Settings、`.sbeproj`、指定フォルダーへの書き出しなども利用できません。
 
@@ -192,7 +198,7 @@ Windows／Linux／Chromiumの自動回帰テストを追加しました。検証
 
 `.sbeproj`へ保存するのは適用済みPNGと通常の配置情報です。レタッチ内部の調整レイヤー・選択範囲・マスク・履歴は保存しません。保存・自動復元も既存の画像経路を使用します。新しいAIモデルや必須依存パッケージは追加していません。
 
-> この機能はソース版の追加です。公開済みv0.1.10インストーラーは変更していません。
+> 簡易レタッチはv0.1.11以降のWindowsインストーラーに含まれます。v0.1.10以前の配布物は変更していません。
 
 ## 白黒変換
 

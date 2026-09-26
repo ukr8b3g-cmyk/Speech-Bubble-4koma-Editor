@@ -3,18 +3,19 @@ on:
   push:
     branches:
       - main
-      - maintenance/release-v0.1.10
+      - maintenance/release-v0.1.11
     paths:
       - desktop_app/version.py
       - packaging/windows_version_info.txt
       - packaging/SpeechBubble4komaEditor.iss
       - build_release.ps1
       - .github/workflows/release.yml
-      - docs/releases/v0.1.10.md
+      - docs/releases/v0.1.11.md
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: windows-release-${{ github.ref }}
@@ -26,30 +27,26 @@ jobs:
     timeout-minutes: 45
     env:
       PYTHONUTF8: '1'
-      RELEASE_VERSION: '0.1.10'
+      RELEASE_VERSION: '0.1.11'
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
-
       - name: Create release build environment
         shell: pwsh
         run: |
           python -m venv .venv
           .\.venv\Scripts\python.exe -m pip install --disable-pip-version-check -r requirements-desktop.txt -r requirements-ci.txt
-
+          if ($LASTEXITCODE -ne 0) { throw 'Build environment installation failed.' }
       - name: Validate source before packaging
         shell: pwsh
         run: .\.venv\Scripts\python.exe tools\validate_repo.py
-
       - name: Install Inno Setup 6
         shell: pwsh
         run: |
@@ -59,41 +56,80 @@ jobs:
             "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe"
           )
           $iscc = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
-          if (-not $iscc) { throw "Inno Setup 6 ISCC.exe was not found after installation." }
+          if (-not $iscc) { throw 'Inno Setup 6 ISCC.exe was not found after installation.' }
           "ISCC_PATH=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
       - name: Build Windows installer
         shell: pwsh
         run: |
           $actual = (& .\.venv\Scripts\python.exe -c "from desktop_app.version import APP_VERSION; print(APP_VERSION)").Trim()
           if ($actual -ne $env:RELEASE_VERSION) { throw "desktop_app.version reports $actual, expected $env:RELEASE_VERSION" }
           .\build_release.ps1 -Version $env:RELEASE_VERSION -InstallerOnly -IsccPath $env:ISCC_PATH
-
       - name: Verify installer and checksum
         shell: pwsh
         run: |
           $installer = "dist\release\SpeechBubble4komaEditor-v$env:RELEASE_VERSION-win-x64-setup.exe"
-          $checksums = "dist\release\SHA256SUMS.txt"
-          if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw "Installer missing." }
-          if ((Get-Item -LiteralPath $installer).Length -lt 10MB) { throw "Installer is unexpectedly small." }
-          $info = (Get-Item -LiteralPath $installer).VersionInfo
-          $fileVersion = [string]$info.FileVersion
-          if ($fileVersion.Trim() -ne "$env:RELEASE_VERSION.0") { throw "Installer FileVersion is $fileVersion, expected $env:RELEASE_VERSION.0" }
+          $checksums = 'dist\release\SHA256SUMS.txt'
+          if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw 'Installer missing.' }
+          if ((Get-Item -LiteralPath $installer).Length -lt 10MB) { throw 'Installer is unexpectedly small.' }
+          $fileVersion = (Get-Item -LiteralPath $installer).VersionInfo.FileVersion.Trim()
+          if ($fileVersion -ne "$env:RELEASE_VERSION.0") { throw "Installer FileVersion is $fileVersion, expected $env:RELEASE_VERSION.0" }
           $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
           $expected = "$hash  $([IO.Path]::GetFileName($installer))"
           $line = (Get-Content -LiteralPath $checksums -Raw).Trim()
-          if ($line -ne $expected) { throw "SHA256SUMS.txt does not match installer." }
+          if ($line -ne $expected) { throw 'SHA256SUMS.txt does not match installer.' }
           Write-Host "Verified $installer"
           Write-Host $expected
-
+      - name: Verify installed Quick Retouch assets
+        shell: pwsh
+        run: |
+          $installer = (Resolve-Path "dist\release\SpeechBubble4komaEditor-v$env:RELEASE_VERSION-win-x64-setup.exe").Path
+          $target = Join-Path $env:RUNNER_TEMP "sbe-install-v$env:RELEASE_VERSION"
+          $log = Join-Path $env:RUNNER_TEMP "sbe-install-v$env:RELEASE_VERSION.log"
+          $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=`"$target`"", "/LOG=`"$log`"")
+          $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Silent installation failed: $($process.ExitCode)" }
+          $exe = Join-Path $target 'SpeechBubble4komaEditor.exe'
+          if (-not (Test-Path -LiteralPath $exe)) { throw 'Installed application EXE missing.' }
+          $version = (Get-Item -LiteralPath $exe).VersionInfo.FileVersion.Trim()
+          if ($version -ne "$env:RELEASE_VERSION.0") { throw "Installed app FileVersion mismatch: $version" }
+          foreach ($relative in @('quick-retouch-core.js', 'quick-retouch.js', 'quick-retouch.css', 'speech-bubble-editor.html')) {
+            $installed = Join-Path $target "_internal\web\$relative"
+            if (-not (Test-Path -LiteralPath $installed)) { throw "Installed asset missing: $relative" }
+            $expected = (Get-FileHash -LiteralPath "web\$relative" -Algorithm SHA256).Hash
+            $actual = (Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash
+            if ($expected -ne $actual) { throw "Installed asset hash mismatch: $relative" }
+            Write-Host "INSTALLED_ASSET_PASS $relative $actual"
+          }
+          Write-Host "INSTALLED_VERSION_PASS $version"
       - uses: actions/upload-artifact@v6
         with:
-          name: SpeechBubble4komaEditor-v0.1.10-win-x64
+          name: SpeechBubble4komaEditor-v0.1.11-win-x64
           path: |
-            dist/release/SpeechBubble4komaEditor-v0.1.10-win-x64-setup.exe
+            dist/release/SpeechBubble4komaEditor-v0.1.11-win-x64-setup.exe
             dist/release/SHA256SUMS.txt
           retention-days: 14
-
+      - name: Require same-commit repository validation
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $deadline = (Get-Date).AddMinutes(15)
+          $validated = $false
+          while ((Get-Date) -lt $deadline) {
+            $json = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs?head_sha=$env:GITHUB_SHA&event=push&per_page=100"
+            if ($LASTEXITCODE -ne 0) { throw 'Could not read repository validation runs.' }
+            $runs = ($json | ConvertFrom-Json).workflow_runs
+            $run = $runs | Where-Object { $_.path -eq '.github/workflows/validate.yml' -and $_.head_branch -eq 'main' -and $_.head_sha -eq $env:GITHUB_SHA } | Sort-Object id -Descending | Select-Object -First 1
+            if ($run -and $run.status -eq 'completed') {
+              if ($run.conclusion -ne 'success') { throw "Repository validation did not pass: $($run.html_url)" }
+              $validated = $true
+              Write-Host "REPOSITORY_VALIDATION_PASS $($run.html_url)"
+              break
+            }
+            Start-Sleep -Seconds 10
+          }
+          if (-not $validated) { throw 'Timed out waiting for same-commit repository validation.' }
       - name: Publish GitHub release
         if: github.ref == 'refs/heads/main'
         shell: pwsh
@@ -105,8 +141,8 @@ jobs:
           if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists; refusing to overwrite it." }
           $assets = @(
             "dist\release\SpeechBubble4komaEditor-v$env:RELEASE_VERSION-win-x64-setup.exe",
-            "dist\release\SHA256SUMS.txt"
+            'dist\release\SHA256SUMS.txt'
           )
           gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Speech Bubble 4koma Editor $tag" --notes-file "docs\releases\v$env:RELEASE_VERSION.md"
-          if ($LASTEXITCODE -ne 0) { throw "GitHub release creation failed." }
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub release creation failed.' }
           gh release view $tag --repo $env:GITHUB_REPOSITORY
