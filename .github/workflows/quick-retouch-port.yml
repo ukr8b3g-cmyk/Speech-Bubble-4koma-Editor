@@ -45,7 +45,6 @@ jobs:
           set -euo pipefail
           python seed/tools/port_quick_retouch.py target donor seed
           cd target
-          # Keep the established workflow unchanged; its browser entry point runs both gates.
           git restore -- .github/workflows/validate.yml
           python - <<'PY'
           import json
@@ -53,6 +52,24 @@ jobs:
           import subprocess
           files = json.loads(Path('port-files.json').read_text())
           files.remove('.github/workflows/validate.yml')
+          # Tool rerenders can remove the focused button. Capture at the window
+          # while modal, before host shortcuts, so body focus is also handled.
+          quick = Path('web/quick-retouch.js')
+          text = quick.read_text()
+          for event, asynchronous in [('keydown', False), ('keyup', False), ('paste', True)]:
+              prefix = f'    dialog.addEventListener("{event}", ' + ('async event => {' if asynchronous else '(event) => {')
+              assert text.count(prefix) == 1, prefix
+              start = text.index(prefix)
+              end = text.index('\n    });', start) + len('\n    });')
+              block = text[start:end]
+              block = block.replace('dialog.addEventListener', 'root.addEventListener', 1)
+              block = block.replace('event.stopPropagation();', 'event.stopImmediatePropagation();')
+              block = block[:-3] + '}, true);'
+              text = text[:start] + block + text[end:]
+          quick.write_text(text, encoding='utf-8', newline='\n')
+          test = Path('tests/quick_retouch_integration_test.cjs')
+          text = test.read_text().replace(r'/dialog\.addEventListener\("keydown"/', r'/root\.addEventListener\("keydown"/')
+          test.write_text(text, encoding='utf-8', newline='\n')
           smoke = Path('tests/desktop_browser_smoke.cjs')
           text = smoke.read_text()
           anchor = '(async () => {\n'
