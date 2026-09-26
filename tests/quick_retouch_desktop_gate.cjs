@@ -108,7 +108,7 @@ module.exports = async function quickRetouchDesktopGate(page) {
   const initial = await page.evaluate(async base64 => {
     const blob = await (await fetch("data:image/png;base64," + base64)).blob();
     const layer = await addSingleImageLayerFromBlob(blob, "selected.png", {role:"image", locked:false});
-    Object.assign(layer, {x:37,y:51,w:320,h:240,rotation:23,opacity:65,locked:true});
+    Object.assign(layer, {x:37,y:51,w:320,h:240,rotation:23,opacity:0.65,locked:true});
     setSelection([layer.id], layer.id); syncProperties(); updateLayerMenuState(); requestRender({canvas:true,layers:true});
     return JSON.parse(JSON.stringify(layer));
   }, shortFile.buffer.toString("base64"));
