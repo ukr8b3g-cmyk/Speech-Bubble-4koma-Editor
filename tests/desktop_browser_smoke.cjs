@@ -6,6 +6,8 @@ let chromium;
 try { ({ chromium } = require("playwright")); }
 catch { console.log("desktop_browser_smoke: SKIP (playwright unavailable)"); process.exit(0); }
 (async () => {
+  const isolated = require("node:child_process").spawnSync(process.execPath, ["tests/quick_retouch_browser_smoke.cjs"], {stdio:"inherit"});
+  if (isolated.status !== 0) throw new Error("Quick Retouch isolated browser gate failed");
   const server = spawn(process.env.PYTHON || "python", ["-u", "tests/serve_desktop_browser.py"], { cwd: path.resolve(__dirname, "..") });
   let browser;
   let errors = "";
@@ -83,6 +85,7 @@ catch { console.log("desktop_browser_smoke: SKIP (playwright unavailable)"); pro
     assert.match(await converterDialog.locator("[data-converter-mode]").innerText(), /4コマ漫画|4-Panel Manga/);
     await converterDialog.locator('[data-converter-action="cancel"]').click();
 
+    await require("./quick_retouch_desktop_gate.cjs")(page);
     assert.deepEqual(pageErrors, []);
     console.log("desktop_browser_smoke: OK (shared Page Images + Black & White Conversion)");
   } finally {
