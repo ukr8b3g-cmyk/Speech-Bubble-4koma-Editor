@@ -1,0 +1,46 @@
+name: Prepare v0.1.11 release candidate
+on:
+  push:
+    branches: ['maintenance/prepare-release-v0.1.11-20260926']
+permissions:
+  contents: write
+concurrency:
+  group: prepare-release-v0.1.11
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASE_SHA: '8b9a3d834405b2f6bf18d43e30663041b98da692'
+      CANDIDATE_BRANCH: 'maintenance/release-v0.1.11'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Prepare release-only commit from the pinned base
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'ukr8b3g-cmyk/Speech-Bubble-4koma-Editor'
+          test -z "$(git status --porcelain)"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE_SHA"
+          test -z "$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH")"
+          cp tools/prepare_release_0111.py "$RUNNER_TEMP/prepare_release_0111.py"
+          cp tools/release_0111.yml "$RUNNER_TEMP/release_0111.yml"
+          git checkout --detach "$BASE_SHA"
+          python "$RUNNER_TEMP/prepare_release_0111.py" "$RUNNER_TEMP/release_0111.yml"
+          python -m py_compile desktop_app/version.py tests/test_maintenance_hardening.py
+          git diff --cached --stat
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Release v0.1.11 with Quick Retouch' -m 'Package the validated Quick Retouch port and occupied-panel fix. Align app, installer, Windows metadata, release notes and version tests. Verify installed asset hashes and require same-commit CI before publication. Do not overwrite previous releases.'
+          test "$(git rev-parse HEAD^)" = "$BASE_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE_SHA"
+          git push origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
+          echo "RELEASE_CANDIDATE_SHA=$(git rev-parse HEAD)"
