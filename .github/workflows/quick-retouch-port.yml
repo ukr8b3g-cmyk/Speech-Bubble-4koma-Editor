@@ -1,0 +1,153 @@
+name: Quick Retouch port and final validation
+on:
+  push:
+    branches: ['feature/quick-retouch-port-20260926']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: quick-retouch-port-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Implement pinned source port
+        run: python tools/port_quick_retouch.py
+      - uses: actions/upload-artifact@v6
+        with:
+          name: quick-retouch-prepared
+          path: |
+            quick-retouch-prepared.zip
+            quick-retouch-files.json
+          retention-days: 7
+  core:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.10'
+          - os: windows-latest
+            python: '3.13'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Load implemented candidate
+        run: |
+          gh run download ${{ github.run_id }} -n quick-retouch-prepared -D prepared
+          python -c "import zipfile; zipfile.ZipFile('prepared/quick-retouch-prepared.zip').extractall('.')"
+      - name: Install existing Linux renderer font
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+      - run: python -m pip install -r requirements-ci.txt
+      - name: Final core validation
+        run: python tools/validate_repo.py
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: quick-retouch-core-${{ matrix.os }}
+          path: artifacts/
+          retention-days: 7
+  browser:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Load implemented candidate
+        run: |
+          gh run download ${{ github.run_id }} -n quick-retouch-prepared -D prepared
+          python -c "import zipfile; zipfile.ZipFile('prepared/quick-retouch-prepared.zip').extractall('.')"
+      - run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+      - run: python -m pip install -r requirements-ci.txt
+      - name: Install existing browser test dependencies
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sbe-browser" --no-save playwright
+          "$RUNNER_TEMP/sbe-browser/node_modules/.bin/playwright" install --with-deps chromium
+          echo "NODE_PATH=$RUNNER_TEMP/sbe-browser/node_modules" >> "$GITHUB_ENV"
+      - name: Final Quick Retouch UI and Desktop integration validation
+        run: |
+          node tests/quick_retouch_browser_smoke.cjs
+          node tests/desktop_browser_smoke.cjs
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: quick-retouch-browser
+          path: artifacts/
+          retention-days: 7
+  record:
+    needs: [core, browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+          persist-credentials: true
+      - name: Record only the validated implementation on the work branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'ukr8b3g-cmyk/Speech-Bubble-4koma-Editor'
+          test "$GITHUB_REF_NAME" = 'feature/quick-retouch-port-20260926'
+          remote=$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)
+          test "$remote" = "$GITHUB_SHA"
+          gh run download "$GITHUB_RUN_ID" -n quick-retouch-prepared -D prepared
+          python - <<'PY'
+          import json, subprocess, zipfile
+          from pathlib import PurePosixPath
+          files=json.load(open('prepared/quick-retouch-files.json'))
+          allowed={'web','tests','docs','.github'}
+          for path in files:
+              p=PurePosixPath(path)
+              if p.is_absolute() or '..' in p.parts or not (p.parts[0] in allowed or path in {'README.md','CHANGELOG.md'}):
+                  raise RuntimeError('Unexpected candidate path: '+path)
+          with zipfile.ZipFile('prepared/quick-retouch-prepared.zip') as z:
+              if set(z.namelist()) != set(files): raise RuntimeError('Manifest mismatch')
+              z.extractall('.')
+          subprocess.run(['git','add','--',*files],check=True)
+          PY
+          git rm -- .github/workflows/quick-retouch-port.yml tools/port_quick_retouch.py
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Port Quick Retouch 0.7.10 with validated three-mode integration' -m "Pinned Forge source 929752a2080f7eb8be680ad29f6868d753acf729. Windows, Ubuntu and Chromium gates passed in Actions run $GITHUB_RUN_ID. Runtime dependencies and existing published installers are unchanged."
+          git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"
+          echo "VALIDATED_QUICK_RETOUCH_COMMIT=$(git rev-parse HEAD)"
