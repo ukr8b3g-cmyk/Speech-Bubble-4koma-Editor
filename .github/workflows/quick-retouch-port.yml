@@ -6,6 +6,7 @@ on:
       - .github/workflows/quick-retouch-port.yml
       - tools/port_quick_retouch.py
       - tools/quick_retouch_desktop_gate.cjs
+      - tools/refine_quick_retouch.py
 permissions:
   contents: read
 concurrency:
@@ -50,6 +51,7 @@ jobs:
           import json
           from pathlib import Path
           import subprocess
+          import sys
           files = json.loads(Path('port-files.json').read_text())
           files.remove('.github/workflows/validate.yml')
           # Tool rerenders can remove the focused button. Capture at the window
@@ -76,6 +78,7 @@ jobs:
           assert text.count(anchor) == 1
           text = text.replace(anchor, anchor + '  const isolated = require("node:child_process").spawnSync(process.execPath, ["tests/quick_retouch_browser_smoke.cjs"], {stdio:"inherit"});\n  if (isolated.status !== 0) throw new Error("Quick Retouch isolated browser gate failed");\n', 1)
           smoke.write_text(text, encoding='utf-8', newline='\n')
+          subprocess.run([sys.executable,'../seed/tools/refine_quick_retouch.py','.'], check=True)
           subprocess.run(['git','add','--',*files], check=True)
           Path('port-files.json').unlink()
           PY
@@ -83,7 +86,7 @@ jobs:
           git diff --cached --stat
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'Port Quick Retouch into standalone three-workspace editor' -m 'Preserve pinned Forge 0.7.10 tools and core. Integrate exact Single Image source context and shared Page Images, modal event isolation, session cleanup, documentation and final regression gates. Distribution and release assets remain unchanged.'
+          git commit -m 'Port Quick Retouch into standalone three-workspace editor' -m 'Preserve pinned Forge 0.7.10 tools and core. Integrate exact Single Image source context and shared Page Images, add-only output without replacing selected panels, modal event isolation, session cleanup, documentation and final regression gates. Distribution and release assets remain unchanged.'
           sha=$(git rev-parse HEAD)
           branch="work/quick-retouch-candidate-${GITHUB_RUN_ID}"
           git push origin "HEAD:refs/heads/$branch"
