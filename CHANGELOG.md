@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.10 - 2026-09-26
 
 - Share one Page Image Library between 4-Panel Manga and free Comic workspaces.
 - Migrate legacy `image-*` and `general-comic-image:*` records from the previous per-workspace IndexedDB stores.

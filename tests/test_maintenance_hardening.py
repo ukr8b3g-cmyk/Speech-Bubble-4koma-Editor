@@ -70,7 +70,7 @@ class MaintenanceHardeningTests(unittest.IsolatedAsyncioTestCase):
 
     def test_versions_match_distribution(self):
         import desktop_app
-        self.assertEqual(APP_VERSION, "0.1.9")
+        self.assertEqual(APP_VERSION, "0.1.10")
         self.assertEqual(desktop_app.__version__, APP_VERSION)
         self.assertEqual(API_VERSION, APP_VERSION)
 

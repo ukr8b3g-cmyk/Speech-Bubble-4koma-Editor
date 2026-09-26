@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.9",
+    [string]$Version = "0.1.10",
     [string]$IsccPath = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
     [switch]$InstallerOnly
 )

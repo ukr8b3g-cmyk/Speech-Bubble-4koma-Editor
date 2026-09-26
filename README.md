@@ -10,13 +10,13 @@ AI生成画像を漫画表現へ仕上げる用途を主な対象としつつ、
 
 > **Local post-production comic editor for AI-generated and existing artwork.**
 
-## Unreleased / main
+## v0.1.10 - 2026-09-26
 
 - **Page Imagesを共通化**: 縦4コマ漫画と自由コミックは同じPage Image Libraryを参照します。片方で追加した画像、背景削除結果、白黒変換結果を、もう片方へ切り替えてそのまま利用できます。旧`image-*`／`general-comic-image:*` IDと旧IndexedDBは起動時に移行するため、既存プロジェクトとの互換性を維持します。
 - **白黒変換をForge Neo版へ同期**: ダイアログ、変換元コンテキスト、適用処理をForge Neo版の現行実装へ合わせました。単純グレースケール、白黒コミック、単純モノクロ、XDoG 100と元解像度適用を維持します。
 - Settingsの「ページ画像・変換履歴」は、縦4コマだけではなく共通Page Image Library全体の件数・容量・未使用画像を集計します。
 
-> 現在公開中のWindowsインストーラーはv0.1.9です。上記Unreleased機能は次回バイナリ公開までは`main`のソース版で利用できます。
+> v0.1.10ではPage Images共通化と白黒変換の3モード統合をWindowsインストーラーへ反映しました。
 
 ## v0.1.9 - 2026-09-24
 
@@ -34,8 +34,8 @@ Windows／Linux／Chromiumの自動回帰テストを追加しました。検証
 
 ## ダウンロード
 
-- [インストーラー版（Windows x64 / v0.1.9）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.9/SpeechBubble4komaEditor-v0.1.9-win-x64-setup.exe)
-- [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.9/SHA256SUMS.txt)
+- [インストーラー版（Windows x64 / v0.1.10）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.10/SpeechBubble4komaEditor-v0.1.10-win-x64-setup.exe)
+- [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.10/SHA256SUMS.txt)
 - [過去のリリース](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases)
 
 - GitHub: https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor
@@ -57,7 +57,7 @@ Windows／Linux／Chromiumの自動回帰テストを追加しました。検証
 
 通常はEXE版、または`start.cmd`から起動してください。EXE版ではシステムフォント、日本語フォント、Settings、`.sbeproj`、指定フォルダーへの画像書き出しなど、Desktop APIを使う機能を利用できます。
 
-現行リリース（v0.1.9）の配布物はWindows x64セットアップEXEです。ソースから起動する場合は`setup_and_start.cmd`で専用`.venv`を準備し、以後は`start.cmd`を使用してください。
+現行リリース（v0.1.10）の配布物はWindows x64セットアップEXEです。ソースから起動する場合は`setup_and_start.cmd`で専用`.venv`を準備し、以後は`start.cmd`を使用してください。
 
 `web\speech-bubble-editor.html`の直接表示は旧版互換・UI確認用で、現在のDesktopリリースと同等の動作を保証しません。ブラウザーからDesktop APIへ接続しないため、システムフォント、Settings、`.sbeproj`、指定フォルダーへの書き出しなども利用できません。
 

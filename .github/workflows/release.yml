@@ -3,14 +3,14 @@ on:
   push:
     branches:
       - main
-      - maintenance/release-v0.1.9
+      - maintenance/release-v0.1.10
     paths:
       - desktop_app/version.py
       - packaging/windows_version_info.txt
       - packaging/SpeechBubble4komaEditor.iss
       - build_release.ps1
       - .github/workflows/release.yml
-      - docs/releases/v0.1.9.md
+      - docs/releases/v0.1.10.md
   workflow_dispatch:
 
 permissions:
@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 45
     env:
       PYTHONUTF8: '1'
-      RELEASE_VERSION: '0.1.9'
+      RELEASE_VERSION: '0.1.10'
     steps:
       - uses: actions/checkout@v5
         with:
@@ -88,9 +88,9 @@ jobs:
 
       - uses: actions/upload-artifact@v6
         with:
-          name: SpeechBubble4komaEditor-v0.1.9-win-x64
+          name: SpeechBubble4komaEditor-v0.1.10-win-x64
           path: |
-            dist/release/SpeechBubble4komaEditor-v0.1.9-win-x64-setup.exe
+            dist/release/SpeechBubble4komaEditor-v0.1.10-win-x64-setup.exe
             dist/release/SHA256SUMS.txt
           retention-days: 14
 
