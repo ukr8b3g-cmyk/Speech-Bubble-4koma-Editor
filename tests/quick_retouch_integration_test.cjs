@@ -39,3 +39,6 @@ assert.match(html, /dialog\.quick-retouch-dialog\[open\]/, "host shortcuts must 
 assert.match(read(".github/workflows/validate.yml"), /node tests\/quick_retouch_browser_smoke.cjs/);
 assert.match(read("README.md"), /内部の調整レイヤー・選択範囲・マスク・履歴は保存しません/);
 console.log("quick_retouch_integration_test: OK");
+
+assert.match(html, /addPageImage:addQuickRetouchPageImage/);
+assert.match(html, /const ids=await editor\.importFiles\(\[file\]\)/);

@@ -1025,6 +1025,18 @@
       });
       return backgroundRemoval;
     }
+    async function addQuickRetouchPageImage(blob,name){
+      if(!(blob instanceof Blob)||!["comic","comic_layout"].includes(activeWorkspace))return "";
+      const editor=activeStructuralEditor();
+      if(!editor)return "";
+      if(activeWorkspace==="comic")return editor.addConvertedImage(blob,name);
+      // The Comic conversion adapter replaces the selected panel. Retouch is add-only.
+      const safeName=String(name||"image-retouched.png").replace(/[\\/:*?"<>|]+/g,"-");
+      const file=new File([blob],/\.png$/i.test(safeName)?safeName:`${safeName}.png`,{type:"image/png",lastModified:Date.now()});
+      pushUndo();
+      const ids=await editor.importFiles([file]);
+      return ids?.[0]||"";
+    }
     function initializeQuickRetouch(){
       if(quickRetouch||!window.SpeechBubbleQuickRetouch)return quickRetouch;
       quickRetouch=window.SpeechBubbleQuickRetouch.create({
@@ -1032,7 +1044,7 @@
         getDocumentId:()=>documentId,
         getSingleSource:selectedSingleImageSource,
         getComicSources:()=>generalComicEditor?.isActive()?generalComicEditor.getConversionSources?.()||Promise.resolve([]):comicEditor?.getConversionSources?.()||Promise.resolve([]),
-        addPageImage:(blob,name)=>generalComicEditor?.isActive()?generalComicEditor.addConvertedImage?.(blob,name):comicEditor?.addConvertedImage?.(blob,name),
+        addPageImage:addQuickRetouchPageImage,
         applySingleImage:(blob,name,source)=>applyProcessedSingleImage(blob,name,"quick-retouch",source),
         setStatus:setSaveState,
       });

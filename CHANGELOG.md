@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep an occupied Comic panel unchanged when Quick Retouch adds its output to shared Page Images.
+
 - Port pinned Forge Quick Retouch 0.7.10 into all three standalone workspaces.
 - Keep Page Images shared and Single Image results source-context aware and non-destructive.
 - Preserve full-resolution PNG, selection/paint/adjustment tools and session-only history.
