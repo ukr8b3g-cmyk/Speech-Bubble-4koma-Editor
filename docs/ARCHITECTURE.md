@@ -34,3 +34,11 @@ Deleting a Page Image removes its panel usage across both comic workspaces. Sett
 ## Black & White Conversion
 
 The standalone `web/comic-converter.js` follows the current Forge Neo implementation. Conversion processing remains browser-local and uses a Worker for preview/full-resolution processing. Applying to Single Image carries the exact source-layer context; applying in either comic workspace inserts the result into the shared Page Image Library.
+
+## Standalone Quick Retouch
+
+The core and CSS are imported unchanged from `ukr8b3g-cmyk/Speech-Bubble-Comic-Editor-for-Forge-Neo` commit `929752a2080f7eb8be680ad29f6868d753acf729`. `web/quick-retouch.js` retains the full upstream tools, with standalone three-workspace routing, document/session guards and modal event isolation. `initializeQuickRetouch()` in the existing HTML shell uses `selectedSingleImageSource`, `applyProcessedSingleImage` and the active structural editor's existing shared Page Image adapter. No second image store, Forge bridge, server endpoint, project schema change or runtime dependency is introduced.
+
+Only the final full-resolution PNG is persisted by the host. Paint/adjustment layers, selection masks and undo/redo buffers are local to the open retouch session and released on close. Tool preferences and panel geometry use localStorage, not image data. The 512 MiB upstream Undo budget is not a total-process memory bound.
+
+Core donor Git blob: `e20a3ac3425efaf4d394fb909500656265523004`. CSS donor Git blob: `ef380b1f2c1bd2119aded5a1184e9df6ad10186a`. New installer/release publication remains a separate step.
