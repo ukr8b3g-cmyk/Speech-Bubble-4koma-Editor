@@ -39,6 +39,12 @@ for (const item of newBuiltInSfx) {
   assert.ok(fs.existsSync(`web/assets/sfx/sfx-png-corrected-list-v2/${item.asset}`), `${item.id} asset must exist`);
 }
 
+assert.ok(html.includes("./shared-page-images.js?v="), "Shared Page Images store must be loaded by the Editor");
+assert.match(html, /imageStore:sharedPageImageEditorStore/);
+assert.match(editor, /syncSharedImages/);
+assert.match(editor, /removeAssetUsage/);
+assert.match(editor, /usedImageIds/);
+assert.match(editor, /page-image:/);
 assert.ok(html.includes("./project-schema.js?v="), "Project schema must be loaded by the Editor");
 assert.ok(
   html.indexOf("./project-schema.js?v=") < html.indexOf("./comic-panels.js?v="),
@@ -459,6 +465,7 @@ assert.match(html, /SINGLE_IMAGE_ASSET_PREFIX="single-image:"/);
 assert.match(html, /createSingleImageLayer\(asset,\{role:"original"/);
 assert.match(html, /applyProcessedSingleImage\(blob,[^\n]+,"background-removal"\)/);
 assert.match(html, /applyProcessedSingleImage\(blob,[^\n]+,"comic-conversion",source\)/);
+assert.match(html, /sourceContext\?null:/);
 assert.match(html, /if\(hideSource&&inherit\)inherit\.visible=false/);
 assert.match(html, /rotation:Number\(inherit\?\.rotation\)\|\|0/);
 assert.match(html, /locked:inherit\?inherit\.locked===true:locked/);

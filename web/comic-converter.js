@@ -446,7 +446,19 @@
     };
 
     function currentMode() {
-      return options.getMode?.() === "comic" ? "comic" : "single";
+      const mode = options.getMode?.();
+      return mode === "comic_layout" ? "comic_layout" : mode === "comic" ? "comic" : "single";
+    }
+
+    function isPageImageMode() {
+      return currentMode() !== "single";
+    }
+
+    function currentModeLabel() {
+      const mode = currentMode();
+      if (mode === "comic_layout") return tr("コミック", "Comic");
+      if (mode === "comic") return tr("4コマ漫画", "4-Panel Manga");
+      return tr("一枚画像", "Single Image");
     }
 
     function formatValue(key, value) {
@@ -666,7 +678,7 @@
       }
       if (!host.children.length) {
         const empty = document.createElement("p");
-        empty.textContent = currentMode() === "comic"
+        empty.textContent = isPageImageMode()
           ? tr(
               "ページ画像またはコマ画像を選択するか、画像ファイルを読み込んでください。",
               "Select a Page Image or panel image, or load an image file.",
@@ -711,7 +723,7 @@
     async function applyResult() {
       if (!source) return;
       const idleLabel =
-        currentMode() === "comic" ? tr("ページ画像へ追加", "Add to Page Images") : tr("一枚画像へ適用", "Apply to Single Image");
+        isPageImageMode() ? tr("ページ画像へ追加", "Add to Page Images") : tr("一枚画像へ適用", "Apply to Single Image");
       applyButton.disabled = true;
       applyButton.textContent = tr("追加処理中…", "Adding…");
       status.textContent = tr("元解像度で変換しています…", "Converting at full resolution…");
@@ -719,7 +731,7 @@
       try {
         const blob = await finalBlob();
         const name = `${source.name}-comic.png`;
-        if (currentMode() === "comic") {
+        if (isPageImageMode()) {
           const id = await options.addPageImage?.(blob, name);
           if (!id) throw new Error(tr("ページ画像へ追加できませんでした。", "Could not add the image to Page Images."));
           options.setStatus?.(
@@ -747,7 +759,7 @@
 
     function resetSettings() {
       currentPreset = "grayscale";
-      settings = { ...PRESET_SETTINGS.comic };
+      settings = { ...PRESET_SETTINGS.grayscale };
       syncControls();
       try {
         localStorage.removeItem(SETTINGS_KEY);
@@ -793,10 +805,9 @@
     }
 
     launcher.onclick = async () => {
-      dialog.querySelector("[data-converter-mode]").textContent =
-        currentMode() === "comic" ? tr("4コマ漫画", "4-panel Comic") : tr("一枚画像", "Single Image");
+      dialog.querySelector("[data-converter-mode]").textContent = currentModeLabel();
       applyButton.textContent =
-        currentMode() === "comic" ? tr("ページ画像へ追加", "Add to Page Images") : tr("一枚画像へ適用", "Apply to Single Image");
+        isPageImageMode() ? tr("ページ画像へ追加", "Add to Page Images") : tr("一枚画像へ適用", "Apply to Single Image");
       dialog.showModal();
       restoreGeometry();
       clearCandidateUrls();

@@ -51,6 +51,12 @@ for (const value of [
 assert.match(converter, /new Worker/);
 assert.match(converter, /mode: "grayscale"/);
 assert.match(converter, /let currentPreset = "grayscale"/);
+assert.match(converter, /mode === "comic_layout" \? "comic_layout" : mode === "comic" \? "comic" : "single"/);
+assert.match(converter, /function isPageImageMode\(\)/);
+assert.match(converter, /function currentModeLabel\(\)/);
+assert.match(converter, /settings = \{ \.\.\.PRESET_SETTINGS\.grayscale \};/);
+assert.doesNotMatch(converter, /currentPreset = "grayscale";\s*settings = \{ \.\.\.PRESET_SETTINGS\.comic \};/);
+assert.match(html, /getMode:\(\)=>generalComicEditor\?\.isActive\(\)\?"comic_layout":comicEditor\?\.isActive\(\)\?"comic":"single"/);
 assert.ok(
   converter.indexOf('<option value="grayscale">') < converter.indexOf('<option value="comic">'),
   "Simple Grayscale must be the first conversion preset",

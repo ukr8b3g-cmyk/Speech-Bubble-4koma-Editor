@@ -955,7 +955,7 @@
   }
 
   async function clearConversionHistory(dialog) {
-    if (!confirm(desktopText("一枚画像の白黒変換履歴を削除しますか？\n現在使用中の画像は削除しません。", "Delete the single-image black & white conversion history?\nThe image currently in use will not be deleted."))) return;
+    if (!confirm(desktopText("一枚画像の白黒変換履歴を削除しますか？\n現在使用中の画像は削除しません。", "Delete the single-image Black & White Conversion history?\nThe image currently in use will not be deleted."))) return;
     await root.SpeechBubbleDesktopEditor?.clearConversionHistory?.();
     await refreshImageStorageStatus(dialog);
   }
@@ -1031,7 +1031,7 @@
     ["背景に合わせる", "Cover Canvas"],
     ["キャンバスに収める", "Fit in Canvas"],
     ["この画像を背景削除", "Remove Background from This Image"],
-    ["この画像を白黒変換", "Convert This Image to Black & White"],
+    ["この画像を白黒変換", "Black & White Convert This Image"],
     ["Canvas上でドラッグして移動、Ctrl+ホイールで拡大・縮小できます。ロック中も画像処理には利用できます。", "Drag on the canvas to move; use Ctrl+Wheel to scale. Locked images can still be processed."],
     ["キャンバス背景", "Canvas Background"],
     ["Ctrl：個別選択／Shift：範囲選択", "Ctrl: toggle selection / Shift: range selection"],

@@ -27,6 +27,11 @@
     const runtimeImages = new Map(), runtimeBlobs = new Map(), objectUrls = new Set(), elements = {};
     const canvasState = () => options.getCanvasState?.() || { width: comic.page.width, height: comic.page.height, zoom: 1 };
     const documentId = () => String(options.getDocumentId?.() || "");
+    const imageStore = options.imageStore || {
+      put: async (metadata, blob) => { await imageStore.put(metadata, blob); return metadata; },
+      get: (imageId) => loadImageBlob(documentId(), imageId),
+      remove: (imageId) => deleteImageBlob(documentId(), imageId),
+    };
     const requestRender = (flags = { canvas: true, layers: true }) => options.requestRender?.(flags);
     const contentRect = () => core.pageContentRect(comic.page);
     const layout = () => core.computeLayout(comic.tree, contentRect(), comic.page.gutter);
@@ -59,7 +64,7 @@
     }
 
     function attachBlob(metadata, blob) { return imageFromBlob(blob).then(({ image, url }) => { const old = runtimeImages.get(metadata.id)?.dataset?.generalComicObjectUrl; if (old) { URL.revokeObjectURL(old); objectUrls.delete(old); } image.dataset.generalComicObjectUrl = url; objectUrls.add(url); runtimeImages.set(metadata.id, image); runtimeBlobs.set(metadata.id, blob); metadata.width = image.naturalWidth; metadata.height = image.naturalHeight; renderTray(); requestRender({ canvas: true, layers: true }); }); }
-    async function hydrateImages() { const target = documentId(); hydratedDocumentId = target; await Promise.all(comic.images.filter((item) => !runtimeImages.has(item.id)).map(async (metadata) => { try { const blob = await loadImageBlob(target, metadata.id); if (blob && target === hydratedDocumentId) await attachBlob(metadata, blob); } catch (error) { console.warn("General comic image restore failed", metadata.id, error); } })); }
+    async function hydrateImages() { const target = documentId(); hydratedDocumentId = target; await Promise.all(comic.images.filter((item) => !runtimeImages.has(item.id)).map(async (metadata) => { try { const blob = await imageStore.get(metadata.id); if (blob && target === hydratedDocumentId) await attachBlob(metadata, blob); } catch (error) { console.warn("General comic image restore failed", metadata.id, error); } })); }
 
     function setSelection(kind, id = null) { selection = { kind, id }; if (kind === "panel" || kind === "image") lastPanelId = id; if (kind !== "image") { selectedImagePanelIds.clear(); imageSelectionAnchorId = null; } if (kind !== "normal") options.clearLayerSelection?.(); syncUi(); options.syncInsertTargetStatus?.(); requestRender({ canvas: true, layers: true }); }
     function clearSelection() { selection = { kind: "page", id: null }; selectedImagePanelIds.clear(); imageSelectionAnchorId = null; drag = null; syncUi(); return true; }
@@ -212,7 +217,7 @@
 
     function updateToolbar() { if (!elements.toolbar) return; const rect = selection.kind === "panel" ? panelRect(selection.id) : null; elements.toolbar.hidden = !active || !rect || comic.page.structure_locked || options.hasLayerSelection?.(); if (elements.toolbar.hidden) return; const canvas = document.getElementById("canvas"), panel = document.querySelector(".canvas-panel"); if (!canvas || !panel) return; const canvasRect = canvas.getBoundingClientRect(), panelBox = panel.getBoundingClientRect(), zoom = canvasState().zoom || 1; elements.toolbar.style.left = `${canvasRect.left - panelBox.left + (rect.x + rect.w / 2) * zoom - elements.toolbar.offsetWidth / 2}px`; elements.toolbar.style.top = `${canvasRect.top - panelBox.top + rect.y * zoom + 8}px`; }
 
-    function createPage({ width, height, templateId = "standard_five" } = {}, control = {}) { const next = core.defaultState(width || 2480, height || 3508, uuid, templateId); if (control.recordUndo !== false) options.pushUndo?.(); options.resizeCanvas?.(next.page.width, next.page.height); comic = next; comic.enabled = true; comic.created = true; active = used = true; selection = { kind: "page", id: null }; selectedImagePanelIds.clear(); imageSelectionAnchorId = null; changed(); syncUi(); return serialize(); }
+    function createPage({ width, height, templateId = "standard_five" } = {}, control = {}) { const sharedImages = Array.isArray(comic.images) ? comic.images : []; const next = core.defaultState(width || 2480, height || 3508, uuid, templateId); next.images = sharedImages; if (control.recordUndo !== false) options.pushUndo?.(); options.resizeCanvas?.(next.page.width, next.page.height); comic = next; comic.enabled = true; comic.created = true; active = used = true; selection = { kind: "page", id: null }; selectedImagePanelIds.clear(); imageSelectionAnchorId = null; changed(); syncUi(); return serialize(); }
     function setActive(enable, control = {}) { const previous = active; let createdNow = false; active = Boolean(enable); comic.enabled = active; drag = null; if (control.switchWorkspace !== false) options.switchWorkspace?.(active ? "comic_layout" : "single"); if (active && !comic.created) { createPage({ width: 2480, height: 3508, templateId: "standard_five" }, { recordUndo: false }); createdNow = true; } else if (active) options.resizeCanvas?.(comic.page.width, comic.page.height); if (active) selection ||= { kind: "page", id: null }; if (previous !== active && control.notify !== false && !createdNow) changed(); syncUi(); if (control.fitView !== false) requestAnimationFrame(() => options.fitView?.(false)); return true; }
     const activate = (control) => setActive(true, control); const deactivate = (control) => setActive(false, control);
 
@@ -285,13 +290,13 @@
     function pointerCursorAt(point) { if (!active || comic.page.structure_locked) return ""; const computed = layout(), zoom = Math.max(.1, canvasState().zoom || 1); if (core.dividerHandleAtPoint(computed, point, 16 / zoom)) return "crosshair"; const divider = core.dividerAtPoint(computed, point, 10 / zoom); return divider ? divider.axis === "x" ? "col-resize" : "row-resize" : ""; }
     function handleWheel(event, point) { if (!active || !(event.ctrlKey || event.metaKey) || selection.kind !== "image") return false; const panels = selectedImagePanels().filter((panel) => panelEditable(panel) && !panel.image_locked); if (!panels.length) return false; if (point) { const hit = core.panelAtPoint(layout(), point); if (!hit || !selectedImagePanelIds.has(hit.id) && hit.id !== selection.id) return false; } options.pushUndo?.(); const factor = event.deltaY < 0 ? 1.08 : .92; panels.forEach((panel) => panel.image_scale = core.clamp(panel.image_scale * factor, .05, 5)); changed(); syncUi(); return true; }
 
-    async function importFiles(files) { const valid = files.filter(supportedImage); if (!valid.length) { options.setStatus?.(tr("PNG / JPEG / WebPを選択してください", "Choose PNG, JPEG, or WebP"), "error"); return []; } if (comic.images.length + valid.length > MAX_IMAGES) { options.setStatus?.(tr("ページ画像は100枚までです", "Up to 100 page images are supported"), "error"); return []; } const ids = []; for (const file of valid) { if (file.size > MAX_IMAGE_BYTES) { options.setStatus?.(tr("画像が大きすぎます", "The image is too large"), "error"); continue; } const metadata = { id: `${IMAGE_PREFIX}${uuid()}`, name: String(file.name || "image").replace(/\.[^.]+$/, ""), mime: file.type || "image/png", width: 1, height: 1, sha256: "", source: "stored" }; await attachBlob(metadata, file); comic.images.push(metadata); await storeImageBlob(documentId(), metadata, file); ids.push(metadata.id); } if (ids.length) { used = true; selectedTrayImageId = ids.at(-1); changed(); renderTray(); } return ids; }
+    async function importFiles(files) { const valid = files.filter(supportedImage); if (!valid.length) { options.setStatus?.(tr("PNG / JPEG / WebPを選択してください", "Choose PNG, JPEG, or WebP"), "error"); return []; } if (comic.images.length + valid.length > MAX_IMAGES) { options.setStatus?.(tr("ページ画像は100枚までです", "Up to 100 page images are supported"), "error"); return []; } const ids = []; for (const file of valid) { if (file.size > MAX_IMAGE_BYTES) { options.setStatus?.(tr("画像が大きすぎます", "The image is too large"), "error"); continue; } const metadata = { id: options.imageStore ? `page-image:${uuid()}` : `${IMAGE_PREFIX}${uuid()}`, name: String(file.name || "image").replace(/\.[^.]+$/, ""), mime: file.type || "image/png", width: 1, height: 1, sha256: "", source: "stored" }; await attachBlob(metadata, file); comic.images.push(metadata); await imageStore.put(metadata, file); ids.push(metadata.id); } if (ids.length) { used = true; selectedTrayImageId = ids.at(-1); changed(); renderTray(); } return ids; }
     async function getConversionSources() {
       const panel = selectedPanel(), preferredId = panel?.image_id || selectedTrayImageId || "";
       processingPanelId = panel?.image_id ? panel.id : "";
       const ordered = [...comic.images.filter((item) => item.id === preferredId), ...comic.images.filter((item) => item.id !== preferredId)], sources = [];
       for (const metadata of ordered) {
-        const blob = runtimeBlobs.get(metadata.id) || await loadImageBlob(documentId(), metadata.id);
+        const blob = runtimeBlobs.get(metadata.id) || await imageStore.get(metadata.id);
         if (!blob) continue;
         sources.push({ id: metadata.id, name: metadata.name || tr("ページ画像", "Page Image"), width: Number(metadata.width) || 1, height: Number(metadata.height) || 1, blob, selected: metadata.id === preferredId });
       }
@@ -312,7 +317,7 @@
       return addedId;
     }
     function assignImage(panelId, imageId) { const panel = core.findNode(comic.tree, panelId); if (!panelEditable(panel) || !comic.images.some((item) => item.id === imageId)) return false; options.pushUndo?.(); panel.image_id = imageId; panel.image_scale = 1; panel.image_offset_x = panel.image_offset_y = 0; panel.image_visible = true; selectedImagePanelIds.clear(); selectedImagePanelIds.add(panelId); selection = { kind: "image", id: panelId }; lastPanelId = panelId; changed(); syncUi(); return true; }
-    async function removeTrayImage(imageId) { const usedPanels = core.collectPanels(comic.tree).filter((panel) => panel.image_id === imageId); if (usedPanels.some((panel) => !panelEditable(panel))) return; if (usedPanels.length && !confirm(tr(`この画像は${usedPanels.length}個のコマで使用中です。削除しますか？`, `This image is used in ${usedPanels.length} panel(s). Remove it?`))) return; options.pushUndo?.(); usedPanels.forEach((panel) => { panel.image_id = null; selectedImagePanelIds.delete(panel.id); }); if (selection.kind === "image" && !core.findNode(comic.tree, selection.id)?.image_id) selection = { kind: "panel", id: selection.id }; comic.images = comic.images.filter((item) => item.id !== imageId); /* Keep the Blob and runtime image until the document is closed so Undo can restore this image. */ changed(); syncUi(); }
+    async function removeTrayImage(imageId) { if (options.removeSharedImage) { await options.removeSharedImage(imageId); return; } const usedPanels = core.collectPanels(comic.tree).filter((panel) => panel.image_id === imageId); if (usedPanels.some((panel) => !panelEditable(panel))) return; if (usedPanels.length && !confirm(tr(`この画像は${usedPanels.length}個のコマで使用中です。削除しますか？`, `This image is used in ${usedPanels.length} panel(s). Remove it?`))) return; options.pushUndo?.(); usedPanels.forEach((panel) => { panel.image_id = null; selectedImagePanelIds.delete(panel.id); }); if (selection.kind === "image" && !core.findNode(comic.tree, selection.id)?.image_id) selection = { kind: "panel", id: selection.id }; comic.images = comic.images.filter((item) => item.id !== imageId); /* Keep the Blob and runtime image until the document is closed so Undo can restore this image. */ changed(); syncUi(); }
     function renderTray() {
       if (!elements.trayList) return;
       const usedIds = new Set(core.collectPanels(comic.tree).map((panel) => panel.image_id).filter(Boolean));
@@ -369,9 +374,48 @@
         canvasPanel.style.setProperty("--general-comic-tray-height", `${Math.ceil(elements.tray.offsetHeight)}px`);
       });
     }
-    function handleImageDrop(transfer, point) { if (!active) return false; const files = [...(transfer?.files || [])].filter(supportedImage); if (files.length) { const panel = core.panelAtPoint(layout(), point); importFiles(files).then((ids) => { if (panel && ids[0]) assignImage(panel.id, ids[0]); }); return true; } const imageId = transfer?.getData?.(IMAGE_DRAG_TYPE); if (!imageId) return false; const panel = core.panelAtPoint(layout(), point); if (!panel) { options.setStatus?.(tr("画像はコマ内へドロップしてください。", "Drop the image inside a panel."), "error"); return true; } assignImage(panel.id, imageId); return true; }
-    async function exportProjectImages() { const records = []; for (const metadata of comic.images) { const blob = runtimeBlobs.get(metadata.id) || await loadImageBlob(documentId(), metadata.id); if (!blob) throw new Error(`Project image blob is missing: ${metadata.name || metadata.id}`); records.push({ id: metadata.id, name: metadata.name, mime: metadata.mime || blob.type || "image/png", data_url: await blobDataUrl(blob) }); } return records; }
-    async function importProjectImages(records) { for (const record of Array.isArray(records) ? records : []) { if (!String(record?.id || "").startsWith(IMAGE_PREFIX) || !String(record.data_url || "").startsWith("data:image/")) continue; const blob = await fetch(record.data_url).then((response) => response.blob()); let metadata = comic.images.find((item) => item.id === record.id); if (!metadata) { metadata = { id: String(record.id), name: String(record.name || "project-image"), mime: record.mime || blob.type || "image/png", width: 1, height: 1, sha256: "", source: "stored" }; comic.images.push(metadata); } await attachBlob(metadata, blob); await storeImageBlob(documentId(), metadata, blob); } renderTray(); requestRender({ canvas: true, layers: true }); }
+    function handleImageDrop(transfer, point) { if (!active) return false; const files = [...(transfer?.files || [])].filter(supportedImage); if (files.length) { const panel = core.panelAtPoint(layout(), point); importFiles(files).then((ids) => { if (panel && ids[0]) assignImage(panel.id, ids[0]); }); return true; } const imageId = transfer?.getData?.(IMAGE_DRAG_TYPE) || transfer?.getData?.("application/x-speech-bubble-comic-image") || transfer?.getData?.("text/plain"); if (!imageId || !comic.images.some((item) => item.id === imageId)) return false; const panel = core.panelAtPoint(layout(), point); if (!panel) { options.setStatus?.(tr("画像はコマ内へドロップしてください。", "Drop the image inside a panel."), "error"); return true; } assignImage(panel.id, imageId); return true; }
+    async function exportProjectImages() { const records = []; for (const metadata of comic.images) { const blob = runtimeBlobs.get(metadata.id) || await imageStore.get(metadata.id); if (!blob) throw new Error(`Project image blob is missing: ${metadata.name || metadata.id}`); records.push({ id: metadata.id, name: metadata.name, mime: metadata.mime || blob.type || "image/png", data_url: await blobDataUrl(blob) }); } return records; }
+    async function importProjectImages(records) { for (const record of Array.isArray(records) ? records : []) { if (!String(record?.id || "").startsWith(IMAGE_PREFIX) || !String(record.data_url || "").startsWith("data:image/")) continue; const blob = await fetch(record.data_url).then((response) => response.blob()); let metadata = comic.images.find((item) => item.id === record.id); if (!metadata) { metadata = { id: String(record.id), name: String(record.name || "project-image"), mime: record.mime || blob.type || "image/png", width: 1, height: 1, sha256: "", source: "stored" }; comic.images.push(metadata); } await attachBlob(metadata, blob); await imageStore.put(metadata, blob); } renderTray(); requestRender({ canvas: true, layers: true }); }
+
+    async function syncSharedImages(records) {
+      if (!options.imageStore) return;
+      const normalized = (Array.isArray(records) ? records : [])
+        .filter((metadata) => metadata?.id)
+        .map((metadata) => ({ ...metadata, source: metadata.source || "shared" }));
+      comic.images = normalized;
+      if (selectedTrayImageId && !normalized.some((metadata) => metadata.id === selectedTrayImageId)) selectedTrayImageId = "";
+      await hydrateImages();
+      renderTray();
+      syncUi();
+    }
+
+    function removeAssetUsage(imageId) {
+      let changedValue = false;
+      for (const panel of core.collectPanels(comic.tree)) {
+        if (panel.image_id !== imageId) continue;
+        panel.image_id = null;
+        selectedImagePanelIds.delete(panel.id);
+        changedValue = true;
+      }
+      if (changedValue) {
+        if (selection.kind === "image" && !core.findNode(comic.tree, selection.id)?.image_id) {
+          selection = { kind: "panel", id: selection.id };
+        }
+        used = true;
+        syncUi();
+        requestRender({ canvas: true, layers: true });
+      }
+      return changedValue;
+    }
+
+    function imageUsageCount(imageId) {
+      return core.collectPanels(comic.tree).filter((panel) => panel.image_id === imageId).length;
+    }
+
+    function usedImageIds() {
+      return new Set(core.collectPanels(comic.tree).map((panel) => panel.image_id).filter(Boolean));
+    }
 
     function imageGeometry(rect, image, panel) { const fit = panel.fit === "contain" ? Math.min : Math.max, base = fit(rect.w / image.naturalWidth, rect.h / image.naturalHeight), scale = base * panel.image_scale, w = image.naturalWidth * scale, h = image.naturalHeight * scale; return { x: rect.x + (rect.w - w) / 2 + panel.image_offset_x, y: rect.y + (rect.h - h) / 2 + panel.image_offset_y, w, h }; }
     function tracePolygon(target, polygon) { if (!polygon?.length) return false; target.beginPath(); target.moveTo(polygon[0].x, polygon[0].y); for (const point of polygon.slice(1)) target.lineTo(point.x, point.y); target.closePath(); return true; }
@@ -559,7 +603,7 @@
       }
       if (kind === "page" || kind === "panel") {
         row.addEventListener("dragover", (event) => { if (event.dataTransfer.types.includes("text/plain")) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } });
-        row.addEventListener("drop", (event) => { const layerId = event.dataTransfer.getData("text/plain"); if (!layerId || layerId.startsWith(IMAGE_PREFIX) || kind === "panel" && !panelEditable(core.findNode(comic.tree, id))) return; event.preventDefault(); event.stopPropagation(); options.assignLayerGeneralComicTarget?.(layerId, kind === "panel" ? id : null); });
+        row.addEventListener("drop", (event) => { const layerId = event.dataTransfer.getData("text/plain"); if (!layerId || comic.images.some((metadata) => metadata.id === layerId) || kind === "panel" && !panelEditable(core.findNode(comic.tree, id))) return; event.preventDefault(); event.stopPropagation(); options.assignLayerGeneralComicTarget?.(layerId, kind === "panel" ? id : null); });
       }
       return row;
     }
@@ -573,7 +617,7 @@
 
     installUi(); updateLanguage(); syncUi();
     root.addEventListener("speech-bubble:language-change", () => { updateLanguage(); syncUi(); });
-    return { IMAGE_DRAG_TYPE, IMAGE_PREFIX, isActive: () => active, isEditing: () => active && comic.created, hasPage: () => comic.created, activate, deactivate, setActive, createPage, serialize, restore, state: () => comic, layout, selection: () => ({ ...selection }), selectPage, selectPanel, selectPanelImage, selectDivider, selectedPanel, selectedDivider, selectedImagePanels, applyTemplate, splitSelected, mergeSelectedDivider, handlePointerDown, handlePointerMove, pointerCursorAt, handlePointerEnd, handleWheel, handleImageDrop, importFiles, getConversionSources, addConvertedImage, exportProjectImages, importProjectImages, removeTrayImage, drawUnderlay, drawOverlay, panelShape, panelContentRect: panelRect, panelInsertionTarget, selectedInsertionTarget, defaultPanelInsertionTarget, insertionTargetAt, elementTargetOptions, elementTargetValue, assignElementTarget, shouldSkipPanelScopedItem, assetClipRect, emphasisClipRect, renderLayers, syncProperties: syncUi, refreshLanguage: syncUi, clearSelection, scale, dispose };
+    return { IMAGE_DRAG_TYPE, IMAGE_PREFIX, isActive: () => active, isEditing: () => active && comic.created, hasPage: () => comic.created, activate, deactivate, setActive, createPage, serialize, restore, state: () => comic, layout, selection: () => ({ ...selection }), selectPage, selectPanel, selectPanelImage, selectDivider, selectedPanel, selectedDivider, selectedImagePanels, applyTemplate, splitSelected, mergeSelectedDivider, handlePointerDown, handlePointerMove, pointerCursorAt, handlePointerEnd, handleWheel, handleImageDrop, importFiles, getConversionSources, addConvertedImage, exportProjectImages, importProjectImages, removeTrayImage, syncSharedImages, removeAssetUsage, imageUsageCount, usedImageIds, drawUnderlay, drawOverlay, panelShape, panelContentRect: panelRect, panelInsertionTarget, selectedInsertionTarget, defaultPanelInsertionTarget, insertionTargetAt, elementTargetOptions, elementTargetValue, assignElementTarget, shouldSkipPanelScopedItem, assetClipRect, emphasisClipRect, renderLayers, syncProperties: syncUi, refreshLanguage: syncUi, clearSelection, scale, dispose };
   }
   root.SpeechBubbleGeneralComicEditor = Object.freeze({ create, IMAGE_DRAG_TYPE, IMAGE_PREFIX });
 })(typeof globalThis !== "undefined" ? globalThis : this);

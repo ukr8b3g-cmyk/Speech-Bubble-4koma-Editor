@@ -180,6 +180,15 @@
       return String(options.getDocumentId?.() || "");
     }
 
+    const imageStore = options.imageStore || {
+      put: async (metadata, blob) => {
+        await imageStore.put(metadata, blob);
+        return metadata;
+      },
+      get: (imageId) => loadImageBlob(documentId(), imageId),
+      remove: (imageId) => deleteImageBlob(documentId(), imageId),
+    };
+
     function pageRect() {
       const state = canvasState();
       comic.page.width = state.width;
@@ -317,7 +326,7 @@
           .filter((metadata) => metadata.source !== "document" && !runtimeImages.has(metadata.id))
           .map(async (metadata) => {
             try {
-              const blob = await loadImageBlob(targetDocument, metadata.id);
+              const blob = await imageStore.get(metadata.id);
               if (blob && hydratedDocumentId === targetDocument) await attachBlob(metadata, blob);
             } catch (error) {
               console.warn("Speech Bubble comic image restore failed", metadata.id, error);
@@ -874,7 +883,9 @@
       if (switchWorkspace) options.switchWorkspace?.(enableComic ? "comic" : "single");
       if (enableComic && !used) {
         options.resizeCanvas?.(720, 2200);
+        const sharedImages = Array.isArray(comic.images) ? comic.images : [];
         comic = core.defaultState(720, 2200, uuid);
+        comic.images = sharedImages;
       }
       comic.enabled = enableComic;
       drag = null;
@@ -1190,7 +1201,7 @@
         });
         row.addEventListener("drop", (event) => {
           const layerId = event.dataTransfer.getData("text/plain");
-          if (!layerId) return;
+          if (!layerId || comic.images.some((metadata) => metadata.id === layerId)) return;
           event.preventDefault();
           event.stopPropagation();
           const stack =
@@ -1497,7 +1508,7 @@
             continue;
           }
           const metadata = {
-            id: `image-${uuid()}`,
+            id: options.imageStore ? `page-image:${uuid()}` : `image-${uuid()}`,
             name: String(file.name || `image-${comic.images.length + 1}`).slice(0, 260),
             mime: /^image\/(?:png|jpeg|webp)$/i.test(file.type) ? file.type : "image/png",
             width: 1,
@@ -1507,7 +1518,7 @@
           };
           await attachBlob(metadata, file);
           comic.images.push(metadata);
-          await storeImageBlob(documentId(), metadata, file);
+          await imageStore.put(metadata, file);
           importedIds.push(metadata.id);
         } catch (error) {
           console.warn("Speech Bubble comic image import failed", error);
@@ -1544,7 +1555,7 @@
           return null;
         }
       }
-      return loadImageBlob(documentId(), metadata.id);
+      return imageStore.get(metadata.id);
     }
 
     async function getConversionSources() {
@@ -1643,7 +1654,7 @@
       comic.images = comic.images.filter((item) => !unusedIds.has(item.id));
       for (const metadata of unused) {
         releaseRuntimeImage(metadata.id);
-        await deleteImageBlob(documentId(), metadata.id).catch(() => {});
+        await imageStore.remove(metadata.id).catch(() => {});
       }
       renderTray();
       updateUi();
@@ -1653,6 +1664,10 @@
 
     async function removeTrayImage(imageId) {
       if (imageId === "source") return;
+      if (options.removeSharedImage) {
+        await options.removeSharedImage(imageId);
+        return;
+      }
       const index = comic.images.findIndex((item) => item.id === imageId);
       if (index < 0) return;
       const usedPanels = layout().panels.filter((item) => item.node.image_id === imageId);
@@ -1688,7 +1703,7 @@
       const records = [];
       for (const metadata of comic.images) {
         if (metadata.source === "document") continue;
-        const blob = await loadImageBlob(documentId(), metadata.id);
+        const blob = await imageStore.get(metadata.id);
         if (!blob) {
           const locations = layout().panels
             .filter((item) => item.node?.image_id === metadata.id)
@@ -1725,7 +1740,7 @@
           comic.images.push(metadata);
         }
         await attachBlob(metadata, blob);
-        await storeImageBlob(documentId(), metadata, blob);
+        await imageStore.put(metadata, blob);
       }
       renderTray();
       options.requestRender({ canvas: true, layers: true });
@@ -1792,6 +1807,44 @@
           return card;
         }),
       );
+    }
+
+    async function syncSharedImages(records) {
+      if (!options.imageStore) return;
+      const source = comic.images.filter((metadata) => metadata.id === "source");
+      const normalized = (Array.isArray(records) ? records : [])
+        .filter((metadata) => metadata?.id && metadata.id !== "source")
+        .map((metadata) => ({ ...metadata, source: metadata.source || "shared" }));
+      comic.images = [...source, ...normalized];
+      if (selectedTrayImageId && !normalized.some((metadata) => metadata.id === selectedTrayImageId)) selectedTrayImageId = "";
+      await hydrateImages();
+      renderTray();
+      updateUi();
+    }
+
+    function removeAssetUsage(imageId) {
+      let changedValue = false;
+      for (const item of layout().panels) {
+        if (item.node.image_id !== imageId) continue;
+        item.node.image_id = null;
+        selectedPanelImageIds.delete(item.id);
+        changedValue = true;
+      }
+      if (changedValue) {
+        if (selectedTarget === "image" && selectedPanelId && !selectedPanel()?.image_id) selectedTarget = "panel";
+        used = true;
+        updateUi();
+        options.requestRender({ canvas: true, layers: true });
+      }
+      return changedValue;
+    }
+
+    function imageUsageCount(imageId) {
+      return layout().panels.filter((item) => item.node.image_id === imageId).length;
+    }
+
+    function usedImageIds() {
+      return new Set(layout().panels.map((item) => item.node.image_id).filter(Boolean));
     }
 
     function syncTrayViewport() {
@@ -2600,6 +2653,10 @@
       cleanupUnusedImages,
       exportProjectImages,
       importProjectImages,
+      syncSharedImages,
+      removeAssetUsage,
+      imageUsageCount,
+      usedImageIds,
       drawUnderlay,
       drawOverlay,
       emphasisClipRect,
