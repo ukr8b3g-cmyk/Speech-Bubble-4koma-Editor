@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Port the complete Forge Neo Quick Retouch 0.7.10 tools into the standalone editor.
+- Preserve Single Image / 4-Panel Manga / Comic routing and shared Page Images output.
+- Preserve source transforms only for the explicitly selected Single Image source layer.
+- Keep full-resolution PNG apply, internal selection/paint/adjustment layers and session-only Undo.
+- Isolate modal shortcuts, paste/drop events and asynchronous source loading from the main editor.
+- Release image buffers and history on close; preserve UI/tool preferences only.
+- Add upstream core/UI regressions and real Desktop cross-workspace retouch tests.
+- Distribution version and existing Windows release assets are unchanged.
+
 ## v0.1.10 - 2026-09-26
 
 - Share one Page Image Library between 4-Panel Manga and free Comic workspaces.
