@@ -1068,6 +1068,9 @@
     ["変換履歴を削除", "Clear Conversion History"],
     ["プロジェクト、ユーザープリセット、設定、書き出し画像は削除しません。", "Projects, user presets, settings, and exported images are not deleted."],
     ["プレビューはメモリのみで処理します。使用中のページ画像と現在の一枚画像は削除しません。", "Previews stay in memory. Active page images and the current single image are not deleted."],
+    ["簡易レタッチ", "Quick Retouch"],
+    ["簡易レタッチを開く", "Open Quick Retouch"],
+    ["この画像を簡易レタッチ", "Quick Retouch this image"],
     ["白黒変換", "Black & White Conversion"],
     ["プリセット", "Preset"],
     ["白黒コミック", "Black & White Comic"],
@@ -1558,6 +1561,8 @@
       }
     });
     document.addEventListener("paste", async (event) => {
+      if(document.querySelector("dialog.quick-retouch-dialog[open]"))return;
+
       if (!settings.open && !userPresets.open) return;
       if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
       const item = Array.from(event.clipboardData?.items || []).find((entry) => entry.kind === "file" && ["image/png", "image/webp"].includes(entry.type));
@@ -1639,6 +1644,8 @@
       }
     });
     document.addEventListener("keydown", (event) => {
+      if(document.querySelector("dialog.quick-retouch-dialog[open]"))return;
+
       const active = document.activeElement;
       if (!event.ctrlKey || event.altKey || event.metaKey || event.key.toLowerCase() !== "n") return;
       if (["INPUT", "TEXTAREA", "SELECT"].includes(active?.tagName) || active?.isContentEditable) return;

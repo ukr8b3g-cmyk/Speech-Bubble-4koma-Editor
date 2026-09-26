@@ -83,6 +83,7 @@ catch { console.log("desktop_browser_smoke: SKIP (playwright unavailable)"); pro
     assert.match(await converterDialog.locator("[data-converter-mode]").innerText(), /4コマ漫画|4-Panel Manga/);
     await converterDialog.locator('[data-converter-action="cancel"]').click();
 
+    await require("./quick_retouch_desktop_gate.cjs")(page);
     assert.deepEqual(pageErrors, []);
     console.log("desktop_browser_smoke: OK (shared Page Images + Black & White Conversion)");
   } finally {

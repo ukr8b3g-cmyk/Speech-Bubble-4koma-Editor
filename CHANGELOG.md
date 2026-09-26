@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Port pinned Forge Quick Retouch 0.7.10 into all three standalone workspaces.
+- Keep Page Images shared and Single Image results source-context aware and non-destructive.
+- Preserve full-resolution PNG, selection/paint/adjustment tools and session-only history.
+- Isolate retouch keyboard/clipboard events and reject stale asynchronous apply operations.
+- Add core, UI and real Desktop Chromium regressions. Published v0.1.10 binaries are unchanged.
+
 ## v0.1.10 - 2026-09-26
 
 - Share one Page Image Library between 4-Panel Manga and free Comic workspaces.

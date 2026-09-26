@@ -67,4 +67,5 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/sbe-browser" --no-save playwright
           "$RUNNER_TEMP/sbe-browser/node_modules/.bin/playwright" install --with-deps chromium
           echo "NODE_PATH=$RUNNER_TEMP/sbe-browser/node_modules" >> "$GITHUB_ENV"
+      - run: node tests/quick_retouch_browser_smoke.cjs
       - run: node tests/desktop_browser_smoke.cjs

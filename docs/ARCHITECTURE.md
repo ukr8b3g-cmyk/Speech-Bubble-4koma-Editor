@@ -34,3 +34,7 @@ Deleting a Page Image removes its panel usage across both comic workspaces. Sett
 ## Black & White Conversion
 
 The standalone `web/comic-converter.js` follows the current Forge Neo implementation. Conversion processing remains browser-local and uses a Worker for preview/full-resolution processing. Applying to Single Image carries the exact source-layer context; applying in either comic workspace inserts the result into the shared Page Image Library.
+
+## Quick Retouch
+
+The three browser-local `web/quick-retouch*` assets are ported from Forge commit `929752a2080f7eb8be680ad29f6868d753acf729`. The pure core and CSS remain byte-identical. Only the UI/host boundary adapts three-mode routing, explicit source context, modal event isolation and asynchronous session lifecycle. Both comic modes write through the existing shared Page Images adapter; Single Image uses `applyProcessedSingleImage(..., "quick-retouch", source)`. No new image database, API, AI model or project schema is introduced. Internal layers/masks/history are not serialized; only the flattened PNG enters the existing save/recovery pipeline.

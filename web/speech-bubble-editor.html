@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="./general-comic-editor.css?v=general-comic-2">
   <link rel="stylesheet" href="./comic-converter.css?v=0.1.4-multi-image-1">
   <link rel="stylesheet" href="./background-removal.css?v=0.1.4-edge-matting-1">
+  <link rel="stylesheet" href="./quick-retouch.css?v=standalone-retouch-1">
   <link rel="stylesheet" href="./desktop/desktop.css?v=0.5.0-desktop-5">
   <script src="./project-schema.js?v=project-schema-1"></script>
   <script src="./editor-mode-controller.js?v=general-comic-1"></script>
@@ -22,7 +23,9 @@
   <script src="./background-removal-edge.js?v=0.1.4-edge-matting-1"></script>
   <script src="./background-removal.js?v=0.1.4-edge-matting-1"></script>
   <script src="./canvas-background-patterns.js?v=0.1.4-patterns-1"></script>
-  <script src="./desktop/desktop-shell.js?v=0.1.4-multi-image-1"></script>
+  <script src="./quick-retouch-core.js?v=standalone-retouch-1"></script>
+  <script src="./quick-retouch.js?v=standalone-retouch-1"></script>
+  <script src="./desktop/desktop-shell.js?v=standalone-retouch-1"></script>
   <script>
     (() => {
       const requested = new URLSearchParams(location.search).get("theme");
@@ -380,13 +383,17 @@
   </header>
   <div class="layout">
     <aside class="left">
+      <details class="left-section background-removal-launcher" data-left-section="background-removal" open>
+        <summary>背景削除</summary>
+        <button type="button" data-background-removal-open>背景削除を開く</button>
+      </details>
       <details class="left-section comic-converter-launcher" data-left-section="comic-converter" open>
         <summary>白黒変換</summary>
         <button type="button" data-comic-converter-open>白黒変換を開く</button>
       </details>
-      <details class="left-section background-removal-launcher" data-left-section="background-removal" open>
-        <summary>背景削除</summary>
-        <button type="button" data-background-removal-open>背景削除を開く</button>
+      <details class="left-section quick-retouch-launcher" data-left-section="quick-retouch" open>
+        <summary>簡易レタッチ</summary>
+        <button type="button" data-quick-retouch-open>簡易レタッチを開く</button>
       </details>
       <details class="left-section" data-left-section="bubbles" open>
         <summary>Speech Bubbles</summary>
@@ -704,7 +711,7 @@
     </div>
     <div id="fontList" class="font-list" role="listbox" aria-label="Available fonts"></div>
   </div>
-  <div id="layerMenu" class="layer-menu"><button id="copyLayer">Copy　Ctrl+C</button><button id="pasteLayer" disabled>Paste　Ctrl+V</button><button id="duplicateLayer">Duplicate</button><button id="processLayerBackgroundRemoval" hidden>この画像を背景削除</button><button id="processLayerComicConversion" hidden>この画像を白黒変換</button><button id="showOriginalImageLayer" hidden>元画像を表示</button><button id="deleteLayer">Delete</button></div>
+  <div id="layerMenu" class="layer-menu"><button id="copyLayer">Copy　Ctrl+C</button><button id="pasteLayer" disabled>Paste　Ctrl+V</button><button id="duplicateLayer">Duplicate</button><button id="processLayerQuickRetouch" hidden>この画像を簡易レタッチ</button><button id="processLayerBackgroundRemoval" hidden>この画像を背景削除</button><button id="processLayerComicConversion" hidden>この画像を白黒変換</button><button id="showOriginalImageLayer" hidden>元画像を表示</button><button id="deleteLayer">Delete</button></div>
   <dialog id="replaceImageDialog" class="document-dialog">
     <strong>背景画像を置き換えますか？</strong>
     <p>現在の画像には未保存の変更があります。</p>
@@ -872,7 +879,7 @@
       document.getElementById("addSingleImageLayerFromLayers").hidden=next!=="single";
       restoreWorkspaceView(source,false);
     }
-    let modeController=null,comicEditor=null,generalComicEditor=null,comicConverter=null,backgroundRemoval=null,comicOverlayExport=false;
+    let modeController=null,comicEditor=null,generalComicEditor=null,comicConverter=null,backgroundRemoval=null,quickRetouch=null,comicOverlayExport=false;
     const sharedPageImageStore=window.SpeechBubbleSharedPageImages?.create({getDocumentId:()=>documentId})||null;
     let sharedPageImageSyncPromise=Promise.resolve();
     function activeStructuralEditor(){return generalComicEditor?.isActive()?generalComicEditor:comicEditor?.isActive()?comicEditor:null;}
@@ -1017,6 +1024,19 @@
         setStatus:setSaveState,
       });
       return backgroundRemoval;
+    }
+    function initializeQuickRetouch(){
+      if(quickRetouch||!window.SpeechBubbleQuickRetouch)return quickRetouch;
+      quickRetouch=window.SpeechBubbleQuickRetouch.create({
+        getMode:()=>generalComicEditor?.isActive()?"comic_layout":comicEditor?.isActive()?"comic":"single",
+        getDocumentId:()=>documentId,
+        getSingleSource:selectedSingleImageSource,
+        getComicSources:()=>generalComicEditor?.isActive()?generalComicEditor.getConversionSources?.()||Promise.resolve([]):comicEditor?.getConversionSources?.()||Promise.resolve([]),
+        addPageImage:(blob,name)=>generalComicEditor?.isActive()?generalComicEditor.addConvertedImage?.(blob,name):comicEditor?.addConvertedImage?.(blob,name),
+        applySingleImage:(blob,name,source)=>applyProcessedSingleImage(blob,name,"quick-retouch",source),
+        setStatus:setSaveState,
+      });
+      return quickRetouch;
     }
     const savedLayoutKey = (id=documentId) => id ? `${SAVED_LAYOUT_PREFIX}${id}` : "";
     const draftLayoutKey = (id=documentId) => id ? `${DRAFT_LAYOUT_PREFIX}${id}` : "";
@@ -3317,7 +3337,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     function redoAction(){commitPropertyEdit();if(!state.redo.length)return;state.undo.push(sceneSnapshot());restoreScene(state.redo.pop());syncProperties();render();}
     function duplicateSelected(){const items=selectedItems().filter(item=>!item.locked);if(!items.length)return;pushUndo();const copiedGroups=new Map(),copies=items.map(item=>{const copy=JSON.parse(JSON.stringify(item));copy.id=id();copy.x+=20;copy.y+=20;copy.locked=false;if(copy.group_id){if(!copiedGroups.has(copy.group_id))copiedGroups.set(copy.group_id,`group-${id()}`);copy.group_id=copiedGroups.get(copy.group_id);}return copy;});state.elements.push(...copies);setSelection(copies.map(item=>item.id),copies.at(-1).id);state.vectorEditId=null;syncProperties();render();}
     function sourceImageLayerFor(item){if(!item||item.type!=="image")return null;return state.elements.find(candidate=>candidate.type==="image"&&candidate.id===item.source_image_layer_id)||state.elements.find(candidate=>candidate.type==="image"&&candidate.source_role==="original")||null;}
-    function updateLayerMenuState(){const imageSelected=selectedImageLayer();document.getElementById("copyLayer").disabled=!selectedItems().length;document.getElementById("pasteLayer").disabled=!layerClipboard?.length;document.getElementById("processLayerBackgroundRemoval").hidden=!imageSelected;document.getElementById("processLayerComicConversion").hidden=!imageSelected;document.getElementById("showOriginalImageLayer").hidden=!sourceImageLayerFor(imageSelected);}
+    function updateLayerMenuState(){const imageSelected=selectedImageLayer();document.getElementById("copyLayer").disabled=!selectedItems().length;document.getElementById("pasteLayer").disabled=!layerClipboard?.length;document.getElementById("processLayerQuickRetouch").hidden=activeWorkspace!=="single"||!imageSelected;document.getElementById("processLayerBackgroundRemoval").hidden=!imageSelected;document.getElementById("processLayerComicConversion").hidden=!imageSelected;document.getElementById("showOriginalImageLayer").hidden=!sourceImageLayerFor(imageSelected);}
     function copySelected(){const items=selectedItems();if(!items.length)return false;layerClipboard=JSON.parse(JSON.stringify(items));layerPasteCount=0;updateLayerMenuState();return true;}
     function pasteLayers(){if(!layerClipboard?.length)return;pushUndo();layerPasteCount+=1;const offset=20*layerPasteCount,copiedGroups=new Map(),copies=layerClipboard.map(source=>{const copy=JSON.parse(JSON.stringify(source));copy.id=id();copy.x=(Number(copy.x)||0)+offset;copy.y=(Number(copy.y)||0)+offset;copy.locked=false;if(copy.group_id){if(!copiedGroups.has(copy.group_id))copiedGroups.set(copy.group_id,`group-${id()}`);copy.group_id=copiedGroups.get(copy.group_id);}return copy;});state.elements.push(...copies);setSelection(copies.map(item=>item.id),copies.at(-1).id);state.vectorEditId=null;state.vectorAnchorIndex=null;state.vectorAddMode=false;syncProperties();render();}
      function deleteSelected(){const ids=new Set(selectedItems().filter(item=>!item.locked).map(item=>item.id));if(!ids.size)return;pushUndo();const first=state.elements.findIndex(item=>ids.has(item.id));state.elements=state.elements.filter(item=>!ids.has(item.id));const next=state.elements[Math.min(first,state.elements.length-1)]?.id||null;setSelection(next?[next]:[],next);state.vectorEditId=null;syncProperties();render();}
@@ -3387,7 +3407,9 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     canvas.addEventListener("dragleave",event=>{if(!canvas.contains(event.relatedTarget))canvas.classList.remove("drop-target");});
     canvas.addEventListener("drop",event=>{if(imageFileFromTransfer(event.dataTransfer))return;canvas.classList.remove("drop-target");const point=imagePoint(event);if(generalComicEditor?.isActive()&&generalComicEditor.handleImageDrop(event.dataTransfer,point)){event.preventDefault();return;}if(comicEditor?.handleImageDrop(event.dataTransfer,point)){event.preventDefault();return;}const raw=event.dataTransfer.getData(EDITOR_DRAG_TYPE);if(!raw)return;event.preventDefault();let payload;try{payload=JSON.parse(raw);}catch{return;}if(payload.kind==="bubble")insertPreset(payload.id,point);else if(payload.kind==="user-bubble")insertUserPreset(payload.id,point);else if(payload.kind==="sfx")insertSfx(payload.id,point);else if(payload.kind==="frame")insertFrame(payload.id,point);else if(payload.kind==="emphasis-lines")insertEmphasisLines(payload.id,point);});
     window.addEventListener("dragend",()=>setBackgroundDropHighlight(false));
-    document.addEventListener("paste",event=>{const editing=["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);if(editing)return;if(layerClipboard?.length){event.preventDefault();pasteLayers();return;}const item=Array.from(event.clipboardData?.items||[]).find(entry=>entry.kind==="file"&&String(entry.type||"").startsWith("image/"));const file=item?.getAsFile?.();if(file){event.preventDefault();if(generalComicEditor?.isActive())generalComicEditor.importFiles([file]);else if(comicEditor?.isActive())comicEditor.importFiles([file]);else requestBackgroundFile(file);}});
+    document.addEventListener("paste",event=>{
+      if(document.querySelector("dialog.quick-retouch-dialog[open]"))return;
+const editing=["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);if(editing)return;if(layerClipboard?.length){event.preventDefault();pasteLayers();return;}const item=Array.from(event.clipboardData?.items||[]).find(entry=>entry.kind==="file"&&String(entry.type||"").startsWith("image/"));const file=item?.getAsFile?.();if(file){event.preventDefault();if(generalComicEditor?.isActive())generalComicEditor.importFiles([file]);else if(comicEditor?.isActive())comicEditor.importFiles([file]);else requestBackgroundFile(file);}});
      function addTextLayer(){
        pushUndo();
        const editor=activeStructuralEditor(),item=defaultText(),selected=state.elements.find(element=>element.id===state.selected),selectedBubble=selected?.type==="bubble"?selected:null,selectedPanelId=generalComicEditor?.isActive()?selectedBubble?.general_comic_scope==="panel"&&selectedBubble.general_comic_panel_id:comicEditor?.isActive()?selectedBubble?.comic_scope==="panel"&&selectedBubble.comic_panel_id:null,explicitTarget=selectedPanelId?editor?.panelInsertionTarget?.(selectedPanelId):(editor?.selectedInsertionTarget?.()||null),target=selectedPanelId?explicitTarget:(explicitTarget?.scope==="panel"?explicitTarget:null);
@@ -3544,6 +3566,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     document.getElementById("copyLayer").onclick=()=>{copySelected();document.getElementById("layerMenu").classList.remove("open");};
     document.getElementById("pasteLayer").onclick=()=>{document.getElementById("layerMenu").classList.remove("open");pasteLayers();};
     document.getElementById("duplicateLayer").onclick=()=>{document.getElementById("layerMenu").classList.remove("open");duplicateSelected();};
+    document.getElementById("processLayerQuickRetouch").onclick=()=>{document.getElementById("layerMenu").classList.remove("open");if(activeWorkspace==="single"&&selectedSingleImageLayer())initializeQuickRetouch()?.open?.();};
     document.getElementById("processLayerBackgroundRemoval").onclick=()=>{document.getElementById("layerMenu").classList.remove("open");openSelectedBackgroundRemoval();};
     document.getElementById("processLayerComicConversion").onclick=()=>{document.getElementById("layerMenu").classList.remove("open");openSelectedComicConversion();};
     document.getElementById("showOriginalImageLayer").onclick=()=>{document.getElementById("layerMenu").classList.remove("open");const processed=selectedImageLayer(),original=sourceImageLayerFor(processed);if(!original)return;pushUndo();if(processed&&processed!==original)processed.visible=false;original.visible=true;setSelection([original.id],original.id);syncProperties();render();};
@@ -3552,6 +3575,8 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
     canvas.addEventListener("pointerdown",event=>{if(event.button!==0)return;const shapeDrawer=document.getElementById("shapeDrawer"),sfxDrawer=document.getElementById("sfxDrawer"),frameDrawer=document.getElementById("frameDrawer"),wasShape=shapeDrawer.classList.contains("open"),wasSfx=sfxDrawer.classList.contains("open"),wasFrame=frameDrawer.classList.contains("open"),hit=findHit(imagePoint(event),true);if(hit){if(wasShape||wasSfx||wasFrame)setTimeout(()=>{if(wasShape)shapeDrawer.classList.add("open");if(wasSfx)sfxDrawer.classList.add("open");if(wasFrame)frameDrawer.classList.add("open");},0);}else closePresetDrawers();},true);
     viewport.addEventListener("pointerdown",event=>{if(event.button!==0||event.target===canvas)return;closePresetDrawers();},true);
     window.addEventListener("keydown",(event)=>{
+      if(document.querySelector("dialog.quick-retouch-dialog[open]"))return;
+
       const modifier=event.ctrlKey||event.metaKey,key=event.key.toLowerCase(),active=document.activeElement,editing=["INPUT","TEXTAREA","SELECT"].includes(active?.tagName)||active?.isContentEditable||Boolean(active?.closest?.('[contenteditable="true"]'));
       if(!editing&&(event.key==="Delete"||event.key==="Backspace")&&state.selection.length){event.preventDefault();if(state.vectorEditId&&state.vectorAnchorIndex!==null)deleteVectorPoint();else deleteSelected();return;}
       if(!editing&&comicEditor?.handleKeyDown(event))return;
@@ -3570,7 +3595,9 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       if(!editing&&["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(event.key)){event.preventDefault();const amount=event.shiftKey?10:1;nudgeSelected(event.key==="ArrowLeft"?-amount:event.key==="ArrowRight"?amount:0,event.key==="ArrowUp"?-amount:event.key==="ArrowDown"?amount:0);return;}
       if(event.code!=="Space"||editing)return;event.preventDefault();state.spaceDown=true;canvas.style.cursor="grab";viewport.style.cursor="grab";
     });
-    window.addEventListener("keyup",(event)=>{if(event.code!=="Space")return;state.spaceDown=false;if(!state.drag)canvas.style.cursor="default";});
+    window.addEventListener("keyup",(event)=>{
+      if(document.querySelector("dialog.quick-retouch-dialog[open]"))return;
+if(event.code!=="Space")return;state.spaceDown=false;if(!state.drag)canvas.style.cursor="default";});
     window.addEventListener("blur",()=>{state.spaceDown=false;if(!state.drag)canvas.style.cursor="default";});
     const USER_ASSET_CHANNEL="speech-bubble-editor:user-assets:v1";
     let userAssetBroadcast=null;
@@ -3661,6 +3688,7 @@ function drawBasicSymbol(item,kind){const x=Number(item.x)||0,y=Number(item.y)||
       registerEditorModes();
       initializeComicConverter();
       initializeBackgroundRemoval();
+      initializeQuickRetouch();
       initializePresetUI();initializeSfxSwatches();initializeCompactColorSwatches();initializeCanvasBackgroundSwatches();refreshQuickSfx();refreshQuickFrames();refreshQuickEmphasisLines();initializeDrawerResize();initializeAccordionState();initializeLeftSectionState();initializeRightDockFloating();initializeFontBrowserDrag();enhanceNumericInputs();initializeUserAssetBroadcast();loadUserPresets();
       loadState("{}");lastSavedLayout=currentLayoutJson();hasExplicitSavedLayout=false;layoutDirty=false;imageLoaded=false;updateActionState();firstPaint();
       if(isPaletteWindow&&hostMode==="desktop"){await window.pywebview?.api?.palette_ready?.();return;}
