@@ -261,6 +261,111 @@ class DesktopCoreTest(unittest.TestCase):
             )
             self.assertEqual(len(list((Path(temporary) / "recovery" / "assets").glob("*"))), 1)
 
+    def test_recovery_rejects_missing_referenced_image_without_replacing_current(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = RecoveryStore(Path(temporary) / "recovery")
+            layout = current_layout(
+                single_elements=[
+                    {"id": "single-image", "type": "image", "image_asset_id": "image-1"}
+                ]
+            )
+            payload = {
+                "title": "autosave",
+                "layout": layout,
+                "images": [
+                    {
+                        "id": "image-1",
+                        "name": "single.png",
+                        "mime": "image/png",
+                        "data_url": png_data_url(),
+                    }
+                ],
+            }
+            store.save(payload, checkpoint=True)
+            before_current = store.current.read_bytes()
+            before_generations = sorted(path.name for path in store.generations.glob("*.json"))
+            before_assets = {path.name: path.read_bytes() for path in store.assets.glob("*")}
+
+            with self.assertRaisesRegex(ValueError, "Recovery image blob is missing"):
+                store.save({**payload, "images": []}, checkpoint=True)
+
+            self.assertEqual(store.current.read_bytes(), before_current)
+            self.assertEqual(
+                sorted(path.name for path in store.generations.glob("*.json")),
+                before_generations,
+            )
+            self.assertEqual(
+                {path.name: path.read_bytes() for path in store.assets.glob("*")},
+                before_assets,
+            )
+            self.assertEqual(
+                [record["id"] for record in store.load()["images"]],
+                ["image-1"],
+            )
+
+    def test_recovery_falls_back_from_legacy_current_with_missing_image_record(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = RecoveryStore(Path(temporary) / "recovery")
+            payload = {
+                "layout": current_layout(
+                    single_elements=[
+                        {"id": "single-image", "type": "image", "image_asset_id": "image-1"}
+                    ]
+                ),
+                "images": [
+                    {
+                        "id": "image-1",
+                        "name": "single.png",
+                        "mime": "image/png",
+                        "data_url": png_data_url(),
+                    }
+                ],
+            }
+            store.save(payload, checkpoint=True)
+            broken = json.loads(store.current.read_text(encoding="utf-8"))
+            broken["images"] = []
+            store.current.write_text(json.dumps(broken), encoding="utf-8")
+
+            restored = store.load()
+            self.assertEqual(restored["fallback_generation"], 1)
+            self.assertEqual(
+                [record["id"] for record in restored["images"]],
+                ["image-1"],
+            )
+
+    def test_recovery_repairs_corrupt_content_addressed_asset_on_resave(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = RecoveryStore(Path(temporary) / "recovery")
+            payload = {
+                "layout": current_layout(
+                    single_elements=[
+                        {"id": "single-image", "type": "image", "image_asset_id": "image-1"}
+                    ]
+                ),
+                "images": [
+                    {
+                        "id": "image-1",
+                        "name": "single.png",
+                        "mime": "image/png",
+                        "data_url": png_data_url(),
+                    }
+                ],
+            }
+            store.save(payload, checkpoint=True)
+            record = json.loads(store.current.read_text(encoding="utf-8"))
+            asset = store.assets / record["images"][0]["file"]
+            expected = base64.b64decode(png_data_url().split(",", 1)[1])
+            asset.write_bytes(b"corrupt")
+            self.assertFalse(store.load().get("available", True))
+
+            repaired = store.save(payload)
+            self.assertTrue(repaired["ok"])
+            self.assertEqual(asset.read_bytes(), expected)
+            self.assertEqual(
+                [record["id"] for record in store.load()["images"]],
+                ["image-1"],
+            )
+
     def test_garbled_font_names_fall_back_to_filename(self) -> None:
         with mock.patch(
             "speech_bubble_editor.font_catalog._font_name_table_text",

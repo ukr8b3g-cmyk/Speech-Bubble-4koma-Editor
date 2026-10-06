@@ -10,6 +10,12 @@ AI生成画像を漫画表現へ仕上げる用途を主な対象としつつ、
 
 > **Local post-production comic editor for AI-generated and existing artwork.**
 
+## v0.1.12 - 2026-10-06
+
+自動復元のデータ保護を強化したメンテナンスリリースです。レイアウトが参照する画像IDがautosaveの画像一覧に欠けている場合は、直前の復元データや保存世代へ触れる前に保存を拒否します。v0.1.11以前で作られた不完全な最新復元データは、利用可能な正常世代へフォールバックします。
+
+content-addressed recovery assetは再利用前にサイズとSHA-256を確認し、破損している場合は今回の検証済み画像データから原子的に修復します。`.sbeproj`形式、Recoveryの形式バージョン、編集UI、必須依存関係は変更していません。
+
 ## v0.1.11 - 2026-09-26
 
 簡易レタッチ（Quick Retouch 0.7.10）をWindowsインストーラーへ追加しました。ブラシ・消しゴム・各種選択・調整レイヤー・トーンカーブ・内部Undo／Redoを、3つの編集モードから利用できます。
@@ -40,8 +46,8 @@ Windows／Linux／Chromiumの自動回帰テストを追加しました。検証
 
 ## ダウンロード
 
-- [インストーラー版（Windows x64 / v0.1.11）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.11/SpeechBubble4komaEditor-v0.1.11-win-x64-setup.exe)
-- [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.11/SHA256SUMS.txt)
+- [インストーラー版（Windows x64 / v0.1.12）](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.12/SpeechBubble4komaEditor-v0.1.12-win-x64-setup.exe)
+- [SHA-256チェックサム](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases/download/v0.1.12/SHA256SUMS.txt)
 - [過去のリリース](https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor/releases)
 
 - GitHub: https://github.com/ukr8b3g-cmyk/Speech-Bubble-4koma-Editor
@@ -63,7 +69,7 @@ Windows／Linux／Chromiumの自動回帰テストを追加しました。検証
 
 通常はEXE版、または`start.cmd`から起動してください。EXE版ではシステムフォント、日本語フォント、Settings、`.sbeproj`、指定フォルダーへの画像書き出しなど、Desktop APIを使う機能を利用できます。
 
-現行リリース（v0.1.11）の配布物はWindows x64セットアップEXEです。ソースから起動する場合は`setup_and_start.cmd`で専用`.venv`を準備し、以後は`start.cmd`を使用してください。
+現行リリース（v0.1.12）の配布物はWindows x64セットアップEXEです。ソースから起動する場合は`setup_and_start.cmd`で専用`.venv`を準備し、以後は`start.cmd`を使用してください。
 
 `web\speech-bubble-editor.html`の直接表示は旧版互換・UI確認用で、現在のDesktopリリースと同等の動作を保証しません。ブラウザーからDesktop APIへ接続しないため、システムフォント、Settings、`.sbeproj`、指定フォルダーへの書き出しなども利用できません。
 

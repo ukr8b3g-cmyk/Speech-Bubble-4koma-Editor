@@ -19,7 +19,11 @@ from .project_schema import (
     validate_layout,
     validate_unique_logical_ids,
 )
-from .project_store import _decode_project_image, _inspect_project_image
+from .project_store import (
+    _decode_project_image,
+    _inspect_project_image,
+    _referenced_image_ids,
+)
 
 MAX_GENERATIONS = 5
 MAX_AGE_DAYS = 30
@@ -89,10 +93,38 @@ class RecoveryStore:
             result.append(copied)
         return result
 
-    def _asset_records(self, payload: dict) -> list[dict]:
-        source_records = payload.get("images")
-        if not isinstance(source_records, list):
-            raise ValueError("Recovery image list is invalid")
+    @staticmethod
+    def _validate_layout_image_references(layout: dict, records: list[dict]) -> None:
+        image_ids = {str(record.get("id") or "").strip() for record in records}
+        missing = [
+            (image_id, location)
+            for image_id, location in _referenced_image_ids(layout)
+            if image_id not in image_ids
+        ]
+        if missing:
+            details = ", ".join(
+                f"{image_id} ({location})" for image_id, location in missing[:8]
+            )
+            suffix = "" if len(missing) <= 8 else f" (+{len(missing) - 8} more)"
+            raise ValueError(f"Recovery image blob is missing: {details}{suffix}")
+
+    @staticmethod
+    def _asset_file_matches(path: Path, digest: str, expected_size: int) -> bool:
+        try:
+            if not path.is_file() or path.stat().st_size != expected_size:
+                return False
+            hasher = hashlib.sha256()
+            with path.open("rb") as stream:
+                while True:
+                    chunk = stream.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    hasher.update(chunk)
+            return hasher.hexdigest() == digest
+        except OSError:
+            return False
+
+    def _asset_records(self, source_records: list[dict]) -> list[dict]:
         validate_unique_logical_ids(source_records)
         records = []
         for source in source_records:
@@ -100,7 +132,7 @@ class RecoveryStore:
             digest = metadata["sha256"]
             extension = Path(metadata["path"]).suffix.lower() or ".png"
             asset_path = self.assets / f"{digest}{extension}"
-            if not asset_path.is_file():
+            if not self._asset_file_matches(asset_path, digest, len(data)):
                 handle, temporary = tempfile.mkstemp(prefix=f".{digest}.", suffix=".tmp", dir=self.assets)
                 try:
                     with os.fdopen(handle, "wb") as stream:
@@ -137,7 +169,12 @@ class RecoveryStore:
 
     def save(self, payload: dict, *, checkpoint: bool = False) -> dict:
         layout = self._layout(payload)
-        images = self._asset_records(payload)
+        source_records = payload.get("images")
+        if not isinstance(source_records, list):
+            raise ValueError("Recovery image list is invalid")
+        validate_unique_logical_ids(source_records)
+        self._validate_layout_image_references(layout, source_records)
+        images = self._asset_records(source_records)
         now = datetime.now(timezone.utc)
         record = {
             "format": RECOVERY_FORMAT,
@@ -173,6 +210,7 @@ class RecoveryStore:
                 return {}
             record["layout"] = validate_layout(record.get("layout"))
             record["images"] = self._validate_asset_records(record.get("images"))
+            self._validate_layout_image_references(record["layout"], record["images"])
         except (OSError, ValueError, TypeError):
             return {}
         if validate_assets:

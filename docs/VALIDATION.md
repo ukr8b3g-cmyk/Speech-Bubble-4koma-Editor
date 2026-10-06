@@ -15,6 +15,10 @@ GitHub Actions runs the core gate on Windows/Python 3.13 and Ubuntu/Python 3.10.
 
 Regression coverage includes chunked body limits, JSON object validation, CR/LF Data URLs, version consistency, lazy Pillow renderer loading, early pixel-limit checks, Desktop API limits, overlap/radiant bubble decorations and a real browser startup smoke.
 
+## 2026-10-06 recovery hardening coverage
+
+Regression coverage now rejects autosave snapshots whose layout references missing image IDs before any current/generation replacement, verifies fallback from legacy incomplete recovery records, and verifies that a corrupt content-addressed recovery asset is repaired from the next validated snapshot.
+
 ## Manual Windows release checks
 
 CI does not replace the packaged WebView2/Windows check. Before publishing a new binary release verify:

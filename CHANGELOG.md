@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.12 - 2026-10-06
+
+- Reject incomplete recovery snapshots before replacing the current autosave, creating a generation, or cleaning cached assets.
+- Treat legacy recovery records with missing logical image references as invalid so startup can fall back to the newest valid generation.
+- Verify cached recovery assets by size and SHA-256 before reuse, and atomically repair a damaged cache file from the validated incoming image.
+- Add recovery regression coverage while keeping the existing project/recovery schema and runtime dependencies unchanged.
+
 ## v0.1.11 - 2026-09-26
 
 - Keep an occupied Comic panel unchanged when Quick Retouch adds its output to shared Page Images.
